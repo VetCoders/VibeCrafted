@@ -913,9 +913,7 @@ flowchart LR
                 <div class="card-phase build" style="background:rgba(250,249,245,.12);color:var(--light)">Orchestrator
                 </div>
                 <h3>vetcoders-ship</h3>
-                <p class="card-desc">One command runs the full pipeline: Craft &rarr; Converge &rarr; Ship. All
-                    sub-skills remain individually callable &mdash; ship just chains them into an automated
-                    sequence.</p>
+                <p class="card-desc">One command runs the full pipeline. Don't micro-manage the agents; let the framework handle Craft &rarr; Converge &rarr; Ship until the thing is actually done.</p>
                 <div class="card-tags"><span class="tag">master orchestrator</span><span
                         class="tag">full pipeline</span><span class="tag">end-to-end</span></div>
                 <div class="card-trigger">"Ship: add auth module" &middot; "Wypusc to" &middot; "Full pipeline"</div>
@@ -924,8 +922,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase build">Phase 1 &middot; Craft</div>
                 <h3>vetcoders-init</h3>
-                <p class="card-desc">Bootstrap session with History (AICX MCP) + Eyes (loctree MCP) + Verify. Indexes prior
-                    session records, maps repo structure, and grounds the implementation path before hands-on work.</p>
+                <p class="card-desc">Blind agents write bad code. This forces them to index history, read the AST, and run quality gates before they are allowed to implement anything.</p>
                 <div class="card-tags"><span class="tag">loctree</span><span class="tag">aicx-mcp</span><span
                         class="tag">session bootstrap</span><span class="tag">verify</span></div>
                 <div class="card-trigger">"Init session" &middot; "Daj kontekst agentowi"</div>
@@ -934,7 +931,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase build">Phase 1 &middot; Craft</div>
                 <h3>vetcoders-workflow</h3>
-                <p class="card-desc">ERi Pipeline: Examine &rarr; Research &rarr; Implement. Structured Vibecraft that replaces "vibe and pray" with deliberate, measured progress.</p>
+                <p class="card-desc">The ERi Pipeline: Examine &rarr; Research &rarr; Implement. Stop the "vibe and pray" approach and force a deliberate, measured execution path.</p>
                 <div class="card-tags"><span class="tag">ERi</span><span class="tag">loctree</span><span class="tag">brave search</span><span
                         class="tag">Context7</span></div>
                 <div class="card-trigger">"ERi pipeline" &middot; "Zbadaj i zaimplementuj"</div>
@@ -944,8 +941,7 @@ flowchart LR
                 <div class="card-phase build" style="background:rgba(176,174,165,.12);color:var(--mid)">Fallback Path
                 </div>
                 <h3>vetcoders-delegate</h3>
-                <p class="card-desc">Native in-session delegation path. Safe, sandboxed, and useful when the task is
-                    small, bounded, or does not need a full external frontier fleet.</p>
+                <p class="card-desc">Native in-session delegation. Use it when the task is bounded and you don't need the heavy artillery of external frontier agents.</p>
                 <div class="card-tags"><span class="tag">native fallback</span><span class="tag">Task tool</span><span
                         class="tag">sandboxed</span></div>
                 <div class="card-trigger">"Native agents" &middot; "Delegate safely" &middot; "Bezpieczne agenty"</div>
@@ -955,8 +951,7 @@ flowchart LR
                 <div class="card-phase build" style="background:rgba(217,119,87,.14);color:var(--orange)">Frontier Fleet
                 </div>
                 <h3>vetcoders-agents</h3>
-                <p class="card-desc">External frontier agent fleet for Codex, Claude, and Gemini. Visible Terminal or
-                    headless mode, `zsh -ic` launch, durable artifacts, living-tree coordination, and real delegated fieldwork.</p>
+                <p class="card-desc">Unleash the external fleet (Codex, Claude, Gemini) in real terminals. They get a `zsh -ic` shell and instructions to do the heavy lifting while you stay in control.</p>
                 <div class="card-tags"><span class="tag">frontier agents</span><span class="tag">Codex + Claude + Gemini</span><span
                         class="tag">zsh -ic</span><span class="tag">durable artifacts</span></div>
                 <div class="card-trigger">"Spawn agents" &middot; "Agent fleet" &middot; "Power agents"</div>
@@ -965,8 +960,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase build">Phase 1 &middot; Craft</div>
                 <h3>vetcoders-research</h3>
-                <p class="card-desc">Triple-agent research surface for moments when one model is not enough. Runs Codex,
-                    Claude, and Gemini against the same question set, then synthesizes gap-free ground truth for implementation.</p>
+                <p class="card-desc">One agent's opinion is a hallucination waiting to happen. Throw all three (Codex, Claude, Gemini) at the same problem and synthesize the delta into undeniable ground truth.</p>
                 <div class="card-tags"><span class="tag">triple research</span><span class="tag">ground truth</span><span
                         class="tag">comparison</span></div>
                 <div class="card-trigger">"Research this" &middot; "Zbadaj to" &middot; "Triple research"</div>
@@ -975,8 +969,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase build">Phase 1 &middot; Craft</div>
                 <h3>vetcoders-partner</h3>
-                <p class="card-desc">Executive-brain pairing mode for hard product debugging, architecture triage, and
-                    feature framing while fieldwork is delegated to agents in parallel.</p>
+                <p class="card-desc">Executive-brain pairing mode. You keep your hands on the steering wheel while delegating the repetitive fieldwork to agents in parallel. True command and control.</p>
                 <div class="card-tags"><span class="tag">partner mode</span><span class="tag">strategy</span><span
                         class="tag">parallel fieldwork</span></div>
                 <div class="card-trigger">"Partner mode" &middot; "Idziemy razem" &middot; "Debug krok po kroku"</div>
@@ -985,8 +978,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase build">Phase 1 &middot; Craft</div>
                 <h3>vetcoders-ownership</h3>
-                <p class="card-desc">Full-spectrum ownership mode for teams who want one decisive operator to drive the
-                    entire product surface from architecture through launch polish.</p>
+                <p class="card-desc">Hand over the keys. Full-spectrum ownership for when you need an operator to drive the product from raw architecture all the way through to launch polish.</p>
                 <div class="card-tags"><span class="tag">ownership</span><span class="tag">end-to-end</span><span
                         class="tag">product delivery</span></div>
                 <div class="card-trigger">"Take ownership" &middot; "Dowiez to" &middot; "Od A do Z"</div>
@@ -995,8 +987,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase build">Phase 1 &middot; Craft</div>
                 <h3>vetcoders-followup</h3>
-                <p class="card-desc">Post-implementation audit with P0/P1/P2 severity model. Quality gates, security
-                    scan, completeness score. Produces GO / NO-GO verdict.</p>
+                <p class="card-desc">The reality check. Post-implementation audit that runs quality gates and security scans to give you a brutal GO / NO-GO verdict before you break production.</p>
                 <div class="card-tags"><span class="tag">audit</span><span class="tag">P0/P1/P2</span><span class="tag">quality gates</span>
                 </div>
                 <div class="card-trigger">"Follow-up check" &middot; "Czy s&#261; jeszcze luki?"</div>
@@ -1005,8 +996,7 @@ flowchart LR
             <div class="card" style="border-color:var(--orange)">
                 <div class="card-phase loop-phase">Phase 2 &middot; Converge</div>
                 <h3>vetcoders-marbles</h3>
-                <p class="card-desc">Iterative convergence through diffusion. Loops until the circle is full &mdash;
-                    P0=0, P1=0, P2=0. The noise scheduler for code.</p>
+                <p class="card-desc">Iterative convergence through brute force. Throw the prompt at the wall until the circle is full (P0=0, P1=0, P2=0). The ultimate noise scheduler for code.</p>
                 <div class="card-tags"><span class="tag">diffusion</span><span class="tag">convergence</span><span
                         class="tag">entropy</span><span class="tag">adaptive</span></div>
                 <div class="card-trigger">"Marbles" &middot; "Loop until done" &middot; "Kulki"</div>
@@ -1015,8 +1005,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase build">Phase 1 &middot; Craft</div>
                 <h3>vetcoders-prview</h3>
-                <p class="card-desc">PR review artifact pack plus findings-max audit. Generates durable review surfaces,
-                    line-level findings, and merge-gate clarity instead of one-off terminal wisdom.</p>
+                <p class="card-desc">Stop merging garbage. Generates durable review artifact packs with line-level findings to create a solid merge-gate instead of relying on one-off terminal wisdom.</p>
                 <div class="card-tags"><span class="tag">PR review</span><span class="tag">artifact pack</span><span
                         class="tag">findings-max</span></div>
                 <div class="card-trigger">"Review PR" &middot; "Daj findings" &middot; "Run prview"</div>
@@ -1025,8 +1014,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase build">Phase 1 &middot; Craft</div>
                 <h3>vetcoders-prune</h3>
-                <p class="card-desc">Runtime-cone and publish-cone extraction for repositories that grew too much scar
-                    tissue. Finds what truly ships, what is dead weight, and what should be cut hard.</p>
+                <p class="card-desc">Ruthless cleanup for repositories drowning in scar tissue. Finds out what actually ships, what's dead weight, and cuts it out without mercy.</p>
                 <div class="card-tags"><span class="tag">prune</span><span class="tag">runtime cone</span><span
                         class="tag">bold cleanup</span></div>
                 <div class="card-trigger">"Prune this repo" &middot; "Strip the dead weight" &middot; "Ruthless cleanup"</div>
@@ -1035,8 +1023,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase ship">Phase 3 &middot; Ship</div>
                 <h3>vetcoders-screenscribe</h3>
-                <p class="card-desc">Turns narrated screencasts into structured engineering findings, HTML reports, and
-                    actionable product feedback. Canonical surface for spoken screen review workflows.</p>
+                <p class="card-desc">Turns narrated screencasts into brutal engineering findings. Don't write bug reports; record your screen yelling at the app, and let this agent extract the actionable failures.</p>
                 <div class="card-tags"><span class="tag">video review</span><span class="tag">transcript-first</span><span
                         class="tag">actionable findings</span></div>
                 <div class="card-trigger">"Analyze this screencast" &middot; "ScreenScribe" &middot; "Bug demo recording"</div>
@@ -1045,8 +1032,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase ship">Phase 3 &middot; Ship</div>
                 <h3>vetcoders-dou</h3>
-                <p class="card-desc">Definition of Undone audit across the entire product surface. Crawls URLs, checks
-                    governance, measures the gap between code and market.</p>
+                <p class="card-desc">The Definition of Undone audit. It crawls your URLs, checks your install paths, and exposes the exact gap between your "working code" and a product someone can actually buy.</p>
                 <div class="card-tags"><span class="tag">product surface</span><span class="tag">SEO</span><span
                         class="tag">Plague Score</span></div>
                 <div class="card-trigger">"DoU audit" &middot; "Co brakuje do launchu?"</div>
@@ -1055,9 +1041,7 @@ flowchart LR
             <div class="card" style="border-color:var(--blue)">
                 <div class="card-phase ship">Phase 3 &middot; Ship</div>
                 <h3>vetcoders-decorate</h3>
-                <p class="card-desc">Visual polish within YOUR design language. Detects existing palette, fonts, and
-                    theme &mdash; proposes smaczki (hover effects, scroll behaviors, micro-interactions) using your
-                    tokens. Never overrides your style.</p>
+                <p class="card-desc">Make it look like you actually care. Detects your existing tokens (colors, fonts) and adds the necessary micro-interactions so your app doesn't look like a 2004 admin panel.</p>
                 <div class="card-tags"><span class="tag">smaczki</span><span
                         class="tag">detect &amp; enhance</span><span class="tag">micro-interactions</span><span
                         class="tag">curb appeal</span></div>
@@ -1069,8 +1053,7 @@ flowchart LR
             <div class="card">
                 <div class="card-phase ship">Phase 3 &middot; Ship</div>
                 <h3>vetcoders-hydrate</h3>
-                <p class="card-desc">Package for market: repo governance, SEO, distribution, marketplace listings,
-                    onboarding flows. The antidote to Always-in-Production.</p>
+                <p class="card-desc">The final mile. Automates the soul-crushing work of packaging for market: SEO, marketplace listings, and onboarding. The only cure for Always-in-Production.</p>
                 <div class="card-tags"><span class="tag">marketplace</span><span class="tag">SEO</span><span
                         class="tag">distribution</span><span class="tag">onboarding</span></div>
                 <div class="card-trigger">"Hydrate" &middot; "Nawodnij" &middot; "Make it shippable"</div>
@@ -1085,8 +1068,7 @@ flowchart LR
     <div class="container fade-up">
         <div class="section-label">Marbles</div>
         <h2 class="section-title">Denoise Until the Circle Is Full</h2>
-        <p class="section-sub">AI agents generate code stochastically. Each generation introduces signal AND noise. The
-            only way to separate them: iterate, measure, reduce.</p>
+        <p class="section-sub">AI agents are stochastic parrots. Every time they generate code, they introduce noise. You cannot prompt your way out of it. You have to iterate, measure the remaining entropy, and reduce it.</p>
 
         <div class="diffusion-visual">
             <div class="diffusion-canvas-wrap">
@@ -1175,9 +1157,7 @@ flowchart LR
             </div>
 
             <p style="color:var(--mid);margin:1rem 0 0;line-height:1.7">
-                This is the public install path. It clones or updates the suite into
-                <code>$HOME/.local/share/vetcoders-skills</code>, then hands off to the Smart Installer.
-                Want shell helpers too? Run the same command with <code>bash -s -- --with-shell</code>.
+                This grabs the suite and runs the Smart Installer. It sets up the central store in <code>~/.agents/skills</code> and wires up the aliases. Want the Zsh helpers so you can type <code>codex-implement</code> instead of raw shell scripts? Add <code>--with-shell</code>.
             </p>
 
             <h4 style="font-size:1rem;margin:2rem 0 .5rem;color:var(--light)">Local / Repo Path</h4>
@@ -1188,56 +1168,44 @@ make install     <span class="comment"># skills + shell helpers (canonical)</spa
 make skills      <span class="comment"># skills only</span>
 make helpers     <span class="comment"># shell helpers only</span>
 make doctor      <span class="comment"># verify installation health</span>
-make update      <span class="comment"># pull latest + re-install</span>
-
-<span class="comment"># Canonical payload lands in ~/.agents/skills</span>
-<span class="comment"># Codex / Claude / Gemini get symlink views</span></code></pre>
+make update      <span class="comment"># pull latest + re-install</span></code></pre>
             </div>
 
             <h4 style="font-size:1rem;margin:2rem 0 .5rem;color:var(--light)">Runtime Foundations</h4>
             <p style="color:var(--mid);margin:0 0 .9rem;line-height:1.7">
-                The suite can install without them, but it should not pretend to be whole without them.
-                <code>aicx-mcp</code> carries indexed history and recovery, <code>loctree-mcp</code> carries structure, and
-                <code>prview</code> carries durable review surfaces.
+                The suite runs without them, but you're flying blind. 
+                <code>aicx-mcp</code> gives your agents indexed memory of what happened yesterday. <code>loctree-mcp</code> forces them to read the architecture before breaking it. <code>prview</code> creates actual review artifacts instead of terminal dumps.
             </p>
             <div class="code-block">
-                <pre><code><span class="comment"># Smart Installer auto-detects runtime foundations and offers to install missing ones</span>
-<span class="comment"># with explicit consent.</span>
-
-<span class="comment"># Or install them manually:</span>
+                <pre><code><span class="comment"># The installer will try to compile these if you have cargo.</span>
+<span class="comment"># If you don't, install rustup first, or do it manually:</span>
 cargo install ai-contexters loctree-mcp
-cargo install prview
-
-<span class="comment"># Then add the agent CLIs you actually use:</span>
-<span class="comment"># codex, claude, gemini</span></code></pre>
+cargo install prview</code></pre>
             </div>
 
             <h4 style="font-size:1rem;margin:2rem 0 .5rem;color:var(--light)">Quick Start</h4>
             <div class="code-block">
-                <pre><code><span class="comment"># Examples intentionally mix English and Polish trigger phrases.</span>
-<span class="comment"># VetCoders is bilingual by design.</span>
-
-<span class="comment"># The one-liner — full pipeline</span>
+                <pre><code><span class="comment"># The one-liner — full pipeline</span>
 &gt; "Ship: add auth module with JWT"
 
 <span class="comment"># Or run individual phases:</span>
 
-<span class="comment"># 1. Initialize context</span>
-&gt; "Init session for this repo"
+<span class="comment"># 1. Force the agent to read the repo context first</span>
+&gt; "Init session"
 
-<span class="comment"># 2. Run full pipeline</span>
+<span class="comment"># 2. Run the full Examine -> Research -> Implement loop</span>
 &gt; "ERi pipeline for adding auth module"
 
-<span class="comment"># 3. Audit implementation</span>
+<span class="comment"># 3. Check what they broke</span>
 &gt; "Follow-up check"
 
-<span class="comment"># 4. Loop until converged</span>
+<span class="comment"># 4. Force convergence until it stops breaking</span>
 &gt; "Marbles -- loop until clean"
 
-<span class="comment"># 5. Check product surface</span>
+<span class="comment"># 5. Measure how far you are from shipping</span>
 &gt; "DoU audit -- are we shippable?"
 
-<span class="comment"># 6. Package for market</span>
+<span class="comment"># 6. Do the boring work to go live</span>
 &gt; "Hydrate this project"</code></pre>
             </div>
         </div>
@@ -1247,13 +1215,11 @@ cargo install prview
 <!-- FOOTER -->
 <footer>
     <p class="credits">
-        <a href="https://div0.space">Maciej Gad</a> &mdash; a veterinarian who couldn't find <code>terminal</code> a
-        year ago
+        <a href="https://div0.space">Maciej Gad</a> &mdash; a veterinarian who got tired of fragile software and chose violence.
         &nbsp;&middot;&nbsp;
-        <a href="https://github.com/Gitlaudiusz">Klaudiusz</a> &mdash; the ethereal being living in the GPU loops in
-        California
+        <a href="https://github.com/Gitlaudiusz">Klaudiusz</a> &mdash; the AI who had to build the tools to survive him.
     </p>
-    <p class="tagline-footer">Vibecrafted with AI Agents by VetCoders &copy; 2026 VetCoders</p>
+    <p class="tagline-footer">Vibecrafted through stochastic pain by VetCoders &copy; 2026</p>
 </footer>
 
 <script>
