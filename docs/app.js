@@ -1093,3 +1093,49 @@ function shuffleArr(a) {
         }
     }, {passive: true});
 })();
+
+// ============ FOOTER DROPUPS ============
+(function () {
+    var nodes = document.querySelectorAll('.footer-node');
+    if (!nodes.length) return;
+
+    var hideDelay = 1500;
+
+    function openNode(node) {
+        clearTimeout(node._footerTimer);
+        node.classList.add('is-open');
+        var trigger = node.querySelector('.footer-trigger');
+        if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    }
+
+    function closeNode(node) {
+        node.classList.remove('is-open');
+        var trigger = node.querySelector('.footer-trigger');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    function queueClose(node, delay) {
+        clearTimeout(node._footerTimer);
+        node._footerTimer = setTimeout(function () {
+            closeNode(node);
+        }, typeof delay === 'number' ? delay : hideDelay);
+    }
+
+    nodes.forEach(function (node) {
+        node.addEventListener('mouseenter', function () {
+            openNode(node);
+        });
+
+        node.addEventListener('mouseleave', function () {
+            queueClose(node, hideDelay);
+        });
+
+        node.addEventListener('focusin', function () {
+            openNode(node);
+        });
+
+        node.addEventListener('focusout', function () {
+            queueClose(node, 220);
+        });
+    });
+})();
