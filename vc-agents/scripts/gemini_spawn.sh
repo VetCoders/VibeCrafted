@@ -78,6 +78,12 @@ qreport="$(printf '%q' "$SPAWN_REPORT")"
 qtranscript="$(printf '%q' "$SPAWN_TRANSCRIPT")"
 qmodel="$(printf '%q' "$model")"
 
+gemini_pre_hook='
+  if [[ -n "${GEMINI_API_KEY:-}" ]]; then
+    printf "%s\n" "[INFO] GEMINI_API_KEY from env." | tee -a "$transcript"
+  else
+    printf "%s\n" "[INFO] Using Gemini CLI account auth." | tee -a "$transcript"
+  fi'
 
 gemini_success_hook='
   if [[ ! -s "$report" && -s "$transcript" ]]; then

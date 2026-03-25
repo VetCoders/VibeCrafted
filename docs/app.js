@@ -1043,28 +1043,53 @@ function shuffleArr(a) {
 // ============ HOVER CURL BANNER ============ 
 (function () {
     var curlTimeout = null;
-    var getBtn = document.getElementById('nav-get-link');
+    var lastScrollY = window.scrollY || 0;
+    var getZone = document.querySelector('.nav-get-zone');
     var curlBanner = document.querySelector('.curl-banner');
-    if (!getBtn || !curlBanner) return;
+    if (!getZone || !curlBanner) return;
 
     function showBanner() {
         clearTimeout(curlTimeout);
         curlBanner.classList.add('is-visible');
     }
 
-    function hideBanner() {
+    function hideBanner(delay) {
+        var hideDelay = typeof delay === 'number' ? delay : 220;
+        clearTimeout(curlTimeout);
         curlTimeout = setTimeout(function () {
             curlBanner.classList.remove('is-visible');
-        }, 220);
+        }, hideDelay);
     }
 
-    getBtn.addEventListener('mouseenter', showBanner);
-    getBtn.addEventListener('mouseleave', hideBanner);
-    getBtn.addEventListener('focus', showBanner);
-    getBtn.addEventListener('blur', hideBanner);
+    getZone.addEventListener('mouseenter', showBanner);
+    getZone.addEventListener('mouseleave', function () {
+        hideBanner(240);
+    });
+    getZone.addEventListener('focusin', showBanner);
+    getZone.addEventListener('focusout', function () {
+        hideBanner(240);
+    });
 
     curlBanner.addEventListener('mouseenter', showBanner);
-    curlBanner.addEventListener('mouseleave', hideBanner);
+    curlBanner.addEventListener('mouseleave', function () {
+        hideBanner(240);
+    });
     curlBanner.addEventListener('focusin', showBanner);
-    curlBanner.addEventListener('focusout', hideBanner);
+    curlBanner.addEventListener('focusout', function () {
+        hideBanner(240);
+    });
+
+    window.addEventListener('scroll', function () {
+        var currentY = window.scrollY || 0;
+        if (currentY > lastScrollY + 6) {
+            hideBanner(180);
+        }
+        lastScrollY = currentY;
+    }, {passive: true});
+
+    window.addEventListener('wheel', function (event) {
+        if (event.deltaY > 0) {
+            hideBanner(180);
+        }
+    }, {passive: true});
 })();
