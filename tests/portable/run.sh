@@ -77,11 +77,29 @@ zsh -n "$repo_root/skills/vc-agents/shell/vetcoders.zsh"
 
 workspace="$(mktemp -d)"
 trap 'rm -rf "$workspace"' EXIT
+bootstrap_home="$workspace/bootstrap-home"
+bootstrap_config_dir="$bootstrap_home/.config"
 home_dir="$workspace/home"
 config_dir="$home_dir/.config"
 work_repo="$workspace/workrepo"
 fake_bin="$workspace/fake-bin"
-mkdir -p "$home_dir" "$config_dir" "$work_repo" "$fake_bin"
+bootstrap_archive="$workspace/vibecrafted-bootstrap.tar.gz"
+mkdir -p "$bootstrap_home" "$bootstrap_config_dir" "$home_dir" "$config_dir" "$work_repo" "$fake_bin"
+
+log "bootstrap smoke via root install.sh"
+tar -czf "$bootstrap_archive" \
+  --exclude='.git' \
+  --exclude='node_modules' \
+  --exclude='output' \
+  --exclude='*.png' \
+  -C "$repo_root" .
+HOME="$bootstrap_home" XDG_CONFIG_HOME="$bootstrap_config_dir" VIBECRAFTED_HOME="$bootstrap_home/.vibecrafted" \
+  bash "$repo_root/install.sh" --archive-file "$bootstrap_archive"
+
+require_symlink "$bootstrap_home/.vibecrafted/tools/vibecrafted-current"
+require_file "$bootstrap_home/.vibecrafted/tools/vibecrafted-current/Makefile"
+require_file "$bootstrap_home/.vibecrafted/skills/vc-agents/scripts/codex_spawn.sh"
+require_file "$bootstrap_config_dir/zsh/vc-skills.zsh"
 
 log "install smoke into clean HOME"
 HOME="$home_dir" XDG_CONFIG_HOME="$config_dir" \

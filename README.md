@@ -16,13 +16,26 @@ Read more in our core documents:
 We strictly adhere to a **"No 'why?' questions" rule** for installation. 
 Our installer is 100% transparent, interactive, and non-destructive. It explains everything it does and only adds a single `source` line to your shell configuration. It never overwrites your global configs.
 
-To install or update the VibeCraft Framework:
+To install the VibeCraft Framework from the public bootstrap path:
 
 ```bash
-make vibecraft
+curl -fsSLO https://raw.githubusercontent.com/VetCoders/vibecrafted/main/install.sh
+bash install.sh
 ```
 
-This will run our safe, interactive orchestrator (`setup_vibecraft.py`), guide you through the process, and set up your environment with our customized sidecar frontier configurations (starship, zellij) for use *only* within VibeCraft workflows.
+This stages a local control-plane copy inside `~/.vibecrafted/tools/` and then runs our safe, interactive orchestrator (`setup_vibecraft.py`) from that local snapshot.
+
+To verify that staged install later:
+
+```bash
+make -C ~/.vibecrafted/tools/vibecrafted-current doctor
+```
+
+If you already have a local checkout and want to run the orchestrator directly:
+
+```bash
+make vibecrafted
+```
 
 ## Directory Structure
 

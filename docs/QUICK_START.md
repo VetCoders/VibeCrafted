@@ -4,21 +4,21 @@ You have a repo. You have AI agents. You want them to stop breaking things and s
 
 ## 1. Install
 
-```
-git clone https://github.com/VetCoders/vc-skills.git
-cd vc-skills
-make install
+```bash
+curl -fsSLO https://raw.githubusercontent.com/VetCoders/vibecrafted/main/install.sh
+bash install.sh
 ```
 
-The installer is interactive. It tells you what it does before it does it.
-It asks before touching your shell config. Everything is reversible with `make uninstall`.
+The bootstrap is non-destructive and stages its local control plane under `~/.vibecrafted/tools/`.
+Then the orchestrator becomes interactive. It tells you what it does before it does it.
+It asks before touching your shell config. Everything is reversible with `make -C ~/.vibecrafted/tools/vibecrafted-current uninstall`.
 
 After install, open a new terminal (or `source ~/.zshrc`).
 
 ## 2. Verify
 
-```
-make doctor
+```bash
+make -C ~/.vibecrafted/tools/vibecrafted-current doctor
 ```
 
 If you see green — you're good. If something is yellow — the doctor tells you why.
@@ -111,10 +111,11 @@ The framework does this for you. You provide the vision. Agents provide the labo
 ~/.vibecrafted/
   skills/        16 VibeCraft skills, readable by all your agents
   artifacts/     Plans, reports, transcripts — organized by project and date
+  tools/         Staged control plane used by the bootstrap installer
   helpers/       Shell commands (codex-implement, claude-plan, etc.)
 ```
 
-Symlinks in `~/.claude/skills/`, `~/.codex/skills/`, `~/.agents/skills/` point to the central store. Your agents read from there automatically.
+Symlinks in `~/.claude/skills/`, `~/.codex/skills/`, `~/.gemini/skills/`, and `~/.agents/skills/` point to the central store. Your agents read from there automatically.
 
 ## Vocabulary
 

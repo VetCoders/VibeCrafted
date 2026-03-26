@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -752,7 +753,7 @@ def report_helper_conflicts(conflicts: Dict[Path, List[HelperConflict]], interac
     if not conflicts:
         return True
 
-    print(yellow(bold("\n  Helper conflicts detected:")))
+    print(yellow(bold("\n  Helper overlap detected:")))
     for fpath, items in conflicts.items():
         total_lines = 0
         try:
@@ -765,18 +766,18 @@ def report_helper_conflicts(conflicts: Dict[Path, List[HelperConflict]], interac
             print(f"      {dim(f'line {c.line_num}:')} {c.function}()")
 
     print()
-    print(yellow("  These files contain non-VetCoders content — installer will NOT edit them."))
+    print(yellow("  These files already contain non-VetCoders content — installer will NOT edit them."))
 
     if not interactive:
-        print(yellow("  Non-interactive mode: installing canonical helpers alongside."))
-        print(yellow("  Remove duplicates from the files above manually."))
+        print(yellow("  Non-interactive mode: installing the canonical helper file alongside."))
+        print(yellow("  Clean up duplicates in the files above manually."))
         return True
 
     choice = ask_choice(
-        "  How to proceed?",
+        "  How should we handle it?",
         [
-            "Skip helper install (keep your current setup)",
-            "Install canonical helpers alongside (you clean up duplicates later)",
+            "Skip helper install and keep the current setup",
+            "Install the canonical helper file alongside and clean up duplicates later",
         ],
         default=1,
     )
@@ -786,7 +787,7 @@ def report_helper_conflicts(conflicts: Dict[Path, List[HelperConflict]], interac
         return False
 
     print()
-    print(yellow("  To clean up later, remove these functions from your files:"))
+    print(yellow("  To clean this up later, remove these functions from your files:"))
     for fpath, items in conflicts.items():
         for c in items:
             print(f"    {c.function} @ {fpath}:{c.line_num}")
@@ -837,15 +838,15 @@ def prune_legacy_skills(store_path: Path, runtimes: List[str],
     if not legacy:
         return 0
 
-    print(bold("Legacy vetcoders-* entries detected:"))
+    print(bold("Old vetcoders-* entries detected:"))
     for location, entry in legacy:
         kind = "symlink" if entry.is_symlink() else ("file" if entry.is_file() else "dir")
         print(f"  {yellow(f'[{kind}]')} {location}/{entry.name}")
     print()
 
     if interactive:
-        if not ask_yn("Remove legacy vetcoders-* entries?", default=True):
-            print(dim("  Keeping legacy entries."))
+        if not ask_yn("Remove the old vetcoders-* entries now?", default=True):
+            print(dim("  Keeping the old entries."))
             print()
             return 0
 
@@ -1204,7 +1205,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                 elif interactive and not advanced:
                     print(dim("  Note: gemini-cli in some versions duplicates the workflows, inheriting"))
                     print(dim("  skills from the other agents. Gemini symlinks skipped by default."))
-                    create_all = ask_yn("Create symlink views for default runtimes (codex, claude)?", default=True)
+                    create_all = ask_yn("Create the default agent views for codex and claude?", default=True)
                     if not create_all:
                         defaults = [rt in all_runtimes for rt in AGENT_RUNTIMES]
                         result = ask_multi("Select runtimes for symlink views:", AGENT_RUNTIMES, defaults)
@@ -1250,7 +1251,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                     for f in missing_foundations:
                         if "crates" in f.channels:
                             label = "required" if f.required else "optional"
-                            if ask_yn(f"Install {f.name} via cargo? ({label})", default=f.required):
+                            if ask_yn(f"Install {f.name} with cargo? ({label})", default=f.required):
                                 success = install_foundation_cargo(f, dry_run=dry_run)
                                 installed_foundations[f.name] = {
                                     "channel": "crates",
@@ -1272,7 +1273,7 @@ def cmd_install(args: argparse.Namespace) -> int:
             elif step == 4:
                 # Shell helpers
                 if not cli_with_shell and interactive:
-                    install_shell = ask_yn("Install zsh shell helpers (codex-implement, claude-plan, etc.)?", default=install_shell)
+                    install_shell = ask_yn("Enable the optional zsh helper layer?", default=install_shell)
                     print()
 
                 if install_shell:
@@ -1321,7 +1322,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     shared_home = Path(os.environ.get("VIBECRAFTED_HOME", Path.home() / ".vibecrafted"))
     store_path = shared_home / "skills"
 
-    print(bold("Install plan:"))
+    print(bold("Plan:"))
     print(f"  Skills:    {len(selected_skills)} -> {cyan(str(store_path))}")
     print(f"  Runtimes:  {', '.join(all_runtimes)} {dim('(symlink views)')}")
     print(f"  Shell:     {'yes' if install_shell else 'no'}")
@@ -1330,13 +1331,13 @@ def cmd_install(args: argparse.Namespace) -> int:
     print()
 
     if interactive:
-        if not ask_yn("Proceed with installation?", default=True):
-            print("Aborted.")
+        if not ask_yn("Install this plan?", default=True):
+            print("Install cancelled.")
             return 0
         print()
 
     # --- Backup existing state ---
-    print(bold("Backing up existing state..."))
+    print(bold("Saving current state..."))
     backup_ts = create_backup(store_path, all_runtimes, selected_skills, dry_run=dry_run)
     if backup_ts:
         print(f"  {OK} Backup saved: {_backup_root(store_path) / backup_ts}")
@@ -1345,7 +1346,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     print()
 
     # --- Execute: rsync skills ---
-    print(bold("Installing skills..."))
+    print(bold("Installing shared skills..."))
     if not dry_run:
         store_path.mkdir(parents=True, exist_ok=True)
 
@@ -1358,7 +1359,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     print()
 
     # --- Execute: symlink views ---
-    print(bold("Creating symlink views..."))
+    print(bold("Linking agent views..."))
     for rt in all_runtimes:
         rt_skills = Path.home() / f".{rt}" / "skills"
         if not dry_run:
@@ -1375,7 +1376,7 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     # --- Execute: shell helpers ---
     if install_shell:
-        print(bold("Installing shell helpers..."))
+        print(bold("Installing shell helper..."))
         shell_script = repo_root / "skills" / "vc-agents" / "scripts" / "install-shell.sh"
         if shell_script.exists():
             cmd = ["bash", str(shell_script), "--source", str(repo_root)]
@@ -1407,7 +1408,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     print()
 
     # --- Doctor ---
-    print(bold("Post-install verification:"))
+    print(bold("Verification:"))
     if dry_run:
         print(f"  {SKIP} Skipped in dry-run mode")
     else:
@@ -1424,20 +1425,18 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     # --- Done ---
     if _IS_TTY:
+        control_plane_cmd = shlex.quote(str(repo_root))
         print()
-        print(green(bold("  \u2713 \u026a\u0274\u1a60\u1d1b\u1d00\u029f\u029f \u1d04\u1d0f\u1d0d\u1d18\u029f\u1d07\u1d1b\u1d07")))
+        print(green(bold("  \u2713 Ready.")))
         print()
-        print(dim("  Next steps:"))
-        print(dim("    \u25b8 make doctor      \u2500 verify health"))
-        print(dim("    \u25b8 make uninstall   \u2500 reverse everything"))
+        print(dim("  Next:"))
+        print(dim(f"    \u25b8 make -C {control_plane_cmd} doctor      \u2500 verify health"))
+        print(dim(f"    \u25b8 make -C {control_plane_cmd} uninstall   \u2500 reverse everything"))
         print(dim("    \u25b8 source ~/.zshrc  \u2500 or open a new terminal"))
-        print()
-        print(dim("  \u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e"))
-        print(dim("  \u2502 VibeCrafted with AI Agents by VetCoders  \u2502"))
-        print(dim("  \u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"))
     else:
-        print(green(bold("Install complete.")))
-        print(dim("  make doctor — verify | make uninstall — reverse"))
+        control_plane_cmd = shlex.quote(str(repo_root))
+        print(green(bold("Ready.")))
+        print(dim(f"  make -C {control_plane_cmd} doctor — verify | make -C {control_plane_cmd} uninstall — reverse"))
 
     missing_fnd = [f for f in FOUNDATIONS if f.required and not f.is_installed()]
     if missing_fnd:
@@ -1594,13 +1593,13 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     print()
 
     if _IS_TTY and not dry_run:
-        if not ask_yn("Proceed with uninstall?", default=False):
-            print("Aborted.")
+        if not ask_yn("Remove the installed VibeCraft bundle?", default=False):
+            print("Uninstall cancelled.")
             return 0
         print()
 
     # Backup before removing
-    print(bold("Backing up before uninstall..."))
+    print(bold("Saving current state..."))
     backup_ts = create_backup(store_path, runtimes, skill_names, dry_run=dry_run)
     if backup_ts:
         print(f"  {OK} Backup saved: {_backup_root(store_path) / backup_ts}")
@@ -1608,7 +1607,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     print()
 
     # Remove symlinks from per-runtime dirs
-    print(bold("Removing symlink views..."))
+    print(bold("Removing agent views..."))
     for rt in runtimes:
         rt_skills = Path.home() / f".{rt}" / "skills"
         if not rt_skills.exists():
@@ -1627,7 +1626,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     print()
 
     # Remove skills from shared store
-    print(bold("Removing skills from store..."))
+    print(bold("Removing shared skills..."))
     for name in skill_names:
         skill_path = store_path / name
         if skill_path.exists():
@@ -1641,7 +1640,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     # Remove shell helpers
     helper_file = _helper_target_path()
     if helper_file.exists():
-        print(bold("Removing shell helpers..."))
+        print(bold("Removing shell helper..."))
         if dry_run:
             print(f"  {dim('rm')} {helper_file}")
         else:
@@ -1674,7 +1673,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
         else:
             state_file.unlink()
 
-    print(green(bold("Uninstall complete.")))
+    print(green(bold("Removed.")))
     if backup_ts:
         print(dim(f"  Backup at: {_backup_root(store_path) / backup_ts}"))
         print(dim("  Run 'make restore' to undo."))

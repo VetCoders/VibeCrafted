@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import shlex
 import sys
 import shutil
 
@@ -62,7 +63,10 @@ def run_underlying_installer(repo_dir):
     if os.path.exists(installer_path):
         print_step("Running Core Installer...")
         try:
-            subprocess.run([sys.executable, installer_path, "install", "--source", repo_dir], check=True)
+            subprocess.run(
+                [sys.executable, installer_path, "install", "--source", repo_dir, "--with-shell"],
+                check=True,
+            )
         except subprocess.CalledProcessError as e:
             print_warning(f"Core installer exited with code {e.returncode}")
     else:
@@ -74,38 +78,40 @@ def main():
     print("-------------------------")
     print(f"{Colors.ENDC}")
 
-    print_info("Welcome. This installer follows a strict 'No why? questions' rule.")
-    print_info("We will explain exactly what we are doing, and we guarantee it is non-destructive.")
+    print_info("This setup stays inside ~/.vibecrafted until you ask us to touch your shell.")
+    print_info("Each step says what changes, why it matters, and how to undo it.")
 
-    print_step("What we will do:")
-    print_info("1. We will NOT overwrite your existing shell configs (~/.zshrc, ~/.config/starship.toml, etc).")
-    print_info("2. We will ONLY add one 'source' line to your shell's rc file.")
-    print_info("3. This line points to our 'vetcoders.zsh' script.")
-    print_info("4. When you use VibeCraft, we load our beautiful 'frontier configs' (starship, zellij) dynamically as sidecars.")
+    print_step("Plan")
+    print_info("1. Keep the control plane in ~/.vibecrafted/tools.")
+    print_info("2. Install the shared skill store in ~/.vibecrafted/skills.")
+    print_info("3. Add one source line to your shell rc file.")
+    print_info("4. Load frontier configs as sidecars only when VibeCraft runs.")
     
-    if not ask_yes_no("Ready to install?"):
-        print("\nSetup aborted by user. No changes were made.")
+    if not ask_yes_no("Start setup?"):
+        print("\nSetup cancelled. No changes were made.")
         sys.exit(0)
 
     repo_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     vibecrafted_home = os.environ.get("VIBECRAFTED_HOME", os.path.join(os.path.expanduser("~"), ".vibecrafted"))
+    control_plane = os.path.realpath(repo_dir)
 
     # Step 1: Run core installer — copies skills to ~/.vibecrafted/skills/,
     # creates symlinks, installs shell helpers to ~/.config/zsh/vc-skills.zsh
-    print_step("Installing skills and shell helpers to ~/.vibecrafted/")
-    print_info(f"What: Copy 16 VibeCraft skills to {vibecrafted_home}/skills/")
-    print_info("Why:  Your AI agents (Claude, Codex, Gemini) read skills from here")
-    print_info("Safe: Everything reversible with 'make uninstall'")
+    print_step("Installing the shared skill store")
+    print_info(f"What:   Copy 16 VibeCraft skills to {vibecrafted_home}/skills/")
+    print_info("Reason: Keep one canonical skill store for Claude, Codex, and Gemini")
+    print_info(f"Safe: Everything reversible with 'make -C {shlex.quote(control_plane)} uninstall'")
     run_underlying_installer(repo_dir)
 
-    print_success("Installation Complete!")
-    print_info(f"Skills:  {vibecrafted_home}/skills/")
-    print_info(f"Helpers: ~/.config/zsh/vc-skills.zsh")
-    print_info("Symlinks: ~/.claude/skills/, ~/.codex/skills/, ~/.agents/skills/")
+    print_success("VibeCraft is ready.")
+    print_info(f"Control plane: {control_plane}")
+    print_info(f"Shared skills: {vibecrafted_home}/skills/")
+    print_info("Shell helper: ~/.config/zsh/vc-skills.zsh")
+    print_info("Agent views: ~/.claude/skills/, ~/.codex/skills/, ~/.agents/skills/")
     print()
-    print(f"{Colors.BOLD}To reverse:{Colors.ENDC} make uninstall")
-    print(f"{Colors.BOLD}To verify:{Colors.ENDC}  make doctor")
-    print(f"{Colors.BOLD}To start:{Colors.ENDC}   source ~/.zshrc (or open new terminal)")
+    print(f"{Colors.BOLD}Reverse:{Colors.ENDC} make -C {control_plane} uninstall")
+    print(f"{Colors.BOLD}Verify:{Colors.ENDC}  make -C {control_plane} doctor")
+    print(f"{Colors.BOLD}Start:{Colors.ENDC}   source ~/.zshrc (or open a new terminal)")
 
 if __name__ == "__main__":
     main()

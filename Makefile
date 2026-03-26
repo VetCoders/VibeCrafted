@@ -6,14 +6,14 @@ SHELL_INSTALLER := skills/vc-agents/scripts/install-shell.sh
 SOURCE   := $(CURDIR)
 BRANCH   ?= main
 
-.PHONY: help vibecraft check install skills helpers setup-dev dry-run doctor list update uninstall restore
+.PHONY: help vibecrafted vibecraft check install skills helpers setup-dev dry-run doctor list update uninstall restore
 
 help:
 	@printf "\n"
 	@printf "  \033[1m𝗩𝗶𝗯𝗲𝗖𝗿𝗮𝗳𝘁 𝗙𝗿𝗮𝗺𝗲𝘄𝗼𝗿𝗸\033[0m\n"
 	@printf "  ─────────────────────────────────────\n"
 	@printf "\n"
-	@printf "  \033[36m▸\033[0m  make vibecraft     \033[2mSafely install or update the VibeCraft framework (Orchestrator)\033[0m\n"
+	@printf "  \033[36m▸\033[0m  make vibecrafted   \033[2mSafely install or update the VibeCraft framework (Orchestrator)\033[0m\n"
 	@printf "\n"
 	@printf "  \033[33m◆\033[0m  make install       \033[2mSkills + shell helpers (Direct)\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make skills        \033[2mSkills only\033[0m\n"
@@ -35,9 +35,11 @@ help:
 	@printf "  ╰─────────────────────────────────────────╯\n"
 	@printf "\n"
 
-vibecraft:
+vibecrafted:
 	@echo "Starting VibeCraft Orchestrator..."
 	@$(PYTHON) scripts/setup_vibecraft.py
+
+vibecraft: vibecrafted
 
 install:
 	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --with-shell --non-interactive
