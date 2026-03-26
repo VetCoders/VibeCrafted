@@ -50,6 +50,19 @@ def get_shell_rc():
         # Default to zshrc if we can't figure it out, it's most common on mac
         return os.path.join(home, ".zshrc")
 
+import subprocess
+
+def run_underlying_installer(repo_dir):
+    installer_path = os.path.join(repo_dir, "scripts", "vetcoders_install.py")
+    if os.path.exists(installer_path):
+        print_step("Running Core Installer...")
+        try:
+            subprocess.run([sys.executable, installer_path, "install", "--source", repo_dir, "--with-shell"], check=True)
+        except subprocess.CalledProcessError as e:
+            print_warning(f"Core installer exited with code {e.returncode}")
+    else:
+        print_warning(f"Underlying installer not found at {installer_path}")
+
 def main():
     print(f"{Colors.HEADER}{Colors.BOLD}")
     print("VibeCraft Framework Setup")
@@ -99,8 +112,8 @@ def main():
 
     print_step("Applying internal path fixes (Sidecars)")
     print_info("We rely on sidecar configs. Your global configs are safe.")
-    # The actual path fixing is handled by the agent modifying the files in Plan 3.
-    # We just inform the user here.
+    
+    run_underlying_installer(repo_dir)
     
     print_success("Installation Complete!")
     print(f"\n{Colors.BOLD}To reverse this installation at any time:{Colors.ENDC}")

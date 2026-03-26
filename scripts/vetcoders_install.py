@@ -334,14 +334,18 @@ def get_repo_url(repo_root: Path) -> str:
 def discover_skills(repo_root: Path) -> List[Path]:
     """Find all canonical VetCoders skill directories."""
     skills = []
-    for entry in sorted(repo_root.iterdir()):
+    skills_dir = repo_root / "skills"
+    if not skills_dir.exists() or not skills_dir.is_dir():
+        return skills
+        
+    for entry in sorted(skills_dir.iterdir()):
         if not entry.is_dir():
             continue
         if entry.name.startswith("."):
             continue
         if entry.name in ("docs", "scripts", "tests", ".github"):
             continue
-        if not entry.name.startswith("vc-"):
+        if not entry.name.startswith("vc-") and not entry.name.startswith("vetcoders-"):
             continue
         if (entry / "SKILL.md").exists():
             skills.append(entry)
