@@ -74,15 +74,16 @@ Same convention as `vc-agents`:
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-SLUG="$(date +%Y%m%d)_<task-name>"
+source "$VIBECRAFT_ROOT/skills/vc-agents/scripts/common.sh"
+ARTIFACT_DAY="$(spawn_store_dir "$ROOT")"
 
-mkdir -p "$ROOT/.vibecrafted/pipeline/$SLUG/plans"
-mkdir -p "$ROOT/.vibecrafted/pipeline/$SLUG/reports"
+mkdir -p "$ARTIFACT_DAY"/{plans,reports,tmp}
 ```
 
 ### 2. Write Plans
 
-Write one plan per subagent to `.vibecrafted/pipeline/<slug>/plans/`.
+Write one plan per subagent to
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/`.
 Use the same plan template as `vc-agents`:
 
 ```markdown
@@ -177,7 +178,8 @@ Task tool returns results directly to the conversation.
 **Also** write results to report files for pipeline continuity:
 
 ```
-Write report to: .vibecrafted/pipeline/<slug>/reports/<N>_<task>_claude-task.md
+Write report to:
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/<ts>_<task>_claude_task_claude.md`
 ```
 
 Format:
@@ -224,7 +226,9 @@ After all agents return, the primary agent (you):
 ```
 ## Context
 Project: $ROOT
-Pipeline: .vibecrafted/pipeline/<slug>/
+Artifact root: ~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/
+Context file: plans/<ts>_<slug>_CONTEXT.md
+Research file: plans/<ts>_<slug>_RESEARCH.md
 
 ## Structural Intelligence (loctree MCP)
 Use loctree MCP tools as your primary exploration layer:
@@ -328,14 +332,15 @@ vc-init → vc-workflow → vc-delegate (or vc-agents) → vc-followup
 The pipeline accepts both skills, but they are not equal defaults.
 Use `vc-agents` first. Reach for `vc-delegate` only for small,
 model-agnostic, or environment-constrained work. The pipeline only requires
-that plans exist in `/plans/` and reports exist in `/reports/`.
+the canonical `plans/` and `reports/` directories under
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/`.
 
 ## Output Convention
 
 Same as `vc-agents` — full compatibility:
 
-- Plans: `.vibecrafted/pipeline/<slug>/plans/<N>_<task>_claude-task.md`
-- Reports: `.vibecrafted/pipeline/<slug>/reports/<N>_<task>_claude-task.md`
+- Plans: `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<task>_claude_task_claude.md`
+- Reports: `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/<ts>_<task>_claude_task_claude.md`
 - Agent suffix: `_claude-task` (vs `_codex` or `_claude` for spawn)
 
 ## Anti-Patterns

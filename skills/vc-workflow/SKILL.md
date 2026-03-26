@@ -34,7 +34,11 @@ Each phase accumulates context for the next — no blind implementation.
    CONTEXT.md                 RESEARCH.md              REPORTS/*.md
 ```
 
-Artifacts accumulate in `.vibecrafted/pipeline/<slug>/` per pipeline run.
+Canonical artifact root: `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/{plans,reports,tmp}/`.
+`CONTEXT.md` and `RESEARCH.md` live in `plans/` as `<ts>_<slug>_CONTEXT.md`
+and `<ts>_<slug>_RESEARCH.md`. `skills/vc-agents/scripts/common.sh`
+`spawn_prepare_paths()` is the source of truth for day-root resolution.
+Repo-local `.vibecrafted/plans` and `.vibecrafted/reports` are convenience symlinks only.
 
 ## Phase 1: EXAMINE
 
@@ -51,7 +55,8 @@ Map the codebase before touching anything. Use loctree MCP tools as the primary 
 
 ### Output: CONTEXT.md
 
-Write structured examination output to `.vibecrafted/pipeline/<slug>/CONTEXT.md`:
+Write structured examination output to
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_CONTEXT.md`:
 
 ```markdown
 # Examination: <slug>
@@ -106,7 +111,8 @@ Formulate queries from Examination findings:
 
 ### Output: RESEARCH.md
 
-Write to `.vibecrafted/pipeline/<slug>/RESEARCH.md`:
+Write to
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_RESEARCH.md`:
 
 ```markdown
 # Research: <slug>
@@ -160,8 +166,10 @@ Never edit code without mapping it first.
 ### Spawn Pattern
 
 Follow vc-agents skill for spawn commands (portable scripts preferred).
-Plans go to `.vibecrafted/pipeline/<slug>/plans/`.
-Reports go to `.vibecrafted/pipeline/<slug>/reports/`.
+Plans go to the canonical `plans/` directory under
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/`.
+Reports go to the canonical `reports/` directory under the same day root.
+Repo-local `.vibecrafted/plans` and `.vibecrafted/reports` remain convenience symlinks only.
 
 ### Review
 
@@ -176,8 +184,8 @@ After agents complete:
 
 | Phase     | Tool                               | Output       |
 |-----------|------------------------------------|--------------|
-| Examine   | loctree MCP                        | CONTEXT.md   |
-| Research  | brave-search + Context7 + WebFetch | RESEARCH.md  |
+| Examine   | loctree MCP                        | plans/<ts>_<slug>_CONTEXT.md   |
+| Research  | brave-search + Context7 + WebFetch | plans/<ts>_<slug>_RESEARCH.md  |
 | Implement | vc-agents (portable scripts) | reports/*.md |
 
 ## Phase Skipping
@@ -203,7 +211,7 @@ State which phases apply at pipeline start.
 - Researching without structural context (asking wrong questions)
 - Spawning agents without loctree instruction (proven 37% less complete)
 - Skipping phase gates (user must approve transitions)
-- Not writing CONTEXT.md/RESEARCH.md (context lost between phases)
+- Not writing CONTEXT.md/RESEARCH.md into canonical `plans/` (context lost between phases)
 
 ## Additional Resources
 
@@ -217,4 +225,4 @@ For detailed phase methodology, consult:
 
 ### Scripts
 
-- **`scripts/pipeline-init.sh`** — Initialize pipeline directory structure for a new run
+- **`scripts/pipeline-init.sh`** — Initialize canonical artifact paths for a new run

@@ -91,7 +91,7 @@ Report depth level in RESEARCH.md header.
 # Research: <slug>
 Date: <YYYY-MM-DD>
 Depth: quick | standard | deep
-Pipeline: .vibecrafted/pipeline/<slug>/
+Artifact root: ~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/
 
 ## Open Questions (from CONTEXT.md)
 1. <Q1>

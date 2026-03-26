@@ -67,10 +67,10 @@ If AICX MCP is unavailable, fall back to the `aicx` CLI if present.
 
 Create pipeline artifacts:
 
-- `.vibecrafted/pipeline/<slug>/CONTEXT.md`
-- `.vibecrafted/pipeline/<slug>/RESEARCH.md`
-- `.vibecrafted/pipeline/<slug>/plans/`
-- `.vibecrafted/pipeline/<slug>/reports/`
+- `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_CONTEXT.md`
+- `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_RESEARCH.md`
+- `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/`
+- `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/`
 
 `CONTEXT.md` must include:
 
@@ -126,7 +126,8 @@ Context:
 ### Spawn method
 
 Use the portable scripts from `vc-agents` (see `vc-agents` SKILL.md for commands).
-Write plans to `.vibecrafted/.../plans/` and reports to `.vibecrafted/.../reports/`.
+Write plans to `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/`
+and reports to `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/`.
 
 ## Phase D - Follow-up Synthesis (Primary Agent)
 

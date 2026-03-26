@@ -52,7 +52,7 @@ Questions the community will ask. Answers pending — if you know the answer, PR
 
 - What does "Craft, Converge, Ship" actually mean in practice?
 - How long does a typical Marbles convergence loop take?
-- When should I use `vc-ship` vs running individual skills manually?
+- When should I use `vc-justdo` vs running individual skills manually?
 - How do I know when convergence is "done"?
 - What is the ralph-loop and how does it relate to vc-marbles?
 - Can I run VibeCraft in CI/CD or is it only for interactive use?

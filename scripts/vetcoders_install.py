@@ -27,7 +27,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 # ---------------------------------------------------------------------------
 # ANSI helpers
@@ -231,7 +231,8 @@ def _is_writable(path: Path) -> bool:
         return False
 
 AGENT_RUNTIMES = ["codex", "claude", "gemini"]
-SYMLINK_TARGETS = ["agents"]  # ~/.agents/skills/ — single source of truth, all agents read from here
+SYMLINK_TARGETS = ["agents", "claude", "codex"]
+SYMLINK_TARGET_CHOICES = [*SYMLINK_TARGETS, "gemini"]
 
 # ---------------------------------------------------------------------------
 # Install state
@@ -295,6 +296,10 @@ def detect_agent_runtimes() -> Dict[str, Optional[str]]:
     for rt in AGENT_RUNTIMES:
         result[rt] = shutil.which(rt)
     return result
+
+
+def runtime_skills_dir(runtime: str) -> Path:
+    return Path.home() / f".{runtime}" / "skills"
 
 
 def detect_osascript() -> Optional[str]:
@@ -613,7 +618,65 @@ def _backup_root(store_path: Path) -> Path:
     return store_path / BACKUP_DIR
 
 
+def _copy_path_to_backup(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.is_symlink():
+        dst.symlink_to(os.readlink(src))
+    elif src.is_dir():
+        shutil.copytree(src, dst, symlinks=True)
+    elif src.is_file():
+        shutil.copy2(src, dst)
+
+
+def _restore_path_from_backup(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() or dst.is_symlink():
+        if dst.is_symlink() or dst.is_file():
+            dst.unlink()
+        else:
+            shutil.rmtree(dst)
+
+    if src.is_symlink():
+        dst.symlink_to(os.readlink(src))
+    elif src.is_dir():
+        shutil.copytree(src, dst, symlinks=True)
+    elif src.is_file():
+        shutil.copy2(src, dst)
+
+
+def collect_orphaned_skills(store_path: Path, runtimes: List[str],
+                            current_bundle: Set[str]) -> List[Tuple[str, Path]]:
+    """Return vc-* entries that no longer exist in the current bundle."""
+    orphans: List[Tuple[str, Path]] = []
+
+    if store_path.exists():
+        for entry in sorted(store_path.iterdir()):
+            if entry.name.startswith(".") or entry.name in current_bundle:
+                continue
+            if not entry.name.startswith("vc-"):
+                continue
+            if entry.is_symlink():
+                orphans.append(("store", entry))
+            elif entry.is_dir() and (entry / "SKILL.md").exists():
+                orphans.append(("store", entry))
+
+    for rt in runtimes:
+        rt_skills = runtime_skills_dir(rt)
+        if not rt_skills.exists():
+            continue
+        for entry in sorted(rt_skills.iterdir()):
+            if not entry.name.startswith("vc-") or entry.name in current_bundle:
+                continue
+            if entry.is_symlink():
+                orphans.append((rt, entry))
+            elif entry.is_dir() and (entry / "SKILL.md").exists():
+                orphans.append((rt, entry))
+
+    return orphans
+
+
 def create_backup(store_path: Path, runtimes: List[str], bundle_names: List[str],
+                  orphaned_entries: Optional[List[Tuple[str, Path]]] = None,
                   dry_run: bool = False) -> Optional[str]:
     """Snapshot existing state before install. Returns backup timestamp or None."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -634,7 +697,7 @@ def create_backup(store_path: Path, runtimes: List[str], bundle_names: List[str]
 
     # Back up per-runtime entries that are copies (not symlinks)
     for rt in runtimes:
-        rt_skills = Path.home() / f".{rt}" / "skills"
+        rt_skills = runtime_skills_dir(rt)
         if not rt_skills.exists():
             continue
         for name in bundle_names:
@@ -647,6 +710,15 @@ def create_backup(store_path: Path, runtimes: List[str], bundle_names: List[str]
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copytree(entry, dst, symlinks=True)
                 anything_backed = True
+
+    # Back up orphaned vc-* entries before pruning so restore can bring them back.
+    for location, entry in orphaned_entries or []:
+        dst = backup_dir / ("store" if location == "store" else f"runtimes/{location}") / entry.name
+        if dry_run:
+            print(f"  {dim('backup')} {entry} -> {dst}")
+        else:
+            _copy_path_to_backup(entry, dst)
+        anything_backed = True
 
     # Back up helper file
     helper_file = _helper_target_path()
@@ -814,34 +886,11 @@ def rsync_skill(src: Path, dst: Path, dry_run: bool = False, mirror: bool = Fals
 
 
 def prune_orphaned_skills(store_path: Path, runtimes: List[str],
-                          current_bundle: set, dry_run: bool = False,
+                          current_bundle: Set[str], dry_run: bool = False,
+                          orphaned_entries: Optional[List[Tuple[str, Path]]] = None,
                           interactive: bool = True) -> int:
     """Remove vc-* skills from store and runtime dirs that are no longer in the bundle."""
-    orphans: List[tuple] = []
-
-    if store_path.exists():
-        for entry in sorted(store_path.iterdir()):
-            if entry.name.startswith(".") or not entry.is_dir():
-                continue
-            if entry.name.startswith("vc-") and entry.name not in current_bundle:
-                if (entry / "SKILL.md").exists():
-                    orphans.append(("store", entry))
-
-    for rt in runtimes:
-        rt_skills = Path.home() / f".{rt}" / "skills"
-        if not rt_skills.exists():
-            continue
-        for entry in sorted(rt_skills.iterdir()):
-            if not entry.name.startswith("vc-"):
-                continue
-            if entry.name in current_bundle:
-                continue
-            if entry.is_symlink():
-                target = entry.resolve()
-                if str(store_path) in str(target):
-                    orphans.append((rt, entry))
-            elif entry.is_dir() and (entry / "SKILL.md").exists():
-                orphans.append((rt, entry))
+    orphans = orphaned_entries or collect_orphaned_skills(store_path, runtimes, current_bundle)
 
     if not orphans:
         return 0
@@ -864,8 +913,8 @@ def prune_orphaned_skills(store_path: Path, runtimes: List[str],
             print(f"  {dim('rm')} {entry}")
             removed += 1
         else:
-            if entry.is_symlink():
-                entry.unlink()
+            if entry.is_symlink() or entry.is_file():
+                entry.unlink(missing_ok=True)
             elif entry.is_dir():
                 shutil.rmtree(entry)
             removed += 1
@@ -1194,7 +1243,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     # --- Interactive Wizard ---
     step = 0
     selected_skills = list(skill_names)
-    all_runtimes = [rt for rt in SYMLINK_TARGETS]
+    all_runtimes = list(SYMLINK_TARGETS)
     install_shell = cli_with_shell
     installed_foundations: Dict[str, Dict] = {}
 
@@ -1263,24 +1312,24 @@ def cmd_install(args: argparse.Namespace) -> int:
                     args._rt_checked = True
 
                 if cli_tools:
-                    all_runtimes = [rt for rt in cli_tools if rt in AGENT_RUNTIMES]
+                    all_runtimes = [rt for rt in cli_tools if rt in SYMLINK_TARGET_CHOICES]
                     step += 1
                 elif interactive and not advanced:
                     print(dim("  Note: gemini-cli in some versions duplicates the workflows, inheriting"))
                     print(dim("  skills from the other agents. Gemini symlinks skipped by default."))
-                    create_all = ask_yn("Create the default agent views for codex and claude?", default=True)
+                    create_all = ask_yn("Create the default skill views for agents, claude, and codex?", default=True)
                     if not create_all:
-                        defaults = [rt in all_runtimes for rt in AGENT_RUNTIMES]
-                        result = ask_multi("Select runtimes for symlink views:", AGENT_RUNTIMES, defaults)
-                        all_runtimes = [rt for rt, sel in zip(AGENT_RUNTIMES, result) if sel]
+                        defaults = [rt in all_runtimes for rt in SYMLINK_TARGET_CHOICES]
+                        result = ask_multi("Select runtimes for symlink views:", SYMLINK_TARGET_CHOICES, defaults)
+                        all_runtimes = [rt for rt, sel in zip(SYMLINK_TARGET_CHOICES, result) if sel]
                     print()
                     step += 1
                 elif advanced and interactive:
                     print(dim("  Note: gemini-cli in some versions duplicates the workflows, inheriting"))
                     print(dim("  skills from the other agents. Gemini symlinks skipped by default."))
-                    defaults = [rt in all_runtimes for rt in AGENT_RUNTIMES]
-                    result = ask_multi("Select runtimes for symlink views:", AGENT_RUNTIMES, defaults)
-                    all_runtimes = [rt for rt, sel in zip(AGENT_RUNTIMES, result) if sel]
+                    defaults = [rt in all_runtimes for rt in SYMLINK_TARGET_CHOICES]
+                    result = ask_multi("Select runtimes for symlink views:", SYMLINK_TARGET_CHOICES, defaults)
+                    all_runtimes = [rt for rt, sel in zip(SYMLINK_TARGET_CHOICES, result) if sel]
                     print()
                     step += 1
                 else:
@@ -1401,7 +1450,14 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     # --- Backup existing state ---
     print(bold("Saving current state..."))
-    backup_ts = create_backup(store_path, all_runtimes, selected_skills, dry_run=dry_run)
+    orphaned_entries = collect_orphaned_skills(store_path, all_runtimes, set(selected_skills))
+    backup_ts = create_backup(
+        store_path,
+        all_runtimes,
+        selected_skills,
+        orphaned_entries=orphaned_entries,
+        dry_run=dry_run,
+    )
     if backup_ts:
         print(f"  {OK} Backup saved: {_backup_root(store_path) / backup_ts}")
     else:
@@ -1435,8 +1491,14 @@ def cmd_install(args: argparse.Namespace) -> int:
     print()
 
     # --- Prune orphaned vc-* skills no longer in bundle ---
-    prune_orphaned_skills(store_path, all_runtimes, set(selected_skills),
-                          dry_run=dry_run, interactive=interactive)
+    prune_orphaned_skills(
+        store_path,
+        all_runtimes,
+        set(selected_skills),
+        dry_run=dry_run,
+        orphaned_entries=orphaned_entries,
+        interactive=interactive,
+    )
 
     # --- Prune legacy vetcoders-* skills ---
     prune_legacy_skills(store_path, all_runtimes, dry_run=dry_run, interactive=interactive)
@@ -1547,8 +1609,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             ]
         # Only check runtimes that actually have a skills dir
         state.runtimes = [
-            rt for rt in AGENT_RUNTIMES
-            if (Path.home() / f".{rt}" / "skills").exists()
+            rt for rt in SYMLINK_TARGET_CHOICES
+            if runtime_skills_dir(rt).exists()
         ]
 
     findings = run_doctor(store_path, state)
@@ -1563,7 +1625,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "Install with the Smart Installer to get full tracking.",
         ))
         for rt in state.runtimes:
-            rt_skills = Path.home() / f".{rt}" / "skills"
+            rt_skills = runtime_skills_dir(rt)
             if not rt_skills.exists():
                 continue
             for entry in sorted(rt_skills.iterdir()):
@@ -1604,7 +1666,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     ))
     if bundle:
         for rt in state.runtimes:
-            rt_skills = Path.home() / f".{rt}" / "skills"
+            rt_skills = runtime_skills_dir(rt)
             if not rt_skills.exists():
                 continue
             for entry in sorted(rt_skills.iterdir()):
@@ -1674,7 +1736,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     # Use manifest if available, otherwise use bundle names
     skill_names = state.skills if state.skills else [n for n in bundle]
     runtimes = state.runtimes if state.runtimes else [
-        rt for rt in AGENT_RUNTIMES if (Path.home() / f".{rt}" / "skills").exists()
+        rt for rt in SYMLINK_TARGET_CHOICES if runtime_skills_dir(rt).exists()
     ]
 
     print(f"\n{bold('VetCoders Uninstall')}\n")
@@ -1813,15 +1875,13 @@ def cmd_restore(args: argparse.Namespace) -> int:
     if store_backup.is_dir():
         print(bold("Restoring skills to store..."))
         for entry in sorted(store_backup.iterdir()):
-            if not entry.is_dir():
+            if not (entry.is_dir() or entry.is_symlink() or entry.is_file()):
                 continue
             dst = store_path / entry.name
             if dry_run:
                 print(f"  {dim('restore')} {entry.name}")
             else:
-                if dst.exists():
-                    shutil.rmtree(dst)
-                shutil.copytree(entry, dst, symlinks=True)
+                _restore_path_from_backup(entry, dst)
                 print(f"  {OK} {entry.name}")
             restored += 1
         print()
@@ -1834,20 +1894,15 @@ def cmd_restore(args: argparse.Namespace) -> int:
             if not rt_dir.is_dir():
                 continue
             rt = rt_dir.name
-            rt_skills = Path.home() / f".{rt}" / "skills"
+            rt_skills = runtime_skills_dir(rt)
             for entry in sorted(rt_dir.iterdir()):
-                if not entry.is_dir():
+                if not (entry.is_dir() or entry.is_symlink() or entry.is_file()):
                     continue
                 dst = rt_skills / entry.name
                 if dry_run:
                     print(f"  {dim('restore')} {rt}/{entry.name}")
                 else:
-                    if dst.exists() or dst.is_symlink():
-                        if dst.is_symlink():
-                            dst.unlink()
-                        else:
-                            shutil.rmtree(dst)
-                    shutil.copytree(entry, dst, symlinks=True)
+                    _restore_path_from_backup(entry, dst)
                     print(f"  {OK} {rt}/{entry.name}")
                 restored += 1
         print()
@@ -1925,7 +1980,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p_install.add_argument("--advanced", action="store_true", help="Enable selective skill/runtime install")
     p_install.add_argument("--with-shell", action="store_true", help="Install zsh shell helpers")
     p_install.add_argument(
-        "--tool", dest="tools", action="append", choices=["codex", "claude", "gemini"],
+        "--tool", dest="tools", action="append", choices=SYMLINK_TARGET_CHOICES,
         help="Limit symlink views to these runtimes (repeatable, default: all)",
     )
     p_install.add_argument(

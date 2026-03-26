@@ -110,7 +110,8 @@ Write your findings to the report file as markdown with this structure:
 - Do not hallucinate API signatures — verify them
 ```
 
-Save to `.vibecrafted/pipeline/<slug>/plans/research-plan.md`.
+Save to
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_research-plan.md`.
 
 Plans can be split if the problem has clearly separable domains. Each agent
 gets ALL plans — they are independent researchers, not specialists.
@@ -123,9 +124,11 @@ exists in the user's interactive shell, and always launch through `zsh -ic`.
 Canonical path when `*-research` helpers exist:
 
 ```bash
-zsh -ic 'claude-research .vibecrafted/pipeline/<slug>/plans/research-plan.md'
-zsh -ic 'codex-research  .vibecrafted/pipeline/<slug>/plans/research-plan.md'
-zsh -ic 'gemini-research .vibecrafted/pipeline/<slug>/plans/research-plan.md'
+PLAN="$HOME/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_research-plan.md"
+
+zsh -ic "claude-research $PLAN"
+zsh -ic "codex-research  $PLAN"
+zsh -ic "gemini-research $PLAN"
 ```
 
 Quick verification if needed:
@@ -137,9 +140,9 @@ zsh -ic 'for c in claude-research codex-research gemini-research; do command -v 
 Compatibility fallback when the shell exposes only `*-implement` helpers:
 
 ```bash
-zsh -ic 'claude-implement .vibecrafted/pipeline/<slug>/plans/research-plan.md'
-zsh -ic 'codex-implement  .vibecrafted/pipeline/<slug>/plans/research-plan.md'
-zsh -ic 'gemini-implement .vibecrafted/pipeline/<slug>/plans/research-plan.md'
+zsh -ic "claude-implement $PLAN"
+zsh -ic "codex-implement  $PLAN"
+zsh -ic "gemini-implement $PLAN"
 ```
 
 Raw `*_spawn.sh` is last-resort plumbing only. Reach for it only when neither
@@ -186,7 +189,8 @@ Rules for synthesis:
 
 ### Step 6 — Produce gap-free research document
 
-Write the final document to `.vibecrafted/pipeline/<slug>/RESEARCH.md`:
+Write the final document to
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_RESEARCH.md`:
 
 ```markdown
 # Research: <title>
@@ -236,7 +240,7 @@ vc-research can be used:
 ```
          ┌─── claude ──→ report ───┐
 research │                         │
-  plan ──├─── codex  ──→ report ───├──→ RESEARCH.md
+  plan ──├─── codex  ──→ report ───├──→ plans/<ts>_<slug>_RESEARCH.md
          │                         │
          └─── gemini ──→ report ───┘
 ```

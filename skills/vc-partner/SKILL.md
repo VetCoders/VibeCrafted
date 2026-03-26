@@ -556,9 +556,11 @@ Run the same plan through independent planners using the portable spawn
 scripts:
 
 ```bash
-bash $VIBECRAFT_ROOT/skills/vc-agents/scripts/codex_spawn.sh .vibecrafted/plans/<plan>.md --mode plan
-bash $VIBECRAFT_ROOT/skills/vc-agents/scripts/claude_spawn.sh .vibecrafted/plans/<plan>.md --mode plan
-bash $VIBECRAFT_ROOT/skills/vc-agents/scripts/gemini_spawn.sh .vibecrafted/plans/<plan>.md --mode plan
+PLAN="$HOME/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<timestamp>_<track>.md"
+
+bash $VIBECRAFT_ROOT/skills/vc-agents/scripts/codex_spawn.sh "$PLAN" --mode plan
+bash $VIBECRAFT_ROOT/skills/vc-agents/scripts/claude_spawn.sh "$PLAN" --mode plan
+bash $VIBECRAFT_ROOT/skills/vc-agents/scripts/gemini_spawn.sh "$PLAN" --mode plan
 ```
 
 > **Note**: If your environment has `codex-plan`, `claude-plan`, `gemini-plan`
@@ -591,7 +593,7 @@ zsh -ic 'codex-resume <session-uuid> "<continuation prompt>"'
 zsh -ic 'gemini-resume <session-uuid> "<continuation prompt>"'
 
 # If not, use portable scripts with the synthesis as the new plan:
-bash $VIBECRAFT_ROOT/skills/vc-agents/scripts/codex_spawn.sh .vibecrafted/plans/<implementation-plan>.md --mode implement
+bash $VIBECRAFT_ROOT/skills/vc-agents/scripts/codex_spawn.sh "$PLAN" --mode implement
 ```
 
 Do not pretend continuity exists if the resume helper does not exist.
@@ -639,7 +641,7 @@ continuation until the circle is full.
 Maintain these artifacts:
 
 - `docs/<area>/<topic>-findings.md` or equivalent append-only findings log
-- `.vibecrafted/plans/<timestamp>_<track>.md`
+- `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<timestamp>_<track>.md`
 - `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/<timestamp>_<track>_<agent>.md`
 - `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/*.transcript.log`
 - `~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/*.meta.json`

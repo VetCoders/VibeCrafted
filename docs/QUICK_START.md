@@ -42,10 +42,10 @@ This runs `vc-init` — it reads your repo history, maps the structure, and runs
 ## 4. Build something
 
 ```
-Ship: add user authentication with JWT
+Just do: add user authentication with JWT
 ```
 
-That's it. `vc-ship` chains the entire pipeline:
+That's it. `vc-justdo` chains the entire pipeline:
 - **Craft** — examines the repo, researches the approach, implements
 - **Converge** — runs marbles loops until P0/P1/P2 are all zero
 - **Ship** — checks product surface, decorates, hydrates for market
@@ -57,6 +57,7 @@ ERi pipeline for adding auth module     (vc-workflow)
 Follow-up check                         (vc-followup)
 Marbles -- loop until clean             (vc-marbles)
 DoU audit -- are we shippable?          (vc-dou)
+Release prep -- launch/deploy path      (vc-release)
 ```
 
 ## 5. Spawn the fleet
@@ -109,20 +110,22 @@ The framework does this for you. You provide the vision. Agents provide the labo
 
 ```
 ~/.vibecrafted/
-  skills/        16 VibeCraft skills, readable by all your agents
+  skills/        17 VibeCraft skills, readable by all your agents
   artifacts/     Plans, reports, transcripts — organized by project and date
   tools/         Staged control plane used by the bootstrap installer
   helpers/       Shell commands (codex-implement, claude-plan, etc.)
 ```
 
-Symlinks in `~/.claude/skills/`, `~/.codex/skills/`, `~/.gemini/skills/`, and `~/.agents/skills/` point to the central store. Your agents read from there automatically.
+Symlinks in `~/.agents/skills/`, `~/.claude/skills/`, and `~/.codex/skills/` point to the central store by default. `~/.gemini/skills/` can still be added selectively.
 
 ## Vocabulary
 
 | You say | Framework does |
 |---------|---------------|
 | "Init session" | Reads history, maps repo, runs gates |
-| "Ship: ..." | Full pipeline end-to-end |
+| "Just do: ..." | Full pipeline end-to-end |
+| "Scaffold this" | Founder-first architecture and scoping plan |
+| "Release this" | Launch, deploy, and market-readiness mechanics |
 | "Follow-up check" | P0/P1/P2 triage of what's broken |
 | "Marbles" | Convergence loop until clean |
 | "DoU audit" | Gap analysis: code vs. shippable product |

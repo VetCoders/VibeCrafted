@@ -104,19 +104,22 @@ Split implementation into independent, parallel-safe units:
 - **2 agents**: Feature with backend + frontend, or implementation + tests
 - **3+ agents**: Large refactor, multi-module feature, complex migration
 
-### Pipeline Directory Structure
+### Canonical Artifact Structure
 
 ```
-.vibecrafted/pipeline/<slug>/
-├── CONTEXT.md          (from Phase 1)
-├── RESEARCH.md         (from Phase 2, if applicable)
+~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/
 ├── plans/
-│   ├── 01_<agent-task>.md
-│   └── 02_<agent-task>.md
-└── reports/
-    ├── 01_<agent-task>.md
-    └── 02_<agent-task>.md
+│   ├── <ts>_<slug>_CONTEXT.md
+│   ├── <ts>_<slug>_RESEARCH.md
+│   ├── <ts>_<agent-task>.md
+│   └── ...
+├── reports/
+│   ├── <ts>_<agent-task>_<launcher>_<agent>.md
+│   └── ...
+└── tmp/
 ```
+
+Repo-local `.vibecrafted/plans` and `.vibecrafted/reports` are convenience symlinks only.
 
 ## Spawn Commands
 
@@ -127,8 +130,8 @@ environment setup automatically.
 ### Codex (default for implementation)
 
 ```bash
-SLUG="<pipeline-slug>"
-PLAN=".vibecrafted/pipeline/$SLUG/plans/01_task.md"
+ARTIFACT_DAY="$HOME/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>"
+PLAN="$ARTIFACT_DAY/plans/<ts>_<agent-task>.md"
 
 bash vc-agents/scripts/codex_spawn.sh "$PLAN" --mode implement --runtime terminal
 ```
@@ -162,7 +165,8 @@ After agents complete:
 
 ### 1. Collect Reports
 
-Read all reports from `.vibecrafted/pipeline/<slug>/reports/`.
+Read all reports from
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/`.
 
 ### 2. Quality Gate
 
@@ -200,7 +204,7 @@ Structured summary:
 
 If review finds issues:
 
-1. Update CONTEXT.md with new findings
+1. Update the canonical `plans/<ts>_<slug>_CONTEXT.md` with new findings
 2. Write targeted fix plans
 3. Spawn fix agents with same pipeline context
 4. Re-run quality gate

@@ -39,7 +39,7 @@ make vibecrafted
 
 ## Directory Structure
 
-- `skills/` - The core AI skills (e.g., `vc-ship`, `vc-ownership`, `vc-workflow`). These are the brains of the operations.
+- `skills/` - The core AI skills (e.g., `vc-justdo`, `vc-partner`, `vc-workflow`). These are the brains of the operations.
 - `docs/` - Core architectural documentation.
 - `scripts/` - Installation and migration scripts.
 - `config/` - The VibeCraft frontier configs (starship, atuin, zellij) loaded dynamically as sidecars.
@@ -47,7 +47,7 @@ make vibecrafted
 ## Getting Started
 
 Once installed, simply run your preferred VibeCraft command in the terminal. For example:
-- `vc-ship`: Ship a feature from idea to completion.
+- `vc-justdo`: Build and ship a feature from idea to completion.
 - `vc-dou`: Run a "Definition of Undone" audit.
 - `vc-workflow`: Run the full Examine -> Research -> Implement pipeline.
 

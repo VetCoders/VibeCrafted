@@ -64,6 +64,18 @@ spawn_timestamp() {
   date +%Y%m%d_%H%M
 }
 
+spawn_link_repo_artifacts() {
+  local store_base="$1"
+  local repo_root="$2"
+  local repo_vibecrafted="$repo_root/.vibecrafted"
+
+  [[ "$store_base" != "$repo_root/.vibecrafted" ]] || return 0
+
+  mkdir -p "$repo_vibecrafted"
+  ln -sfn "$store_base/plans" "$repo_vibecrafted/plans" 2>/dev/null || true
+  ln -sfn "$store_base/reports" "$repo_vibecrafted/reports" 2>/dev/null || true
+}
+
 spawn_write_meta() {
   local meta_path="$1"
   local status="$2"
@@ -144,6 +156,7 @@ spawn_prepare_paths() {
   local store_base
   store_base="$(spawn_store_dir "$SPAWN_ROOT")"
 
+  SPAWN_PLAN_DIR="$store_base/plans"
   SPAWN_REPORT_DIR="$store_base/reports"
   SPAWN_TMP_DIR="$store_base/tmp"
   SPAWN_BASE="$SPAWN_REPORT_DIR/${SPAWN_TS}_${SPAWN_SLUG}_${agent}"
@@ -151,14 +164,8 @@ spawn_prepare_paths() {
   SPAWN_TRANSCRIPT="${SPAWN_BASE}.transcript.log"
   SPAWN_META="${SPAWN_BASE}.meta.json"
   SPAWN_LAUNCHER="$SPAWN_TMP_DIR/${SPAWN_TS}_${SPAWN_SLUG}_${agent}_launch.sh"
-  mkdir -p "$SPAWN_REPORT_DIR" "$SPAWN_TMP_DIR"
-
-  # Create a convenient symlink from repo .vibecrafted/reports → central store
-  local repo_reports="$SPAWN_ROOT/.vibecrafted/reports"
-  if [[ "$store_base" != "$SPAWN_ROOT/.vibecrafted" ]]; then
-    mkdir -p "$SPAWN_ROOT/.vibecrafted"
-    ln -sfn "$SPAWN_REPORT_DIR" "$repo_reports" 2>/dev/null || true
-  fi
+  mkdir -p "$store_base/plans" "$SPAWN_REPORT_DIR" "$SPAWN_TMP_DIR"
+  spawn_link_repo_artifacts "$store_base" "$SPAWN_ROOT"
 }
 
 spawn_build_runtime_prompt() {

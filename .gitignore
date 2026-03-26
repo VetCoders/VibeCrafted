@@ -22,3 +22,7 @@
 *.audit*.md
 /.playwright-mcp
 *.out
+*.zip
+/.vibecrafted
+CLAUDE.md
+AGENTS.md
