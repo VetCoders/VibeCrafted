@@ -146,17 +146,28 @@ cat > "$fake_bin/codex" <<'EOF_CODEX'
 #!/usr/bin/env bash
 set -euo pipefail
 report=""
+json_mode=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-last-message)
       shift
       report="$1"
       ;;
+    --json)
+      json_mode=1
+      ;;
   esac
   shift || true
 done
 cat >/dev/null || true
-echo 'fake codex stdout'
+if (( json_mode )); then
+  printf '{"type":"thread.started","thread_id":"fake-session-001"}\n'
+  printf '{"type":"turn.started"}\n'
+  printf '{"type":"item.completed","item":{"type":"agent_message","text":"Fake Codex Report: spawn ok"}}\n'
+  printf '{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":10}}\n'
+else
+  echo 'fake codex stdout'
+fi
 if [[ -n "$report" ]]; then
   printf '# Fake Codex Report\n\nspawn ok\n' > "$report"
 fi
@@ -171,7 +182,20 @@ EOF_CLAUDE
 cat > "$fake_bin/gemini" <<'EOF_GEMINI'
 #!/usr/bin/env bash
 set -euo pipefail
-echo 'fake gemini stdout'
+output_format="text"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o|--output-format) shift; output_format="${1:-text}" ;;
+  esac
+  shift || true
+done
+if [[ "$output_format" == "stream-json" ]]; then
+  printf '{"type":"init","session_id":"fake-gemini-001","model":"fake-model"}\n'
+  printf '{"type":"message","content":[{"type":"text","text":"fake gemini stdout"}]}\n'
+  printf '{"type":"result","text":"done","usage":{"input_tokens":50,"output_tokens":5}}\n'
+else
+  echo 'fake gemini stdout'
+fi
 EOF_GEMINI
 
 chmod +x "$fake_bin/codex" "$fake_bin/claude" "$fake_bin/gemini"
@@ -219,7 +243,7 @@ require_file "$claude_report"
 require_file "$gemini_report"
 assert_contains "$codex_report" 'Fake Codex Report'
 assert_contains "$claude_report" 'Claude completed without writing a standalone report file.'
-assert_contains "$gemini_report" 'fake gemini stdout'
+assert_contains "$gemini_report" 'fake gemini'
 
 log "helper bash smoke"
 env HOME="$home_dir" XDG_CONFIG_HOME="$config_dir" PATH="$fake_bin:$PATH" \

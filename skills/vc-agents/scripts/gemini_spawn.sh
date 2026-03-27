@@ -90,9 +90,9 @@ gemini_failure_hook='
 
 model_flag=""
 [[ -n "$model" ]] && model_flag="--model $qmodel"
-qfilter="$(printf '%q' "$SCRIPT_DIR/gemini_stream_filter.sh")"
-# Gemini output is text but has massive 429 retry blocks and MCP bootstrap noise
-launch_cmd="set -o pipefail && cd $qroot && prompt=\$(cat $qruntime) && gemini -p \"\$prompt\" -y $model_flag -o text 2>&1 | bash $qfilter | tee -a $qtranscript"
+qfilter="$(printf '%q' "$SCRIPT_DIR/gemini_stream_filter.jq")"
+# Gemini stream-json emits structured JSONL events. jq filter extracts readable text + tool tags.
+launch_cmd="set -o pipefail && cd $qroot && prompt=\$(cat $qruntime) && gemini -p \"\$prompt\" -y $model_flag -o stream-json 2>&1 | jq --unbuffered -rj -f $qfilter | tee -a $qtranscript"
 
 spawn_generate_launcher "$SPAWN_LAUNCHER" \
   "$SPAWN_META" \
