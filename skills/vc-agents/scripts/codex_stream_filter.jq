@@ -13,7 +13,7 @@ elif .type == "item.started" then
   if $i.type == "command_execution" then
     "\n" + tool_tag("$ " + ($i.command // "cmd")) + "\n"
   elif $i.type == "mcp_tool_call" then
-    tool_tag("mcp:" + ($i.name // "?")) + " "
+    tool_tag(($i.server // "") + ":" + ($i.tool // $i.name // "?")) + " "
   elif $i.type == "web_search" then
     tool_tag("search") + " "
   elif $i.type == "plan_update" then
@@ -35,6 +35,15 @@ elif .type == "item.completed" then
       else
         "\u001b[2m" + $out + "\u001b[0m\n"
       end
+    else empty end
+  elif $i.type == "mcp_tool_call" then
+    # MCP results have nested content; show truncated
+    ($i.result.content[0].text // "") as $out |
+    if ($out | length) > 0 then
+      ($out | split("\n")) as $lines |
+      if ($lines | length) > 12 then
+        "\u001b[2m" + ($lines[0:5] | join("\n")) + "\n  ... (" + ($lines | length | tostring) + " lines)\u001b[0m\n"
+      else empty end
     else empty end
   elif $i.type == "file_changes" then
     "\u001b[32m[" + stamp + " write: " + ($i.path // "?") + "]\u001b[0m\n"

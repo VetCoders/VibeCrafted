@@ -213,9 +213,10 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ "$output_format" == "stream-json" ]]; then
   printf '{"type":"init","session_id":"fake-gemini-001","model":"fake-model"}\n'
-  printf '{"type":"tool_use","name":"Read"}\n'
-  printf '{"type":"message","content":[{"type":"text","text":"fake gemini stdout"}]}\n'
-  printf '{"type":"result","text":"done","usage":{"input_tokens":50,"output_tokens":5}}\n'
+  printf '{"type":"tool_use","tool_name":"Read","tool_id":"read_1"}\n'
+  printf '{"type":"tool_result","tool_id":"read_1","status":"success","output":"file content"}\n'
+  printf '{"type":"message","role":"assistant","content":"fake gemini stdout","delta":true}\n'
+  printf '{"type":"result","status":"success","stats":{"input_tokens":50,"output_tokens":5,"duration_ms":100,"tool_calls":1}}\n'
 else
   echo 'fake gemini stdout'
 fi
