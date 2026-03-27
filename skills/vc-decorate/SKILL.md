@@ -70,6 +70,27 @@ but present options, don't assume taste, and don't force a visual identity.
 
 ---
 
+## CLI Is Also an Interface
+
+A terminal is not a dumping ground.
+
+CLI output is a user interface. It deserves the same coherence, rhythm,
+and intentionality as any web page or app screen. Nasty, raw, unformatted
+terminal output is not "developer-friendly." It is offensive to the operator.
+
+Decorate applies to CLI surfaces too:
+
+* installer output (alignment, color, progress signals)
+* agent spawn banners (branded, compact, informative)
+* doctor/health check output (clear pass/fail, not wall of text)
+* `make help` (structured, branded, scannable)
+* error messages (human-readable, not stacktrace-first)
+
+If the product has a terminal interface, that interface is part of the
+product surface. Decorate it.
+
+---
+
 ## What Decorate Is For
 
 Use Decorate when:
@@ -81,6 +102,7 @@ Use Decorate when:
 * there are inconsistent cards, buttons, spacing rules, focus states, or animation timings
 * a showcase page, demo, landing page, or app needs a finishing pass
 * the team wants the product to feel more intentional, not just more decorated
+* **the CLI output is functional but ugly, unbranded, or hard to scan**
 
 In the VibeCraft pipeline, Decorate belongs **after clarity and before packaging**.
 

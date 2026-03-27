@@ -296,6 +296,8 @@ Utilities:
   vc-frontier-paths              Show frontier config paths
   vc-frontier-install            Install starship/atuin/zellij presets
   vc-help                        This help
+
+Frontier docs:  docs/FRONTIER.md (mise, zellij, starship, atuin quickstart)
 HELP
   printf '\nInbox:     %s/inbox/\n' "$crafted_home"
   printf 'Artifacts: %s/artifacts/<org>/<repo>/<YYYY_MMDD>/\n' "$crafted_home"

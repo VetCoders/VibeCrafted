@@ -391,10 +391,19 @@ spawn_print_launch() {
   local agent="$1"
   local mode="$2"
   local runtime="${3:-terminal}"
-  printf 'Spawning %s-%s with runtime=%s\n' "$agent" "$mode" "$runtime"
-  printf '  plan:   %s\n' "$SPAWN_PLAN"
-  printf '  report: %s\n' "$SPAWN_REPORT"
-  printf '  trace:  %s\n' "$SPAWN_TRANSCRIPT"
-  printf '  meta:   %s\n' "$SPAWN_META"
-  printf '  launch: %s\n' "$SPAWN_LAUNCHER"
+
+  # ── VibeCraft branded spawn output ──────────────────────────────
+  local _dim='\033[2m'    _bold='\033[1m'
+  local _copper='\033[38;5;173m'  _steel='\033[38;5;247m'
+  local _reset='\033[0m'
+  local _bar="${_steel}──────────────────────────────────${_reset}"
+
+  printf '\n%b ⚒  VibeCraft · %s-%s%b\n' "$_bold$_copper" "$agent" "$mode" "$_reset"
+  printf '%b\n' "$_bar"
+  printf '%b  plan:    %b%s%b\n'   "$_steel" "$_reset" "${SPAWN_PLAN:-—}" "$_reset"
+  printf '%b  report:  %b%s%b\n'   "$_steel" "$_reset" "${SPAWN_REPORT:-—}" "$_reset"
+  printf '%b  trace:   %b%s%b\n'   "$_steel" "$_reset" "${SPAWN_TRANSCRIPT:-—}" "$_reset"
+  printf '%b  runtime: %b%s%b\n'   "$_steel" "$_reset" "$runtime" "$_reset"
+  printf '%b\n' "$_bar"
+  printf '%b  Agent launched.%b\n\n' "$_dim" "$_reset"
 }
