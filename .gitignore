@@ -26,3 +26,4 @@
 /.vibecrafted
 CLAUDE.md
 AGENTS.md
+/tests/tui/__pycache__
