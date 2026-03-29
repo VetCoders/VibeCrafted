@@ -78,11 +78,13 @@ qruntime="$(printf '%q' "$runtime_input")"
 qtranscript="$(printf '%q' "$SPAWN_TRANSCRIPT")"
 qmodel="$(printf '%q' "$model")"
 
+# shellcheck disable=SC2016
 gemini_success_hook='
   if [[ ! -s "$report" && -s "$transcript" ]]; then
     cp "$transcript" "$report"
   fi'
 
+# shellcheck disable=SC2016
 gemini_failure_hook='
   if [[ ! -s "$report" && -s "$transcript" ]]; then
     cp "$transcript" "$report"

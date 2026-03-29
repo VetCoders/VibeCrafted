@@ -64,6 +64,7 @@ legacy_dir="$config_base/zsh"
 legacy_file="$legacy_dir/vc-skills.zsh"
 
 # Source line — same syntax works in both bash and zsh
+# shellcheck disable=SC2016
 source_line='[[ -r "${XDG_CONFIG_HOME:-$HOME/.config}/vetcoders/vc-skills.sh" ]] && source "${XDG_CONFIG_HOME:-$HOME/.config}/vetcoders/vc-skills.sh"'
 
 printf 'Installing VetCoders shell helpers\n'

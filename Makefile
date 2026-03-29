@@ -6,7 +6,7 @@ SHELL_INSTALLER := skills/vc-agents/scripts/install-shell.sh
 SOURCE   := $(CURDIR)
 BRANCH   ?= main
 
-.PHONY: help vibecrafted vibecraft check install skills helpers setup-dev dry-run doctor list update uninstall restore migrate
+.PHONY: help vibecrafted vibecraft check install skills helpers setup-dev dry-run doctor list update uninstall restore migrate init-hooks
 
 help:
 	@printf "\n"
@@ -38,12 +38,12 @@ help:
 	@printf "  ╰─────────────────────────────────────────╯\n"
 	@printf "\n"
 
-vibecrafted:
+vibecrafted: init-hooks
 	@$(PYTHON) scripts/setup_vibecraft.py
 
 vibecraft: vibecrafted
 
-install:
+install: init-hooks
 	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --with-shell --non-interactive
 
 skills:
@@ -52,7 +52,7 @@ skills:
 helpers:
 	@bash $(SHELL_INSTALLER) --source "$(SOURCE)"
 
-setup-dev:
+setup-dev: init-hooks
 	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --advanced
 
 dry-run:
@@ -87,3 +87,10 @@ check:
 	@echo "Checking shell scripts..."
 	@find skills scripts -name "*.sh" -o -name "*.zsh" | xargs shellcheck -e SC1090,SC1091,SC2155,SC2034,SC2154 || true
 	@echo "Check complete."
+
+init-hooks:
+	@echo "Installing custom git hooks..."
+	@git config core.hooksPath scripts/hooks
+	@chmod +x scripts/hooks/pre-commit scripts/hooks/pre-push
+	@echo "Hooks installed to scripts/hooks and activated via core.hooksPath."
+

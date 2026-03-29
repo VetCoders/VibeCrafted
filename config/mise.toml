@@ -5,7 +5,12 @@ node = "lts"
 [env]
 VIBECRAFTED_HOME = "{{env.HOME}}/.vibecrafted"
 
+[tasks.init-hooks]
+description = "Install git hooks"
+run = "make init-hooks"
+
 [tasks.install]
+depends = ["init-hooks"]
 description = "Run VibeCraft interactive installer"
 run = "python3 \"$MISE_PROJECT_ROOT/scripts/setup_vibecraft.py\""
 

@@ -78,6 +78,7 @@ qruntime="$(printf '%q' "$runtime_input")"
 qtranscript="$(printf '%q' "$SPAWN_TRANSCRIPT")"
 qmodel="$(printf '%q' "$model")"
 
+# shellcheck disable=SC2016
 claude_success_hook='
   if [[ ! -s "$report" ]]; then
     cat > "$report" <<TXT
@@ -87,6 +88,7 @@ $transcript
 TXT
   fi'
 
+# shellcheck disable=SC2016
 claude_failure_hook='
   if [[ ! -s "$report" ]]; then
     cat > "$report" <<TXT

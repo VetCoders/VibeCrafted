@@ -305,13 +305,16 @@ jq -e '.framework_version != null and .framework_version != ""' "$codex_meta" >/
 jq -e '.completed_at != null and .duration_s != null' "$codex_meta" >/dev/null || die "codex meta missing completion telemetry"
 
 log "helper bash smoke"
+# shellcheck disable=SC2016
 env HOME="$home_dir" XDG_CONFIG_HOME="$config_dir" PATH="$fake_bin:$PATH" \
   bash -c 'source "${XDG_CONFIG_HOME:-$HOME/.config}/vetcoders/vc-skills.sh"; command -v codex-implement >/dev/null && command -v claude-implement >/dev/null && command -v gemini-implement >/dev/null && command -v skills-sync >/dev/null && echo helper-ok' \
   | grep -Fq 'helper-ok' || die 'bash helper layer not loaded'
-
 log "skill helper telemetry smoke"
-skill_output="$(env HOME="$home_dir" XDG_CONFIG_HOME="$config_dir" PATH="$fake_bin:$PATH" VETCODERS_SPAWN_RUNTIME=headless \
-  bash -c 'cd "$1"; source "${XDG_CONFIG_HOME:-$HOME/.config}/vetcoders/vc-skills.sh"; codex-marbles telemetry smoke' _ "$work_repo")"
+# shellcheck disable=SC2016
+skill_output="$(
+  env HOME="$home_dir" XDG_CONFIG_HOME="$config_dir" PATH="$fake_bin:$PATH" VETCODERS_SPAWN_RUNTIME=headless \
+    bash -c 'cd "$1"; source "${XDG_CONFIG_HOME:-$HOME/.config}/vetcoders/vc-skills.sh"; codex-marbles telemetry smoke' _ "$work_repo"
+)"
 skill_report="$(printf '%s\n' "$skill_output" | sed -n 's/^Agent launched\. Report will land at: //p' | tail -n 1)"
 [[ -n "$skill_report" ]] || die "skill helper did not report output path"
 skill_meta="${skill_report%.md}.meta.json"
@@ -323,6 +326,7 @@ jq -e '.run_id == "marb-000"' "$skill_meta" >/dev/null || die "skill helper did 
 # If zsh is available, also smoke test zsh loading via legacy compat symlink
 if command -v zsh >/dev/null 2>&1; then
   log "helper zsh smoke (bonus)"
+  # shellcheck disable=SC2016
   env HOME="$home_dir" XDG_CONFIG_HOME="$config_dir" PATH="$fake_bin:$PATH" \
     zsh -c 'source "${XDG_CONFIG_HOME:-$HOME/.config}/zsh/vc-skills.zsh"; command -v codex-implement >/dev/null && command -v claude-implement >/dev/null && command -v gemini-implement >/dev/null && command -v skills-sync >/dev/null && echo helper-ok' \
     | grep -Fq 'helper-ok' || die 'zsh helper layer not loaded'
@@ -351,6 +355,7 @@ echo "$sync_output" | grep -q "rsync .* --dry-run" || die "Sync dry-run didn't p
 echo "$sync_output" | grep -q "~/.vibecrafted/skills\|~/.agents/skills" || die "Sync dry-run didn't target the shared canonical skill store"
 
 log "docs truth checks"
+# shellcheck disable=SC2016 # backticks are literal content we're matching, not command substitution
 assert_not_contains "$repo_root/skills/vc-followup/SKILL.md" 'Use canonical Terminal spawn (`osascript`)'
 assert_not_contains "$repo_root/skills/vc-workflow/SKILL.md" 'osascript preferred'
 [[ ! -e "$repo_root/skills/vc-subagents/SKILL.md" ]] || die 'vc-subagents should not exist'
@@ -359,4 +364,5 @@ if [[ -e "$repo_root/docs/index.html" ]]; then
 fi
 [[ -e "$repo_root/skills/vc-suite-showcase.html" ]] && die 'vc-suite-showcase.html should not exist (was mv to docs/index.html)'
 
+log "portable checks passed"
 log "portable checks passed"
