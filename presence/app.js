@@ -417,7 +417,7 @@ function shuffleArr(a) {
         
         board.x = width / 2;
         board.y = height / 2;
-        board.radius = Math.min(width, height) * 0.42;
+        board.radius = Math.min(width, height) * 0.46;
         marbleRadius = Math.max(10, board.radius * 0.08);
         
         buildBoard();
@@ -437,32 +437,49 @@ function shuffleArr(a) {
     }
 
     function throwWave() {
+        var settled = marbles.filter(function(m) { return m.settled; }).length;
+        var coverage = slots.length ? settled / slots.length : 0;
         var unassigned = slots.filter(s => !s.assigned);
-        if (unassigned.length === 0) {
+
+        // Shape change: only when >=95% coverage OR hard cap at 7 loops
+        if (unassigned.length === 0 || (coverage >= 0.95 && currentLoop >= 3) || currentLoop >= 7) {
             if (morphing) return;
-            morphing = true;
-            // Complete — calm fade out, then BANG new shape
-            fadeOutAlpha = 1;
-            var fadeInterval = setInterval(function() {
-                fadeOutAlpha -= 0.015;
-                if (fadeOutAlpha <= 0) {
-                    clearInterval(fadeInterval);
-                    fadeOutAlpha = 1;
-                    shapeIndex++;
-                    morphing = false;
-                    buildBoard();
-                }
-            }, 16);
-            return;
+            if (coverage < 0.95 && unassigned.length > 0 && currentLoop < 7) {
+                // Not ready yet — keep filling
+            } else {
+                morphing = true;
+                fadeOutAlpha = 1;
+                var fadeInterval = setInterval(function() {
+                    fadeOutAlpha -= 0.02;
+                    if (fadeOutAlpha <= 0) {
+                        clearInterval(fadeInterval);
+                        fadeOutAlpha = 1;
+                        shapeIndex++;
+                        morphing = false;
+                        buildBoard();
+                    }
+                }, 16);
+                return;
+            }
         }
 
         currentLoop++;
-        var progress = 1 - (unassigned.length / slots.length); // 0=empty, 1=full
+        var progress = 1 - (unassigned.length / slots.length);
 
-        // Early waves: more marbles, more chaos. Late waves: fewer, precise.
-        var waveFraction = 0.25 - progress * 0.15; // 25% early → 10% late
-        var toThrow = Math.max(1, Math.ceil(unassigned.length * waveFraction));
-        if (unassigned.length < 6) toThrow = unassigned.length;
+        // Escalating waves based on TOTAL slots, not remaining. Fill fast, overshoot.
+        var pcts = [
+            [0.40, 0.70],  // wave 1: 40-70%
+            [0.50, 1.00],  // wave 2: 50-100%
+            [0.77, 1.15],  // wave 3: 77-115%
+            [0.93, 1.40],  // wave 4: 93-140%
+            [0.98, 1.50],  // wave 5: 98-150%
+            [1.10, 1.60]   // wave 6+: 110-160%
+        ];
+        var wi = Math.min(currentLoop - 1, pcts.length - 1);
+        var lo = pcts[wi][0], hi = pcts[wi][1];
+        var frac = lo + Math.random() * (hi - lo);
+        var toThrow = Math.min(unassigned.length, Math.ceil(slots.length * frac));
+        if (unassigned.length <= 3) toThrow = unassigned.length;
 
         shuffleArr(unassigned);
 
@@ -477,6 +494,9 @@ function shuffleArr(a) {
             var angle = Math.random() * Math.PI * 2;
             var startX = board.x + Math.cos(angle) * spawnSpread;
             var startY = board.y + Math.sin(angle) * spawnSpread - board.radius * chaosLevel * 0.5;
+            var mSeed = Math.floor(Math.random() * 99999);
+            var mPattern = MarbleFactory.PATTERNS[Math.floor(Math.random() * MarbleFactory.PATTERNS.length)];
+            var mPalIdx = Math.floor(Math.random() * MarbleFactory.PALETTES.length);
             marbles.push({
                 x: startX,
                 y: startY,
@@ -487,15 +507,16 @@ function shuffleArr(a) {
                 target: slot,
                 settled: false,
                 chaosLevel: chaosLevel,
-                seed: Math.floor(Math.random() * 99999),
-                pattern: MarbleFactory.PATTERNS[Math.floor(Math.random() * MarbleFactory.PATTERNS.length)],
-                palIdx: Math.floor(Math.random() * MarbleFactory.PALETTES.length)
+                seed: mSeed,
+                pattern: mPattern,
+                palIdx: mPalIdx,
+                sprite: MarbleFactory.createSprite(marbleRadius, mPalIdx, mPattern, mSeed)
             });
         }
 
-        // During early waves: some settled marbles get dislodged (knocked out)
-        if (progress < 0.6 && marbles.length > 3) {
-            var dislodgeChance = (1 - progress) * 0.08; // up to 8% early
+        // During early waves: rare dislodge for visual interest (not enough to create gaps)
+        if (progress < 0.4 && marbles.length > 3 && currentLoop <= 2) {
+            var dislodgeChance = 0.02; // max 2% — cosmetic only
             for (var j = marbles.length - 1; j >= 0; j--) {
                 var m = marbles[j];
                 if (m.settled && Math.random() < dislodgeChance) {
@@ -569,38 +590,38 @@ function shuffleArr(a) {
                 var dist = Math.sqrt(dx*dx + dy*dy);
 
                 if (m.z === undefined) { m.z = 0; m.vz = 0; }
-                m.vz -= 0.85; // Gravity
+                m.vz -= 1.4; // Stronger gravity — land faster
                 m.z += m.vz;
                 if (m.z < 0) {
                     m.z = 0;
-                    if (Math.abs(m.vz) > 1.8) {
-                        m.vz = -m.vz * 0.45; // Bounce
+                    if (Math.abs(m.vz) > 2.5) {
+                        m.vz = -m.vz * 0.3; // Less bouncy
                     } else {
-                        m.vz = 0; // Roll
+                        m.vz = 0;
                     }
                 }
                 var inAir = m.z > 0;
 
-                // Per-marble chaos — decreases as convergence increases
-                var mChaos = (m.chaosLevel || 0.5) * (1 - conv * 0.7);
-                var jitter = dist > marbleRadius * 2 ? (Math.random() - 0.5) * 4.5 * mChaos : 0;
+                // Minimal jitter — just enough for visual interest
+                var mChaos = (m.chaosLevel || 0.5) * (1 - conv * 0.9);
+                var jitter = dist > marbleRadius * 3 ? (Math.random() - 0.5) * 2.0 * mChaos : 0;
 
-                // Attraction strength increases with convergence (more precise late)
-                var attract = (0.01 + conv * 0.015) * (inAir ? 0.15 : 1.0);
+                // Strong attraction — marbles seek their slots aggressively
+                var attract = (0.04 + conv * 0.03) * (inAir ? 0.4 : 1.0);
                 m.vx += dx * attract + jitter;
                 m.vy += dy * attract + jitter;
 
-                // Friction — tighter late
-                var friction = 0.84 + conv * 0.06; // 0.84 early → 0.90 late
-                if (inAir) friction = 0.98; // Air resistance only
-                
+                // Heavy damping — settle fast
+                var friction = 0.88 + conv * 0.06; // 0.88 → 0.94
+                if (inAir) friction = 0.96;
+
                 m.vx *= friction;
                 m.vy *= friction;
 
                 m.x += m.vx;
                 m.y += m.vy;
 
-                if (dist < 1.5 && Math.abs(m.vx) < 0.5 && Math.abs(m.vy) < 0.5 && m.z <= 0) {
+                if (dist < 2.5 && Math.abs(m.vx) < 1.0 && Math.abs(m.vy) < 1.0 && m.z <= 0) {
                     m.settled = true;
                     m.x = m.target.x;
                     m.y = m.target.y;
@@ -611,7 +632,7 @@ function shuffleArr(a) {
         var renderList = marbles.slice().sort((a,b) => a.y - b.y);
 
         renderList.forEach(m => {
-            var sprite = MarbleFactory.createSprite(marbleRadius, m.palIdx, m.pattern, m.seed);
+            var sprite = m.sprite;
             var speed = m.vx !== undefined ? Math.sqrt(m.vx*m.vx + m.vy*m.vy) : 0;
             var hover = m.z || 0;
 
@@ -640,7 +661,7 @@ function shuffleArr(a) {
         loopTimer -= dt;
         if (loopTimer <= 0) {
             throwWave();
-            loopTimer = 1600 + Math.random() * 1200;
+            loopTimer = 900 + Math.random() * 600;
         }
         updateCounters();
         

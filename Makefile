@@ -6,14 +6,14 @@ SHELL_INSTALLER := skills/vc-agents/scripts/install-shell.sh
 SOURCE   := $(CURDIR)
 BRANCH   ?= main
 
-.PHONY: help vibecrafted vibecrafted check install skills helpers setup-dev dry-run doctor list update uninstall restore migrate init-hooks
+.PHONY: help vibecrafted vibecraft check install skills helpers setup-dev dry-run doctor list update uninstall restore migrate init-hooks
 
 help:
 	@printf "\n"
-	@printf "  \033[1m\033[38;5;173m⚒  VibeCrafted Framework\033[0m\n"
+	@printf "  \033[1m\033[38;5;173m⚒  VibeCraft Framework\033[0m\n"
 	@printf "  ─────────────────────────────────────\n"
 	@printf "\n"
-	@printf "  \033[36m▸\033[0m  make vibecrafted   \033[2mSafely install or update the VibeCrafted framework (Orchestrator)\033[0m\n"
+	@printf "  \033[36m▸\033[0m  make vibecrafted   \033[2mSafely install or update the VibeCraft framework (Orchestrator)\033[0m\n"
 	@printf "\n"
 	@printf "  \033[33m◆\033[0m  make install       \033[2mSkills + shell helpers (Direct)\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make skills        \033[2mSkills only\033[0m\n"
@@ -39,9 +39,9 @@ help:
 	@printf "\n"
 
 vibecrafted: init-hooks
-	@$(PYTHON) scripts/setup_vibecraft.py
+	@$(PYTHON) scripts/installer_ui.py
 
-vibecrafted: vibecrafted
+vibecraft: vibecrafted
 
 install: init-hooks
 	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --with-shell --non-interactive
