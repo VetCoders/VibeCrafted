@@ -233,9 +233,6 @@
         var headerTitle = layout === 'standalone'
             ? 'Walk the convergence cycle phase by phase'
             : 'A phase-by-phase board of the convergence loop';
-        var headerBody = layout === 'standalone'
-            ? 'This is the experimental playground turned into an educational VibeCrafted surface: click a phase and inspect the board state that explains it.'
-            : 'Click a phase and inspect the board state that explains it. This is a manual teaching surface, not an autoplay promo loop.';
 
         return [
             '<div class="framework-playground framework-playground--' + layout + '">',
@@ -244,28 +241,27 @@
             '      <p class="framework-playground__kicker">Framework Showcase</p>',
             '      <h3 class="framework-playground__heading">' + headerTitle + '</h3>',
             '    </div>',
-            '    <p class="framework-playground__lede">' + headerBody + '</p>',
             '  </div>',
             '  <div class="framework-playground__surface">',
             '    <div class="framework-playground__stage">',
             '      <canvas class="framework-playground__canvas" aria-hidden="true"></canvas>',
             '      <div class="framework-playground__overlay" aria-hidden="true">',
             '        <span>Phase <strong data-framework-phase-label>Init</strong></span>',
-            '        <span>Coverage <strong data-framework-coverage>0%</strong></span>',
+            '        <span>Converge <strong data-framework-coverage>0%</strong></span>',
             '        <span>Marbles <strong data-framework-marbles>0</strong></span>',
             '      </div>',
             '    </div>',
-            '    <aside class="framework-playground__copy">',
-            '      <span class="framework-playground__eyebrow" data-framework-phase-eyebrow>Phase 0 · Craft</span>',
-            '      <h4 class="framework-playground__title" data-framework-phase-title>Strike the board into reality</h4>',
-            '      <p class="framework-playground__description" data-framework-phase-description>The surface appears as one decisive object. Before context, before code, the board itself has to exist.</p>',
-            '      <p class="framework-playground__detail" data-framework-phase-detail>Board slam · zero coverage</p>',
-            '      <div class="framework-playground__controls">',
-            '        <button class="framework-playground__button" data-framework-prev type="button">Prev</button>',
-            '        <button class="framework-playground__button framework-playground__button--accent" data-framework-reset type="button">Reset</button>',
-            '        <button class="framework-playground__button" data-framework-next type="button">Next</button>',
-            '      </div>',
-            '    </aside>',
+            '  </div>',
+            '  <div class="framework-playground__toolbar">',
+            '    <p class="framework-playground__pressline">',
+            '      <span class="framework-playground__press-kicker" data-framework-phase-eyebrow>Phase 0 · Craft</span>',
+            '      <span class="framework-playground__press-copy" data-framework-phase-press>Strike the board into reality.</span>',
+            '    </p>',
+            '    <div class="framework-playground__controls">',
+            '      <button class="framework-playground__button" data-framework-prev type="button">Prev</button>',
+            '      <button class="framework-playground__button framework-playground__button--accent" data-framework-reset type="button">Reset</button>',
+            '      <button class="framework-playground__button" data-framework-next type="button">Next</button>',
+            '    </div>',
             '  </div>',
             '  <div class="framework-playground__rail-shell">',
             '    <div class="framework-playground__rail" data-framework-rail></div>',
@@ -279,6 +275,7 @@
         root.dataset.frameworkReady = 'true';
 
         var layout = root.getAttribute('data-framework-layout') || 'inline';
+        var startPhaseName = root.getAttribute('data-framework-start') || (layout === 'inline' ? 'marbles' : 'init');
         root.classList.add('framework-playground');
         root.classList.toggle('framework-playground--standalone', layout === 'standalone');
 
@@ -293,9 +290,7 @@
         var coverageEl = root.querySelector('[data-framework-coverage]');
         var marblesEl = root.querySelector('[data-framework-marbles]');
         var eyebrowEl = root.querySelector('[data-framework-phase-eyebrow]');
-        var titleEl = root.querySelector('[data-framework-phase-title]');
-        var descriptionEl = root.querySelector('[data-framework-phase-description]');
-        var detailEl = root.querySelector('[data-framework-phase-detail]');
+        var pressEl = root.querySelector('[data-framework-phase-press]');
         var prevBtn = root.querySelector('[data-framework-prev]');
         var nextBtn = root.querySelector('[data-framework-next]');
         var resetBtn = root.querySelector('[data-framework-reset]');
@@ -324,6 +319,17 @@
         var shakeY = 0;
         var coveragePct = 0;
         var errorFlash = 0;
+        var frameHandle = 0;
+        var lastFrameTs = 0;
+
+        function resolvePhaseIndex(name) {
+            for (var i = 0; i < PHASES.length; i++) {
+                if (PHASES[i].name === name || PHASES[i].label.toLowerCase() === String(name).toLowerCase()) {
+                    return i;
+                }
+            }
+            return 0;
+        }
 
         function buildSlots() {
             slots = [];
@@ -461,9 +467,7 @@
             coverageEl.textContent = coveragePct + '%';
             marblesEl.textContent = marbles.length + overflowMarbles.length;
             eyebrowEl.textContent = phaseDef.eyebrow;
-            titleEl.textContent = phaseDef.title;
-            descriptionEl.textContent = phaseDef.description;
-            detailEl.textContent = phaseDef.detail;
+            pressEl.textContent = phaseDef.title + '.';
             coverageEl.classList.toggle('is-hot', coveragePct > 100);
             prevBtn.disabled = phase === 0;
             nextBtn.disabled = phase === PHASES.length - 1;
@@ -734,7 +738,7 @@
             return JSON.stringify({
                 phase: PHASES[phase].name,
                 phaseIndex: phase,
-                coverage: coveragePct,
+                converge: coveragePct,
                 marbles: marbles.length,
                 overflow: overflowMarbles.length,
                 slots: slots.length,
@@ -764,15 +768,38 @@
             showPhase(currentPhase);
         }
 
+        function startAnimation() {
+            function tick(ts) {
+                if (!lastFrameTs) lastFrameTs = ts;
+                var dt = Math.min(32, ts - lastFrameTs);
+                lastFrameTs = ts;
+                if (dt > 0) {
+                    advanceSimulation(dt);
+                    if (phaseTime >= PHASES[phase].duration * 1.12) {
+                        showPhase(phase);
+                        lastFrameTs = ts;
+                    } else {
+                        render();
+                        updateUi(false);
+                    }
+                }
+                frameHandle = window.requestAnimationFrame(tick);
+            }
+
+            if (frameHandle) window.cancelAnimationFrame(frameHandle);
+            frameHandle = window.requestAnimationFrame(tick);
+        }
+
         PHASES.forEach(function (phaseDef, index) {
             var button = document.createElement('button');
             button.className = 'framework-playground__chip';
             button.type = 'button';
-            button.dataset.frameworkTooltip = phaseDef.title + ' · ' + phaseDef.detail;
-            button.setAttribute('aria-label', phaseDef.label + '. ' + phaseDef.title + '. ' + phaseDef.detail);
+            button.dataset.frameworkTooltip = phaseDef.title + ' — ' + phaseDef.description;
+            button.setAttribute('aria-label', phaseDef.label + '. ' + phaseDef.title + '. ' + phaseDef.description);
             button.innerHTML = '<span class="framework-playground__chip-label">' + phaseDef.label + '</span>';
             button.addEventListener('click', function () {
                 showPhase(index);
+                lastFrameTs = 0;
             });
             rail.appendChild(button);
             phaseButtons.push(button);
@@ -780,19 +807,24 @@
 
         prevBtn.addEventListener('click', function () {
             showPhase(phase - 1);
+            lastFrameTs = 0;
         });
 
         nextBtn.addEventListener('click', function () {
             showPhase(phase + 1);
+            lastFrameTs = 0;
         });
 
         resetBtn.addEventListener('click', function () {
-            showPhase(0);
+            showPhase(phase);
+            lastFrameTs = 0;
         });
 
         window.addEventListener('resize', resize);
+        phase = resolvePhaseIndex(startPhaseName);
         resize();
         updateUi(true);
+        startAnimation();
 
         root.renderFrameworkToText = renderToText;
         if (!window.render_framework_showcase_to_text) {
