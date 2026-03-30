@@ -170,20 +170,20 @@
                 <div class="mmd-code">
             <pre><code><span class="comment">%% VibeCrafted Pipeline v1.0.4</span>
 flowchart LR
-    subgraph Craft
-        scaffold[scaffold] --&gt; init[init]
-        init --&gt; workflow[workflow]
-        workflow --&gt; followup[followup]
+    subgraph "Craft"
+        scaffold["Scaffold"] --&gt; init["Init"]
+        init --&gt; workflow["Workflow"]
+        workflow --&gt; followup["Follow-up"]
     end
 
-    followup --&gt; marbles{{marbles loop}}
+    followup --&gt; marbles{{"Marbles Loop"}}
     marbles --&gt;|P0/P1/P2 &gt; 0| marbles
-    marbles --&gt; dou[dou]
+    marbles --&gt; dou["DoU"]
 
-    subgraph Ship
-        dou --&gt; decorate[decorate]
-        decorate --&gt; hydrate[hydrate]
-        hydrate --&gt; release([release])
+    subgraph "Ship"
+        dou --&gt; decorate["Decorate"]
+        decorate --&gt; hydrate["Hydrate"]
+        hydrate --&gt; release(["Release"])
     end</code></pre>
                 </div>
                 <div class="mmd-preview"></div>

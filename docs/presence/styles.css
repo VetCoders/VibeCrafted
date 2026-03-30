@@ -1786,8 +1786,9 @@ footer {
     display: flex;
     gap: var(--space-md);
     overflow-x: auto;
-    scroll-snap-type: x mandatory;
+    scroll-snap-type: none;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
     padding: var(--space-md) var(--space-xl);
     scrollbar-width: none;
 }
@@ -1798,7 +1799,7 @@ footer {
 
 .framework-strip .card {
     flex: 0 0 300px;
-    scroll-snap-align: start;
+    scroll-snap-align: none;
 }
 
 /* Tunnel fade edges */

@@ -335,19 +335,38 @@ function shuffleArr(a) {
     var canvas = document.getElementById('marbleCanvas');
     if (!canvas || !canvas.getContext) return;
     var ctx = canvas.getContext('2d');
-    
-    var dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+
+    var isSafari = /Safari/i.test(navigator.userAgent) && !/Chrome|Chromium|CriOS|EdgiOS|FxiOS/i.test(navigator.userAgent);
+    var dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, isSafari ? 1.5 : 2));
     var width = 0, height = 0;
     var slots = [];
     var marbles = [];
     var marbleRadius = 12;
     var board = {x: 0, y: 0, radius: 0};
+    var boardLayer = document.createElement('canvas');
+    var boardLayerCtx = boardLayer.getContext('2d');
     var currentLoop = 0;
+    var targetLoops = 3;
+    var targetCoverage = 1;
     var lastAt = performance.now();
     var loopTimer = 0;
-    
+    var morphing = false;
+    var fadeOutAlpha = 1;
+
     var loopCounter = document.getElementById('loopCounter');
     var coverageCounter = document.getElementById('coverageCounter');
+
+    function rand(min, max) {
+        return min + Math.random() * (max - min);
+    }
+
+    function pickLoopGoal() {
+        return 3 + Math.floor(Math.random() * 5);
+    }
+
+    function pickCoverageGoal() {
+        return 1 + rand(0, 0.10);
+    }
     
     // Shape generators — your app is a canvas, you define the shape, agents fill the gaps
     var shapeIndex = 0;
@@ -405,7 +424,33 @@ function shuffleArr(a) {
         slots.forEach(s => s.assigned = false);
         marbles = [];
         currentLoop = 0;
+        targetLoops = pickLoopGoal();
+        targetCoverage = pickCoverageGoal();
+        renderBoardLayer();
         updateCounters();
+    }
+
+    function renderBoardLayer() {
+        if (!boardLayerCtx) return;
+        boardLayer.width = width * dpr;
+        boardLayer.height = height * dpr;
+        boardLayerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        boardLayerCtx.clearRect(0, 0, width, height);
+
+        boardLayerCtx.beginPath();
+        boardLayerCtx.arc(board.x, board.y, board.radius * 1.05, 0, Math.PI * 2);
+        var bg = boardLayerCtx.createRadialGradient(board.x, board.y, 0, board.x, board.y, board.radius * 1.05);
+        bg.addColorStop(0, 'rgba(30,30,28,0.6)');
+        bg.addColorStop(1, 'rgba(15,15,14,0.8)');
+        boardLayerCtx.fillStyle = bg;
+        boardLayerCtx.fill();
+        boardLayerCtx.strokeStyle = 'rgba(255,255,255,0.04)';
+        boardLayerCtx.lineWidth = 1;
+        boardLayerCtx.stroke();
+
+        slots.forEach(function (slot) {
+            drawGroove(boardLayerCtx, slot.x, slot.y, marbleRadius);
+        });
     }
     
     function resizeCanvas() {
@@ -417,7 +462,7 @@ function shuffleArr(a) {
         
         board.x = width / 2;
         board.y = height / 2;
-        board.radius = Math.min(width, height) * 0.46;
+        board.radius = Math.min(width, height) * 0.42;
         marbleRadius = Math.max(10, board.radius * 0.08);
         
         buildBoard();
@@ -425,61 +470,72 @@ function shuffleArr(a) {
     
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
-    
-    var morphing = false;
-    var fadeOutAlpha = 1;
+
+    function settledCount() {
+        var settled = 0;
+        for (var i = 0; i < marbles.length; i++) {
+            if (marbles[i].settled) settled++;
+        }
+        return settled;
+    }
 
     function convergenceRatio() {
         if (!slots.length) return 0;
-        var settled = 0;
-        for (var i = 0; i < marbles.length; i++) if (marbles[i].settled) settled++;
-        return settled / slots.length;
+        return settledCount() / slots.length;
+    }
+
+    function displayCoverageRatio() {
+        var settled = convergenceRatio();
+        if (!slots.length) return 0;
+        var overshootProgress = Math.max(0, settled - 0.92) / 0.08;
+        var overshoot = (targetCoverage - 1) * Math.min(1, overshootProgress);
+        return Math.min(targetCoverage, settled + overshoot);
+    }
+
+    function allMarblesSettled() {
+        for (var i = 0; i < marbles.length; i++) {
+            if (!marbles[i].settled) return false;
+        }
+        return true;
+    }
+
+    function startMorph() {
+        if (morphing) return;
+        morphing = true;
+        fadeOutAlpha = 1;
+        var fadeInterval = setInterval(function () {
+            fadeOutAlpha -= 0.015;
+            if (fadeOutAlpha <= 0) {
+                clearInterval(fadeInterval);
+                fadeOutAlpha = 1;
+                shapeIndex++;
+                morphing = false;
+                buildBoard();
+            }
+        }, 16);
     }
 
     function throwWave() {
-        var settled = marbles.filter(function(m) { return m.settled; }).length;
-        var coverage = slots.length ? settled / slots.length : 0;
-        var unassigned = slots.filter(s => !s.assigned);
+        if (morphing) return;
+        var unassigned = slots.filter(function (slot) { return !slot.assigned; });
+        if (!unassigned.length) return;
 
-        // Shape change: only when >=95% coverage OR hard cap at 7 loops
-        if (unassigned.length === 0 || (coverage >= 0.95 && currentLoop >= 3) || currentLoop >= 7) {
-            if (morphing) return;
-            if (coverage < 0.95 && unassigned.length > 0 && currentLoop < 7) {
-                // Not ready yet — keep filling
-            } else {
-                morphing = true;
-                fadeOutAlpha = 1;
-                var fadeInterval = setInterval(function() {
-                    fadeOutAlpha -= 0.02;
-                    if (fadeOutAlpha <= 0) {
-                        clearInterval(fadeInterval);
-                        fadeOutAlpha = 1;
-                        shapeIndex++;
-                        morphing = false;
-                        buildBoard();
-                    }
-                }, 16);
-                return;
-            }
+        var nextLoop = currentLoop + 1;
+        var remainingLoops = Math.max(1, targetLoops - currentLoop);
+        var reserveForLater = Math.max(0, remainingLoops - 1);
+        var baseline = Math.ceil(unassigned.length / remainingLoops);
+        var variance = rand(0.82, 1.18);
+        var pacingBias = nextLoop <= 2 ? 1.1 : rand(0.92, 1.06);
+        var toThrow = Math.max(1, Math.round(baseline * variance * pacingBias));
+
+        if (remainingLoops > 1) {
+            toThrow = Math.min(toThrow, Math.max(1, unassigned.length - reserveForLater));
+        } else {
+            toThrow = unassigned.length;
         }
 
-        currentLoop++;
+        currentLoop = nextLoop;
         var progress = 1 - (unassigned.length / slots.length);
-
-        // Escalating waves based on TOTAL slots, not remaining. Fill fast, overshoot.
-        var pcts = [
-            [0.40, 0.70],  // wave 1: 40-70%
-            [0.50, 1.00],  // wave 2: 50-100%
-            [0.77, 1.15],  // wave 3: 77-115%
-            [0.93, 1.40],  // wave 4: 93-140%
-            [0.98, 1.50],  // wave 5: 98-150%
-            [1.10, 1.60]   // wave 6+: 110-160%
-        ];
-        var wi = Math.min(currentLoop - 1, pcts.length - 1);
-        var lo = pcts[wi][0], hi = pcts[wi][1];
-        var frac = lo + Math.random() * (hi - lo);
-        var toThrow = Math.min(unassigned.length, Math.ceil(slots.length * frac));
-        if (unassigned.length <= 3) toThrow = unassigned.length;
 
         shuffleArr(unassigned);
 
@@ -514,9 +570,9 @@ function shuffleArr(a) {
             });
         }
 
-        // During early waves: rare dislodge for visual interest (not enough to create gaps)
-        if (progress < 0.4 && marbles.length > 3 && currentLoop <= 2) {
-            var dislodgeChance = 0.02; // max 2% — cosmetic only
+        // During early waves: some settled marbles get nudged out to keep the motion alive.
+        if (progress < 0.6 && marbles.length > 3 && currentLoop < targetLoops) {
+            var dislodgeChance = (1 - progress) * 0.08;
             for (var j = marbles.length - 1; j >= 0; j--) {
                 var m = marbles[j];
                 if (m.settled && Math.random() < dislodgeChance) {
@@ -547,8 +603,7 @@ function shuffleArr(a) {
     function updateCounters() {
         if(loopCounter) loopCounter.textContent = currentLoop;
         if(coverageCounter) {
-            var settled = marbles.filter(function(m) { return m.settled; }).length;
-            var pct = slots.length ? Math.round((settled / slots.length) * 100) : 0;
+            var pct = slots.length ? Math.round(displayCoverageRatio() * 100) : 0;
             coverageCounter.textContent = pct + '%';
         }
     }
@@ -558,27 +613,18 @@ function shuffleArr(a) {
         lastAt = now;
         
         ctx.clearRect(0, 0, width, height);
-        
-        // Base plate
-        ctx.beginPath();
-        ctx.arc(board.x, board.y, board.radius * 1.05, 0, Math.PI * 2);
-        var bg = ctx.createRadialGradient(board.x, board.y, 0, board.x, board.y, board.radius * 1.05);
-        bg.addColorStop(0, 'rgba(30,30,28,0.6)');
-        bg.addColorStop(1, 'rgba(15,15,14,0.8)');
-        ctx.fillStyle = bg;
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        
-        slots.forEach(s => {
-            drawGroove(ctx, s.x, s.y, marbleRadius);
-        });
+        if (boardLayer.width && boardLayer.height) {
+            ctx.drawImage(boardLayer, 0, 0, width, height);
+        }
         
         // Remove marbles that flew way off screen
         marbles = marbles.filter(function(m) {
             if (m.settled) return true;
-            return m.x > -100 && m.x < width + 100 && m.y > -300 && m.y < height + 100;
+            var inBounds = m.x > -100 && m.x < width + 100 && m.y > -300 && m.y < height + 100;
+            if (!inBounds && m.target) {
+                m.target.assigned = false;
+            }
+            return inBounds;
         });
 
         var conv = convergenceRatio();
@@ -590,30 +636,32 @@ function shuffleArr(a) {
                 var dist = Math.sqrt(dx*dx + dy*dy);
 
                 if (m.z === undefined) { m.z = 0; m.vz = 0; }
-                m.vz -= 1.4; // Stronger gravity — land faster
+                m.vz -= 1.0;
                 m.z += m.vz;
                 if (m.z < 0) {
                     m.z = 0;
-                    if (Math.abs(m.vz) > 2.5) {
-                        m.vz = -m.vz * 0.3; // Less bouncy
+                    if (Math.abs(m.vz) > 2.0) {
+                        m.vz = -m.vz * 0.38;
                     } else {
                         m.vz = 0;
                     }
                 }
                 var inAir = m.z > 0;
 
-                // Minimal jitter — just enough for visual interest
-                var mChaos = (m.chaosLevel || 0.5) * (1 - conv * 0.9);
-                var jitter = dist > marbleRadius * 3 ? (Math.random() - 0.5) * 2.0 * mChaos : 0;
+                var mChaos = (m.chaosLevel || 0.5) * (1 - conv * 0.8);
+                var jitter = dist > marbleRadius * 2.4 ? (Math.random() - 0.5) * 3.2 * mChaos : 0;
 
-                // Strong attraction — marbles seek their slots aggressively
-                var attract = (0.04 + conv * 0.03) * (inAir ? 0.4 : 1.0);
+                var attract = (0.018 + conv * 0.02) * (inAir ? 0.25 : 1.0);
                 m.vx += dx * attract + jitter;
                 m.vy += dy * attract + jitter;
 
-                // Heavy damping — settle fast
-                var friction = 0.88 + conv * 0.06; // 0.88 → 0.94
-                if (inAir) friction = 0.96;
+                if (dist < marbleRadius * 0.9) {
+                    m.vx *= 0.82;
+                    m.vy *= 0.82;
+                }
+
+                var friction = 0.87 + conv * 0.05;
+                if (inAir) friction = 0.97;
 
                 m.vx *= friction;
                 m.vy *= friction;
@@ -621,7 +669,7 @@ function shuffleArr(a) {
                 m.x += m.vx;
                 m.y += m.vy;
 
-                if (dist < 2.5 && Math.abs(m.vx) < 1.0 && Math.abs(m.vy) < 1.0 && m.z <= 0) {
+                if (dist < 2.0 && Math.abs(m.vx) < 0.8 && Math.abs(m.vy) < 0.8 && m.z <= 0) {
                     m.settled = true;
                     m.x = m.target.x;
                     m.y = m.target.y;
@@ -657,18 +705,22 @@ function shuffleArr(a) {
             ctx.drawImage(sprite, m.x - sprite.width/2, m.y - hover - sprite.height/2);
         });
         ctx.globalAlpha = 1;
-        
-        loopTimer -= dt;
-        if (loopTimer <= 0) {
-            throwWave();
-            loopTimer = 900 + Math.random() * 600;
+
+        if (!morphing && convergenceRatio() >= 1 && currentLoop >= targetLoops && allMarblesSettled()) {
+            startMorph();
+        } else {
+            loopTimer -= dt;
+            if (loopTimer <= 0) {
+                throwWave();
+                loopTimer = 1200 + Math.random() * 900;
+            }
         }
         updateCounters();
         
         requestAnimationFrame(tick);
     }
     
-    loopTimer = 800;
+    loopTimer = 700 + Math.random() * 300;
     requestAnimationFrame(tick);
 })();
 
@@ -1041,13 +1093,71 @@ function shuffleArr(a) {
 
 // ============ FRAMEWORK STRIP ARROWS ============
 (function () {
+    var wrap = document.querySelector('.framework-strip-wrap');
     var strip = document.querySelector('.framework-strip');
     var leftBtn = document.querySelector('.strip-arrow--left');
     var rightBtn = document.querySelector('.strip-arrow--right');
-    if (!strip || !leftBtn || !rightBtn) return;
+    if (!wrap || !strip || !leftBtn || !rightBtn) return;
+
+    var originals = Array.prototype.slice.call(strip.children);
+    if (!originals.length) return;
+    var cycleWidth = 0;
+    var resetQueued = false;
+
+    function cloneCard(card) {
+        var clone = card.cloneNode(true);
+        clone.setAttribute('aria-hidden', 'true');
+        clone.classList.add('card--clone');
+        return clone;
+    }
+
+    function seedInfiniteStrip() {
+        var before = document.createDocumentFragment();
+        var after = document.createDocumentFragment();
+
+        originals.forEach(function (card) {
+            before.appendChild(cloneCard(card));
+            after.appendChild(cloneCard(card));
+        });
+
+        strip.insertBefore(before, strip.firstChild);
+        strip.appendChild(after);
+    }
+
+    function measureCycleWidth() {
+        var styles = window.getComputedStyle(strip);
+        var gap = parseFloat(styles.columnGap || styles.gap || 0);
+        cycleWidth = originals.reduce(function (sum, card, index) {
+            return sum + card.getBoundingClientRect().width + (index < originals.length - 1 ? gap : 0);
+        }, 0);
+    }
+
+    function jumpToMiddle(force) {
+        measureCycleWidth();
+        if (!cycleWidth) return;
+        if (force) {
+            strip.scrollLeft = cycleWidth;
+            return;
+        }
+        while (strip.scrollLeft < cycleWidth * 0.5) {
+            strip.scrollLeft += cycleWidth;
+        }
+        while (strip.scrollLeft > cycleWidth * 1.5) {
+            strip.scrollLeft -= cycleWidth;
+        }
+    }
+
+    function queueWrap() {
+        if (resetQueued) return;
+        resetQueued = true;
+        requestAnimationFrame(function () {
+            resetQueued = false;
+            jumpToMiddle(false);
+        });
+    }
 
     function getScrollAmount() {
-        var card = strip.querySelector('.card');
+        var card = originals[0];
         var styles = window.getComputedStyle(strip);
         var gap = parseFloat(styles.columnGap || styles.gap || 0);
         var width = card ? card.getBoundingClientRect().width : 300;
@@ -1061,12 +1171,29 @@ function shuffleArr(a) {
         });
     }
 
+    seedInfiniteStrip();
+    jumpToMiddle(true);
+
     leftBtn.addEventListener('click', function () {
         scrollStrip(-1);
     });
 
     rightBtn.addEventListener('click', function () {
         scrollStrip(1);
+    });
+
+    strip.addEventListener('scroll', queueWrap, { passive: true });
+
+    wrap.addEventListener('wheel', function (event) {
+        var delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (!delta) return;
+        event.preventDefault();
+        strip.scrollLeft += delta;
+        queueWrap();
+    }, { passive: false });
+
+    window.addEventListener('resize', function () {
+        jumpToMiddle(false);
     });
 })();
 
@@ -1133,7 +1260,14 @@ function shuffleArr(a) {
     
     function initMermaid() {
         if (!mermaidInitialized && window.mermaid) {
-            mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'dark',
+                flowchart: {
+                    htmlLabels: false,
+                    curve: 'linear'
+                }
+            });
             var rawText = codeBlock.innerText || codeBlock.textContent;
             mermaid.render('mermaid-graph-1', rawText).then(function(result) {
                 renderMermaidPreview(result.svg);
