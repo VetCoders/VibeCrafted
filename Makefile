@@ -39,7 +39,7 @@ help:
 	@printf "\n"
 
 vibecrafted: init-hooks
-	@$(PYTHON) scripts/installer_ui.py
+	@$(PYTHON) scripts/installer_tui.py
 
 vibecraft: vibecrafted
 
@@ -97,4 +97,3 @@ init-hooks:
 	else \
 		echo "Not a git repo — skipping hooks."; \
 	fi
-

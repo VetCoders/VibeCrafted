@@ -3,6 +3,39 @@
 All notable changes to VibeCrafted are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.0 — 2026-03-29
+
+### Added
+
+- Marbles loop orchestrator: `marbles_spawn.sh`, `marbles_next.sh`, `marbles_plan.sh`
+  - `<agent>-marbles --depth <n> --count <y>` — crawl recent sessions, run convergence loops
+  - `<agent>-marbles --task <plan.md> --count <y>` — loop against a plan file
+  - `<agent>-marbles --prompt "text" --count <y>` — inline prompt loops
+  - Filesystem-based loop chaining via `success_hook` — no cron, no watcher
+  - Convergence through CODE STATE, not report chaining — each loop gets the same plan, sees improved repo
+  - `CONVERGENCE.md` written after final loop (or on failure)
+  - Lock files in `~/.vibecrafted/locks/<org>/<repo>/`
+- `--success-hook` and `--failure-hook` flags for all spawn scripts (claude, codex, gemini)
+- Landing page: VibeCraft → VibeCrafted rebrand, sprite caching for Safari performance
+- Installer TUI wizard (in progress): Rich-based step-by-step flow from docs/installer/ mockups
+
+### Changed
+
+- Product name: **VibeCrafted** (the product), **VibeCraftsmanship** (the methodology)
+
+### Fixed
+
+- **Clarified `zsh -ic` requirement for shell helpers**: The 1.0.3 changelog stated
+  "removes zsh runtime dependency" which is true for spawn SCRIPTS (`eval "$SPAWN_CMD"`
+  works in bash). However, operator-facing shell helpers (`codex-implement`,
+  `claude-research`, etc.) are functions sourced from `.zshrc`/`.bashrc` and require
+  an interactive shell to load. The canonical agent-to-agent invocation remains
+  `zsh -ic "codex-implement $PLAN"` (or `bash -ic` on zsh-less systems).
+  Skill documentation (vc-agents SKILL.md) updated to reflect this.
+- Marbles board animation: sprite pre-rendering (was creating new canvas per marble per frame — Chrome hid the cost, Safari showed 5fps)
+- `init-hooks` Makefile target: guard with `git rev-parse --git-dir` for non-git bootstrap contexts
+- Portable test: marbles helper uses new `--prompt` interface, flexible `run_id` check
+
 ## 1.0.4 — 2026-03-29
 
 ### Added
