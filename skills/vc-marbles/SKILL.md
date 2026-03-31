@@ -532,6 +532,31 @@ Nothing wrong remains. Quality gates pass. The circle is full.
 
 That's DoD. Not "good enough." Done.
 
+## Last Pass: Prune Before You Leave
+
+Before declaring convergence, step back and look at the repo from a distance.
+
+Implementation loops accumulate sediment: dead helpers, orphaned modules,
+stale experiments, duplicated glue, files that served a fix three loops ago
+and now serve nothing. Every loop that adds code without removing dead code
+increases entropy — the opposite of what marbles promises.
+
+Run `/vc-prune` (or invoke `vc-prune` as a skill) as the final gate before
+the circle closes. Use `loctree-mcp` and structural tools to find what the
+implementation loops left behind:
+
+- Dead code that no runtime, build, or test path reaches
+- Twin files and near-duplicates introduced across loops
+- Stale scaffolding that was necessary mid-convergence but not after
+- Orphaned registrations, imports, and manifest entries pointing at removed surface
+
+This is not optional cleanup. This is the last counterexample class:
+**the sediment itself.** If the repo grew during convergence, something died
+during convergence too. Find it and cut it. Then run gates one final time.
+
+The circle is not full until nothing wrong remains — including the debris
+from filling it.
+
 ---
 
 _"Not 'is it correct?' — that cannot be proven._
