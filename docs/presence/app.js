@@ -1043,14 +1043,16 @@ function shuffleArr(a) {
 
 // ============ CURL BANNER COPY ============
 (function () {
-    var btn = document.querySelector('.cb-copy');
-    if (!btn) return;
-    btn.setAttribute('data-default-label', btn.textContent.trim() || 'Copy');
-    btn.addEventListener('click', function () {
-        var cmd = btn.getAttribute('data-copy');
-        copyText(cmd).then(function (copied) {
-            flashCopyButton(btn, copied);
-            announceUiMessage(copied ? 'Install command copied to clipboard.' : 'Copy failed. Select the install command and copy it manually.');
+    var buttons = document.querySelectorAll('.cb-copy');
+    if (!buttons.length) return;
+    buttons.forEach(function (btn) {
+        btn.setAttribute('data-default-label', btn.getAttribute('data-default-label') || btn.textContent.trim() || 'Copy');
+        btn.addEventListener('click', function () {
+            var cmd = btn.getAttribute('data-copy');
+            copyText(cmd).then(function (copied) {
+                flashCopyButton(btn, copied);
+                announceUiMessage(copied ? 'Install command copied to clipboard.' : 'Copy failed. Select the install command and copy it manually.');
+            });
         });
     });
 })();
