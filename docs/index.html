@@ -28,7 +28,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Allura&amp;family=Poppins:wght@400;500;600;700&amp;family=Lora:ital,wght@0,400;0,500;0,600;1,400&amp;display=swap"
         rel="stylesheet">
-    <link href="presence/styles.css?v=20260331aa" rel="stylesheet">
+    <link href="presence/styles.css?v=20260331ab" rel="stylesheet">
     <script crossorigin="anonymous" integrity="sha384-7Q8XaCgFJlm82NdMNnX7AIyZbdTjUre2eR4TpKK1Pko3zKXorgTIGVpnnLho+UAe"
         src="https://cdn.jsdelivr.net/npm/mermaid@10.8.0/dist/mermaid.min.js"></script>
 </head>
@@ -47,6 +47,8 @@
                 <a href="#skills">Skills</a>
                 <a href="#marbles">Marbles</a>
                 <a href="presence/framework.html">Demo</a>
+                <a data-modal-open="quickstart-modal" href="presence/quickstart.html">Quickstart</a>
+                <a data-modal-open="faq-modal" href="presence/faq.html">FAQ</a>
                 <a href="#dou">DoU</a>
                 <div class="nav-get-zone">
                     <a href="#get" id="nav-get-link">Get</a>
@@ -84,6 +86,9 @@
                     </h1>
                     <p class="manifesto-lead">
                         A convergence-driven system for shipping software with AI agents.
+                    </p>
+                    <p class="manifesto-quote">
+                        ⁿⁱᵉ 𝐩𝐨 𝐬ł𝐨𝐰𝐚𝐜𝐡, ˡᵉᶜᶻ ᶜᶻʸⁿᵃᶜʰ 𝐢𝐜𝐡 𝐨𝐬ą𝐝𝐳𝐚𝐣𝐜𝐢𝐞
                     </p>
                     <div class="manifesto-actions">
                         <a href="#evidence" class="btn-solid">See the Evidence</a>
@@ -558,33 +563,47 @@ flowchart LR
                 </div>
 
                 <div class="docs-inline-links">
-                    <a href="presence/quickstart.html">Quick Start</a>
-                    <a href="presence/faq.html">FAQ</a>
+                    <a data-modal-open="quickstart-modal" href="presence/quickstart.html">Quick Start</a>
+                    <a data-modal-open="faq-modal" href="presence/faq.html">FAQ</a>
                     <a href="https://github.com/VetCoders/vibecrafted">GitHub</a>
                 </div>
             </div>
         </section>
 
-        <section class="references-section">
+        <section class="references-section" id="references">
             <div class="container fade-up">
                 <div class="section-label">References</div>
                 <h2 class="section-title">Ground Truth &amp; Influences</h2>
-                <p class="section-sub">The bibliography below follows the explicit influence list from VIBECRAFT.md.</p>
+                <p class="section-sub">The bibliography below extends the manifesto list with the structural-modeling and convergence influences surfaced again in internal AICX grounding work.</p>
                 <ol class="references-list">
                     <li class="reference-item">
                         <p class="reference-citation">Morris, K.; B&ouml;ckeler, B. (2026). <em>Humans and Agents in
-                                Software Engineering Loops</em>. Thoughtworks / Martin Fowler.</p>
+                                Software Engineering Loops</em>; <em>Harness Engineering</em>; <em>Context Engineering for Coding Agents</em>. Thoughtworks / Martin Fowler.</p>
+                        <p class="reference-note">The why-loop / how-loop framing, harness design, and human-guided workflow discipline behind SHACE and the operator role.</p>
                     </li>
                     <li class="reference-item">
                         <p class="reference-citation">Gong, L.; Elhoushi, M.; Cheung, A. (2024). <em>AST-T5:
                                 Structure-Aware Pretraining for Code Generation</em>.</p>
+                        <p class="reference-note">The structure-aware pretraining thread behind VibeCrafted's insistence that models should not write into a repo blind.</p>
                     </li>
                     <li class="reference-item">
-                        <p class="reference-citation">Fowler, M. (2009). <em>Technical debt</em> and the later debt
-                            literature.</p>
+                        <p class="reference-citation">Guo, D. et al. (2021). <em>GraphCodeBERT: Pre-training Code Representations with Data Flow</em>.</p>
+                        <p class="reference-note">A complementary structure-aware result that reinforced the case for externalized code shape, even though GraphCodeBERT models data flow rather than AST.</p>
+                        <p class="reference-links"><a href="https://arxiv.org/abs/2009.08366">arXiv</a></p>
+                    </li>
+                    <li class="reference-item">
+                        <p class="reference-citation">Cunningham, W. (1992) and later technical debt literature.</p>
+                        <p class="reference-note">The conceptual ancestor of DoU: working code is not the same thing as a healthy, trustworthy, shippable system.</p>
+                    </li>
+                    <li class="reference-item">
+                        <p class="reference-citation">CEGIS / counterexample-guided synthesis and later counterexample-guided optimization literature.</p>
+                        <p class="reference-note">The convergence lineage behind Marbles: loop, inspect failure, add counterexamples, reduce the plausible program space, repeat until the surface stops lying.</p>
+                        <p class="reference-links"><a href="https://www.cprover.org/synthesis">Counterexample-guided synthesis overview</a></p>
                     </li>
                     <li class="reference-item">
                         <p class="reference-citation">VetCoders (2026). <em>The VibeCraft Manifesto</em>.</p>
+                        <p class="reference-note">Primary source for SHACE, Marbles, Loctree Mapping, PSCD, and the founder-grade Definition of Undone as original VibeCraft concepts.</p>
+                        <p class="reference-links"><a href="https://github.com/VetCoders/vibecrafted/blob/main/VIBECRAFT.md">Read the manifesto</a></p>
                     </li>
                 </ol>
             </div>
@@ -596,20 +615,214 @@ flowchart LR
             <img src="presence/logo-32.png" alt="" class="footer-logo" width="24" height="24">
             <span class="footer-title">VIBECRAFTED</span>
         </div>
-        <p class="footer-tagline">Built under founder pressure. Proven in production.</p>
+        <p class="footer-tagline">𝗕𝘂𝗶𝗹𝘁 𝘂𝗻𝗱𝗲𝗿 ᵐⁱᵈⁿⁱᵍʰᵗ 𝗽𝗿𝗲𝘀𝘀𝘂𝗿𝗲. 𝗗𝗲𝗽𝗹𝗼𝘆𝗲𝗱 𝘁𝗼 ˡᵒᶜᵃˡʰᵒˢᵗ.</p>
         <nav class="footer-links" aria-label="Footer links">
             <a href="https://github.com/VetCoders/vibecrafted">GitHub</a>
             <a href="#get">Install</a>
             <a href="#pipeline">Pipeline</a>
             <a href="#skills">Skills</a>
-            <a href="presence/quickstart.html">Quick Start</a>
-            <a href="presence/faq.html">FAQ</a>
+            <a data-modal-open="quickstart-modal" href="presence/quickstart.html">Quick Start</a>
+            <a data-modal-open="faq-modal" href="presence/faq.html">FAQ</a>
             <a href="https://loct.io">Loctree</a>
         </nav>
         <p class="footer-copyright">&copy; 2025-2026 VetCoders. Built by Maciej Gad &amp; Monika Szymańska.</p>
     </footer>
 
-    <script src="presence/app.js?v=20260331j"></script>
+    <div aria-hidden="true" class="surface-modal" hidden id="quickstart-modal">
+        <div class="surface-modal__backdrop" data-modal-close></div>
+        <div aria-labelledby="quickstart-modal-title" aria-modal="true" class="surface-modal__panel" role="dialog"
+            tabindex="-1">
+            <div class="surface-modal__head">
+                <div class="surface-modal__intro">
+                    <div class="section-label">Quick Start</div>
+                    <h2 class="surface-modal__title" id="quickstart-modal-title">From zero to your first VibeCrafted loop.</h2>
+                    <p class="surface-modal__lead">Install the framework, verify the control plane, then give one real repository enough structure to produce signal fast.</p>
+                </div>
+                <div class="surface-modal__head-actions">
+                    <a class="surface-modal__link" href="presence/quickstart.html">Standalone page</a>
+                    <button aria-label="Close quickstart" class="surface-modal__close" data-modal-close type="button">Close</button>
+                </div>
+            </div>
+            <div class="surface-modal__body">
+                <div class="surface-modal__grid">
+                    <article class="docs-card surface-modal__card">
+                        <p class="docs-kicker">Step 1</p>
+                        <h3>Bootstrap locally</h3>
+                        <p>Stage the control plane under <code>~/.vibecrafted</code> before it touches the wider system.</p>
+                        <div class="install-command-bar">
+                            <span class="install-command-bar__prompt">$</span>
+                            <code class="install-command-bar__code">curl -fsSLO https://raw.githubusercontent.com/VetCoders/vibecrafted/main/install.sh &amp;&amp; bash install.sh</code>
+                            <button class="cb-copy install-command-bar__copy"
+                                data-copy="curl -fsSLO https://raw.githubusercontent.com/VetCoders/vibecrafted/main/install.sh &amp;&amp; bash install.sh"
+                                data-default-label="COPY" type="button">COPY</button>
+                        </div>
+                    </article>
+
+                    <article class="docs-card surface-modal__card">
+                        <p class="docs-kicker">Step 2</p>
+                        <h3>Verify the control plane</h3>
+                        <p>Run the doctor before you blame the workflow. It tells you which foundations are missing and why.</p>
+                        <div class="install-command-bar">
+                            <span class="install-command-bar__prompt">$</span>
+                            <code class="install-command-bar__code">vibecrafted doctor</code>
+                            <button class="cb-copy install-command-bar__copy"
+                                data-copy="vibecrafted doctor"
+                                data-default-label="COPY" type="button">COPY</button>
+                        </div>
+                    </article>
+
+                    <article class="docs-card surface-modal__card">
+                        <p class="docs-kicker">Step 3</p>
+                        <h3>Anchor real context</h3>
+                        <p>Move into the repo that matters and force the agent to read history, structure, and quality gates first.</p>
+                        <div class="install-command-bar">
+                            <span class="install-command-bar__prompt">$</span>
+                            <code class="install-command-bar__code">vc-init claude</code>
+                            <button class="cb-copy install-command-bar__copy"
+                                data-copy="vc-init claude"
+                                data-default-label="COPY" type="button">COPY</button>
+                        </div>
+                    </article>
+
+                    <article class="docs-card surface-modal__card">
+                        <p class="docs-kicker">Step 4</p>
+                        <h3>Run a structured build path</h3>
+                        <p>Use an explicit Examine → Research → Implement workflow instead of vibe-and-pray prompting.</p>
+                        <div class="install-command-bar">
+                            <span class="install-command-bar__prompt">$</span>
+                            <code class="install-command-bar__code">vc-workflow claude "Plan and implement auth module"</code>
+                            <button class="cb-copy install-command-bar__copy"
+                                data-copy="vc-workflow claude &quot;Plan and implement auth module&quot;"
+                                data-default-label="COPY" type="button">COPY</button>
+                        </div>
+                    </article>
+
+                    <article class="docs-card surface-modal__card">
+                        <p class="docs-kicker">Step 5</p>
+                        <h3>Converge instead of hoping</h3>
+                        <p>When the first pass is noisy, schedule more denoising loops deliberately until the surface holds.</p>
+                        <div class="install-command-bar">
+                            <span class="install-command-bar__prompt">$</span>
+                            <code class="install-command-bar__code">vc-marbles codex --count 3 --depth 3</code>
+                            <button class="cb-copy install-command-bar__copy"
+                                data-copy="vc-marbles codex --count 3 --depth 3"
+                                data-default-label="COPY" type="button">COPY</button>
+                        </div>
+                    </article>
+
+                    <article class="resource-card surface-modal__card">
+                        <p class="resource-kicker">What you need</p>
+                        <h3>Minimal prerequisites</h3>
+                        <ul class="resource-list">
+                            <li>macOS or Linux</li>
+                            <li>Git, Python 3.10+, and <code>make</code></li>
+                            <li>At least one agent runtime: Codex, Claude, or Gemini</li>
+                            <li>Optional but high-value foundations: loctree, aicx, prview, ScreenScribe</li>
+                        </ul>
+                    </article>
+                </div>
+
+                <div class="docs-inline-links surface-modal__links">
+                    <a href="https://github.com/VetCoders/vibecrafted/blob/main/docs/QUICK_START.md">Markdown Quick Start</a>
+                    <a href="https://github.com/VetCoders/vibecrafted/blob/main/docs/FOUNDATION.md">Foundation Stack</a>
+                    <a href="https://github.com/VetCoders/vibecrafted">GitHub</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div aria-hidden="true" class="surface-modal" hidden id="faq-modal">
+        <div class="surface-modal__backdrop" data-modal-close></div>
+        <div aria-labelledby="faq-modal-title" aria-modal="true" class="surface-modal__panel" role="dialog"
+            tabindex="-1">
+            <div class="surface-modal__head">
+                <div class="surface-modal__intro">
+                    <div class="section-label">Answered FAQ</div>
+                    <h2 class="surface-modal__title" id="faq-modal-title">The questions strangers ask first.</h2>
+                    <p class="surface-modal__lead">Install path, foundations, workflow posture, artifacts, and commercial shape, without forcing people to reverse-engineer the repo.</p>
+                </div>
+                <div class="surface-modal__head-actions">
+                    <a class="surface-modal__link" href="presence/faq.html">Standalone page</a>
+                    <button aria-label="Close FAQ" class="surface-modal__close" data-modal-close type="button">Close</button>
+                </div>
+            </div>
+            <div class="surface-modal__body">
+                <div class="faq-layout surface-modal__faq-layout">
+                    <article class="faq-group">
+                        <h2>Installation</h2>
+                        <details class="faq-item" open>
+                            <summary>Why does VibeCrafted install into <code>~/.vibecrafted/</code> instead of <code>~/.agents/</code>?</summary>
+                            <p><code>~/.vibecrafted/</code> is the central store and control plane. Agent-specific directories are only views. The real source of truth, artifacts, and helper state live in one place.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Can I install VibeCrafted without editing my shell config?</summary>
+                            <p>Yes. During the interactive path you can opt out of shell-helper installation. If you still want helpers in the current session, source <code>${XDG_CONFIG_HOME:-$HOME/.config}/vetcoders/vc-skills.sh</code> manually.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>What does <code>vibecrafted doctor</code> actually check?</summary>
+                            <p>The doctor verifies the central store, helper availability, symlink health, optional foundations such as loctree/aicx/prview, and whether your shell environment is quiet enough for agent tooling.</p>
+                        </details>
+                    </article>
+
+                    <article class="faq-group">
+                        <h2>Skills, Agents, Foundations</h2>
+                        <details class="faq-item" open>
+                            <summary>What is the difference between a skill and an agent?</summary>
+                            <p>An agent is the runtime, such as Codex, Claude, or Gemini. A skill is the instruction set and workflow protocol that tells that runtime how to behave for a specific engineering phase.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Can I use VibeCrafted without loctree or aicx?</summary>
+                            <p>Technically yes, but you lose structural perception and session continuity. The framework still runs, but the agent is operating with much weaker context.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>What is the Marbles loop?</summary>
+                            <p>Marbles is the convergence engine. AI output is noisy, so the framework loops through implementation, followup, measurement, and fixes until the important classes of findings reach zero.</p>
+                        </details>
+                    </article>
+
+                    <article class="faq-group">
+                        <h2>Workflow and Operations</h2>
+                        <details class="faq-item" open>
+                            <summary>When should I use <code>vc-justdo</code> instead of manual phases?</summary>
+                            <p>Use <code>vc-justdo</code> when the task is clear and you want the agent to take ownership end-to-end. Use the phase skills separately when you want to supervise the architectural decisions more closely.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>What lives in <code>~/.vibecrafted/artifacts/</code>?</summary>
+                            <p>Plans, reports, transcripts, and metadata from major runs. The artifact store exists so agent work leaves durable evidence instead of disappearing into terminal scrollback.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>What is Definition of Undone?</summary>
+                            <p>DoU is the audit that checks whether people can discover, understand, install, trust, and adopt the thing. It measures product-surface truth, not only repo health.</p>
+                        </details>
+                    </article>
+
+                    <article class="faq-group">
+                        <h2>Commercial posture</h2>
+                        <details class="faq-item" open>
+                            <summary>Is VibeCrafted open source?</summary>
+                            <p>The framework is distributed under Business Source License 1.1. The repo is visible and usable, but it is not pure permissive open source.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Can small teams use it in production?</summary>
+                            <p>The Additional Use Grant allows individual developers and teams smaller than five people to use the framework in production as long as they are not offering a competitive hosted or embedded product.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>What if I need a broader commercial arrangement?</summary>
+                            <p>The license points to VetCoders for alternative licensing arrangements. Read the repo license for the exact terms and contact route before you commit to a broader rollout.</p>
+                        </details>
+                    </article>
+                </div>
+
+                <div class="docs-inline-links surface-modal__links">
+                    <a href="https://github.com/VetCoders/vibecrafted/blob/main/docs/FAQ-ANSWERED.md">Long-form Markdown FAQ</a>
+                    <a href="https://github.com/VetCoders/vibecrafted/blob/main/LICENSE">License</a>
+                    <a href="presence/quickstart.html">Standalone Quick Start</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="presence/app.js?v=20260331k"></script>
 </body>
 
 </html>

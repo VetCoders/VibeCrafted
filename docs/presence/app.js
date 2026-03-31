@@ -1499,3 +1499,79 @@ function shuffleArr(a) {
         }
     }, {passive: true});
 })();
+
+// ============ MODAL SURFACES ============
+(function () {
+    var triggers = document.querySelectorAll('[data-modal-open]');
+    var modals = document.querySelectorAll('.surface-modal');
+    if (!triggers.length || !modals.length) return;
+
+    var activeModal = null;
+    var lastTrigger = null;
+
+    function setModalHidden(modal, hidden) {
+        if (!modal) return;
+        modal.hidden = hidden;
+        modal.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+    }
+
+    function openModal(modal, trigger) {
+        if (!modal) return;
+        if (activeModal && activeModal !== modal) {
+            closeModal(true);
+        }
+
+        lastTrigger = trigger || lastTrigger;
+        activeModal = modal;
+        setModalHidden(modal, false);
+        document.body.classList.add('modal-open');
+
+        requestAnimationFrame(function () {
+            modal.classList.add('is-visible');
+            var panel = modal.querySelector('.surface-modal__panel');
+            if (panel) panel.focus();
+        });
+    }
+
+    function closeModal(skipFocusRestore) {
+        if (!activeModal) return;
+        var modal = activeModal;
+        activeModal = null;
+        modal.classList.remove('is-visible');
+        document.body.classList.remove('modal-open');
+
+        setTimeout(function () {
+            setModalHidden(modal, true);
+            if (!skipFocusRestore && lastTrigger && typeof lastTrigger.focus === 'function') {
+                lastTrigger.focus();
+            }
+        }, 180);
+    }
+
+    triggers.forEach(function (trigger) {
+        trigger.addEventListener('click', function (event) {
+            var modalId = trigger.getAttribute('data-modal-open');
+            var modal = modalId ? document.getElementById(modalId) : null;
+            if (!modal) return;
+            event.preventDefault();
+            openModal(modal, trigger);
+        });
+    });
+
+    modals.forEach(function (modal) {
+        setModalHidden(modal, true);
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal || event.target.hasAttribute('data-modal-close') ||
+                event.target.classList.contains('surface-modal__backdrop')) {
+                closeModal(false);
+            }
+        });
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && activeModal) {
+            event.preventDefault();
+            closeModal(false);
+        }
+    });
+})();
