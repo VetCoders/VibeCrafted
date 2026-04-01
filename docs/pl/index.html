@@ -45,7 +45,7 @@
                 <span class="brand-wordmark">vibecrafted</span>
                 <img alt="" aria-hidden="true" class="brand-logo" height="24" src="../presence/logo-32.png">
             </a>
-            <nav aria-label="Primary" class="nav-links">
+            <nav aria-label="Główna nawigacja" class="nav-links">
                 <a href="#pipeline">Pipeline</a>
                 <a href="#skills">Skille</a>
                 <a href="#marbles">Marbles</a>
@@ -163,7 +163,7 @@
                     <a class="foundation-card" href="https://github.com/VetCoders/prview">
                         <div class="foundation-icon foundation-icon--patina">03</div>
                         <h3>prview</h3>
-                        <p class="foundation-role">Audyt i quality gate</p>
+                        <p class="foundation-role">Audyt i bramka jakości</p>
                         <p>Generuje trwałe paczki review PR z findings na poziomie linii. To bramka jakości, która zamienia zrzuty z terminala w realne artefakty.</p>
                         <span class="foundation-link">github.com/VetCoders/prview</span>
                     </a>
@@ -264,7 +264,7 @@ flowchart LR
                             <h3>vc-workflow</h3>
                             <p class="card-desc">Pipeline ERI: Eksploruj &rarr; Rozpoznaj &rarr; Implementuj.
                                 Uporządkowana implementacja, w której kontekst narasta zamiast rozpadać się po każdej kolejnej rundzie.</p>
-                            <div class="card-tags"><span class="tag">ERi</span><span class="tag">loctree</span><span
+                            <div class="card-tags"><span class="tag">ERI</span><span class="tag">loctree</span><span
                                     class="tag">research</span></div>
                             <div class="card-trigger">"Workflow" &middot; "Eksploruj, rozpoznaj i implementuj" &middot; "ERI"</div>
                         </div>
@@ -272,8 +272,8 @@ flowchart LR
                         <div class="card card--accent-copper">
                             <div class="card-phase build card-phase--copper">Flota frontier</div>
                             <h3>vc-agents</h3>
-                            <p class="card-desc">Odpal zewnętrzną flotę (Codex, Claude, Gemini) w prawdziwych terminalach,
-                                z izolowanym kontekstem i trwałymi artefaktami.</p>
+                            <p class="card-desc">Uruchom zewnętrzną flotę (Codex, Claude, Gemini) w prawdziwych terminalach,
+                                z izolowanym kontekstem i trwałymi artefaktami pracy.</p>
                             <div class="card-tags"><span class="tag">frontier</span><span
                                     class="tag">isolated</span><span class="tag">eval</span></div>
                             <div class="card-trigger">"Spawn agents" &middot; "Agent fleet" &middot; "Odpal agentów"
@@ -356,7 +356,7 @@ flowchart LR
                             <div class="card-phase build card-phase--muted">Tryb delegacji</div>
                             <h3>vc-delegate</h3>
                             <p class="card-desc">Bezpieczna natywna delegacja przez narzędzie Task w Claude.
-                                Równoległa praca w ramach jednej sesji dla małych, ograniczonych zadań.</p>
+                                Pozwala prowadzić równoległą pracę w ramach jednej sesji nad małymi, ograniczonymi zadaniami.</p>
                             <div class="card-tags"><span class="tag">natywne</span><span class="tag">narzędzie Task</span><span class="tag">sandbox</span></div>
                             <div class="card-trigger">"Deleguj bezpiecznie" &middot; "Agenci wbudowani"</div>
                         </div>
@@ -563,7 +563,7 @@ flowchart LR
             <div class="container fade-up">
                 <div class="section-label">Referencje</div>
                 <h2 class="section-title">Źródła, wpływy i punkty odniesienia</h2>
-                <p class="section-sub">Bibliografia poniżej rozszerza listę z manifestu o wpływy z obszaru modelowania strukturalnego i konwergencji, które wracają także w wewnętrznej pracy groundingowej AICX.</p>
+                <p class="section-sub">Bibliografia poniżej rozszerza listę z manifestu o wpływy z obszaru modelowania strukturalnego i konwergencji, które wracają także w wewnętrznej pracy AICX nad groundingiem.</p>
                 <ol class="references-list">
                     <li class="reference-item">
                         <p class="reference-citation">Morris, K.; B&ouml;ckeler, B. (2026). <em>Humans and Agents in
@@ -614,7 +614,7 @@ flowchart LR
             <a data-modal-open="faq-modal" href="faq.html">FAQ</a>
             <a href="https://loct.io">Loctree</a>
         </nav>
-        <p class="footer-copyright">&copy; 2025-2026 VetCoders. Built by Maciej Gad &amp; Monika Szymańska.</p>
+        <p class="footer-copyright">&copy; 2025-2026 VetCoders. Stworzone przez Macieja Gada i Monikę Szymańską.</p>
     </footer>
 
     <div aria-hidden="true" class="surface-modal" hidden id="quickstart-modal">
@@ -625,7 +625,7 @@ flowchart LR
                 <div class="surface-modal__intro">
                     <div class="section-label">Szybki start</div>
                     <h2 class="surface-modal__title" id="quickstart-modal-title">Od zera do pierwszej pętli VibeCrafted.</h2>
-                    <p class="surface-modal__lead">Homepage daje Ci ogólny obraz. Osobny przewodnik pokazuje dokładną ścieżkę instalacji, wynik doctora i pierwszy workflow.</p>
+                    <p class="surface-modal__lead">Ta strona daje Ci ogólny obraz. Osobny przewodnik pokazuje dokładną ścieżkę instalacji, wynik doctora i pierwszy workflow.</p>
                 </div>
                 <div class="surface-modal__head-actions">
                     <a class="surface-modal__link" href="quickstart.html">Osobna strona</a>
@@ -679,7 +679,7 @@ flowchart LR
                         <p>Osobna strona opisuje pełną pierwszą pętlę: ścieżkę instalacji, wynik doctora, start z kontekstem, handoff workflow i domknięcie pętli.</p>
                         <ul class="resource-list">
                             <li>Oczekiwania wobec instalacji i helperów shellowych</li>
-                            <li>Doctor i sanity checki runtime'u</li>
+                            <li>Doctor i podstawowe sprawdzenia runtime’u</li>
                             <li>Pierwsze <code>vc-init</code> i handoff workflow</li>
                             <li>Co oznacza, że coś jest naprawdę gotowe</li>
                         </ul>
@@ -687,7 +687,7 @@ flowchart LR
                 </div>
 
                 <div class="docs-inline-links surface-modal__links">
-                    <a href="https://github.com/VetCoders/vibecrafted/blob/main/docs/QUICK_START.md">Markdown Szybki start</a>
+                    <a href="https://github.com/VetCoders/vibecrafted/blob/main/docs/QUICK_START.md">Szybki start w Markdownzie</a>
                     <a href="https://github.com/VetCoders/vibecrafted/blob/main/docs/FOUNDATION.md">Stack zależności</a>
                     <a href="https://github.com/VetCoders/vibecrafted">GitHub</a>
                 </div>
@@ -703,7 +703,7 @@ flowchart LR
                 <div class="surface-modal__intro">
                     <div class="section-label">FAQ</div>
                     <h2 class="surface-modal__title" id="faq-modal-title">Pytania, które padają na początku.</h2>
-                    <p class="surface-modal__lead">To krótka warstwa odpowiedzi. Osobne FAQ niesie pełną treść o instalacji, workflow, zależnościach i modelu komercyjnym.</p>
+                    <p class="surface-modal__lead">To krótki zestaw odpowiedzi. Osobne FAQ rozwija temat instalacji, workflow, zależności i modelu komercyjnego.</p>
                 </div>
                 <div class="surface-modal__head-actions">
                     <a class="surface-modal__link" href="faq.html">Osobna strona</a>
