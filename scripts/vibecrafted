@@ -469,7 +469,7 @@ main() {
       *) filtered+=("$_arg") ;;
     esac
   done
-  set -- "${filtered[@]}"
+  set -- ${filtered[@]+"${filtered[@]}"}
 
   if [[ "$invoked" != "vibecrafted" ]]; then
     run_wrapper "$invoked" "$@"

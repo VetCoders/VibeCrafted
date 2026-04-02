@@ -921,9 +921,9 @@ vc-dashboard() {
   if [[ -n "${ZELLIJ:-}" ]]; then
     zellij action new-tab --layout "$layout" --name "$session_name"
   elif [[ -d "$repo_root/.git" || -d "$repo_root/skills/vc-agents" ]]; then
-    ( cd "$repo_root" || exit 1; zellij --layout "$layout" --session "$session_name" )
+    ( cd "$repo_root" || exit 1; zellij --layout "$layout" )
   else
-    zellij --layout "$layout" --session "$session_name"
+    zellij --layout "$layout"
   fi
 }
 
