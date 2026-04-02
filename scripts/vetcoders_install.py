@@ -2168,6 +2168,12 @@ def _install_launcher(repo_root: Path, dry_run: bool) -> None:
             launcher_dst.chmod(0o755)
             for wrapper in LAUNCHER_WRAPPERS:
                 create_symlink(Path("vibecrafted"), launcher_bin_dir / wrapper)
+            # Replace legacy vibecraft binary with a thin redirect
+            legacy_redirect_src = repo_root / "scripts" / "vibecraft"
+            legacy_dst = launcher_bin_dir / "vibecraft"
+            if legacy_redirect_src.exists():
+                shutil.copy2(legacy_redirect_src, legacy_dst)
+                legacy_dst.chmod(0o755)
         else:
             for wrapper in LAUNCHER_WRAPPERS:
                 create_symlink(

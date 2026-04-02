@@ -874,22 +874,56 @@ vc-dashboard() {
     return 1
   }
 
-  local layout repo_root
+  local config="" layout="" layouts_dir repo_root session_name
   repo_root="${VIBECRAFT_ROOT:-$(_vetcoders_repo_root)}"
-  layout="$(_vetcoders_frontier_root 2>/dev/null)/zellij/layouts/mission-control.kdl"
-  [[ -f "$layout" ]] || layout="$repo_root/config/zellij/layouts/mission-control.kdl"
-  [[ -f "$layout" ]] || {
-    echo "Mission control layout not found. Run vc-frontier-install first." >&2
-    return 1
-  }
 
-  if [[ -d "$repo_root/.git" || -d "$repo_root/skills/vc-agents" ]]; then
-    (
-      cd "$repo_root" || exit 1
-      zellij --layout "$layout" --session vibecrafted-mc
-    )
+  # Parse --config <name-or-path>
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config) shift; config="${1:-}" ;;
+      *) config="$1" ;;
+    esac
+    shift
+  done
+
+  # Resolve layouts directory
+  layouts_dir="$(_vetcoders_frontier_root 2>/dev/null)/zellij/layouts"
+  [[ -d "$layouts_dir" ]] || layouts_dir="$repo_root/config/zellij/layouts"
+
+  if [[ -n "$config" ]]; then
+    # --config can be a full path or a layout name (with or without .kdl)
+    if [[ -f "$config" ]]; then
+      layout="$config"
+    elif [[ -f "${layouts_dir}/${config}.kdl" ]]; then
+      layout="${layouts_dir}/${config}.kdl"
+    elif [[ -f "${layouts_dir}/${config}" ]]; then
+      layout="${layouts_dir}/${config}"
+    else
+      printf 'Layout "%s" not found.\nAvailable:\n' "$config" >&2
+      for f in "$layouts_dir"/*.kdl; do
+        [[ -f "$f" ]] && printf '  %s\n' "$(basename "$f" .kdl)" >&2
+      done
+      return 1
+    fi
   else
-    zellij --layout "$layout" --session vibecrafted-mc
+    # Default: mission-control
+    layout="${layouts_dir}/mission-control.kdl"
+    [[ -f "$layout" ]] || {
+      echo "Mission control layout not found. Run vc-frontier-install first." >&2
+      return 1
+    }
+  fi
+
+  # Session name from layout filename
+  session_name="vc-$(basename "$layout" .kdl)"
+
+  # Launch: new tab if inside zellij, new session otherwise
+  if [[ -n "${ZELLIJ:-}" ]]; then
+    zellij action new-tab --layout "$layout" --name "$session_name"
+  elif [[ -d "$repo_root/.git" || -d "$repo_root/skills/vc-agents" ]]; then
+    ( cd "$repo_root" || exit 1; zellij --layout "$layout" --session "$session_name" )
+  else
+    zellij --layout "$layout" --session "$session_name"
   fi
 }
 

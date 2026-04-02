@@ -323,7 +323,7 @@ cmd_doctor() {
 
 cmd_dashboard() {
   _ensure_helpers_loaded || return 1
-  _run_helper vc-dashboard
+  _run_helper vc-dashboard "$@"
 }
 
 cmd_stats() {
@@ -484,7 +484,7 @@ main() {
     init) cmd_init "$@" ;;
     resume) cmd_resume "$@" ;;
     doctor|check) cmd_doctor ;;
-    dashboard|mc|mission-control) cmd_dashboard ;;
+    dashboard|mc|mission-control) cmd_dashboard "$@" ;;
     stats|status) cmd_stats ;;
     uninstall|remove) cmd_uninstall ;;
     version|--version|-v) printf 'vibecrafted %s\n' "$(_version)" ;;
