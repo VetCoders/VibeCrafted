@@ -51,6 +51,188 @@ _vetcoders_default_runtime() {
   printf '%s\n' "${VETCODERS_SPAWN_RUNTIME:-terminal}"
 }
 
+_vetcoders_strip_ansi() {
+  python3 -c 'import re, sys; print(re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", sys.stdin.read()), end="")'
+}
+
+_vetcoders_osascript_bin() {
+  local override="${VIBECRAFT_OSASCRIPT_BIN:-}"
+  if [[ -n "$override" && -x "$override" ]]; then
+    printf '%s\n' "$override"
+    return 0
+  fi
+
+  command -v osascript 2>/dev/null || return 1
+}
+
+_vetcoders_zellij_session_state() {
+  local session_name="$1"
+  local listing
+
+  command -v zellij >/dev/null 2>&1 || {
+    printf 'missing\n'
+    return 0
+  }
+
+  listing="$(zellij ls 2>/dev/null | _vetcoders_strip_ansi || true)"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    case "$line" in
+      "$session_name "*)
+        if [[ "$line" == *"(EXITED"* ]]; then
+          printf 'dead\n'
+        else
+          printf 'live\n'
+        fi
+        return 0
+        ;;
+    esac
+  done <<< "$listing"
+
+  printf 'missing\n'
+}
+
+_vetcoders_open_iterm_command() {
+  local command_text="$1"
+  local osascript_bin
+  osascript_bin="$(_vetcoders_osascript_bin)" || return 1
+  [[ "${TERM_PROGRAM:-}" == "iTerm.app" || -n "${ITERM_SESSION_ID:-}" ]] || return 1
+  local command_json
+  command_json="$(python3 - "$command_text" <<'PY'
+import json
+import sys
+
+print(json.dumps(sys.argv[1]))
+PY
+)"
+
+  "$osascript_bin" <<EOF_APPLE
+tell application "iTerm2"
+  tell current window
+    create tab with default profile
+    tell current session of current tab
+      write text $command_json
+    end tell
+  end tell
+end tell
+EOF_APPLE
+}
+
+_vetcoders_open_terminal_command() {
+  local command_text="$1"
+  local osascript_bin
+  osascript_bin="$(_vetcoders_osascript_bin)" || return 1
+  local command_json
+  command_json="$(python3 - "$command_text" <<'PY'
+import json
+import sys
+
+print(json.dumps(sys.argv[1]))
+PY
+)"
+
+  "$osascript_bin" <<EOF_APPLE
+ tell application "Terminal"
+   activate
+   do script $command_json
+ end tell
+EOF_APPLE
+}
+
+_vetcoders_operator_layout_file() {
+  _vetcoders_frontier_file "zellij/layouts/vibecrafted.kdl"
+}
+
+_vetcoders_operator_session_name() {
+  printf 'vibecrafted\n'
+}
+
+_vetcoders_wait_for_zellij_session() {
+  local session_name="$1"
+  local attempts="${2:-40}"
+  local current=0
+
+  while (( current < attempts )); do
+    [[ "$(_vetcoders_zellij_session_state "$session_name")" == "live" ]] && return 0
+    sleep 0.25
+    ((current+=1))
+  done
+
+  return 1
+}
+
+_vetcoders_print_session_recovery_hint() {
+  local session_name="$1"
+  local listing
+  listing="$(zellij ls 2>/dev/null | _vetcoders_strip_ansi || true)"
+  echo "Dead Zellij session detected: $session_name" >&2
+  if [[ -n "$listing" ]]; then
+    echo "Known sessions:" >&2
+    while IFS= read -r line; do
+      [[ -n "$line" ]] || continue
+      printf '  %s\n' "$line" >&2
+    done <<< "$listing"
+  fi
+  echo "Run: vc-start resume" >&2
+}
+
+_vetcoders_prepare_operator_runtime() {
+  local runtime="${1:-$(_vetcoders_default_runtime)}"
+  local session_name layout_file state command_text
+
+  case "$runtime" in
+    terminal|visible) ;;
+    *) return 0 ;;
+  esac
+
+  [[ -n "${ZELLIJ:-}" ]] && return 0
+  command -v zellij >/dev/null 2>&1 || return 0
+
+  session_name="$(_vetcoders_operator_session_name)"
+  layout_file="$(_vetcoders_operator_layout_file 2>/dev/null || true)"
+  [[ -n "$layout_file" ]] || return 0
+
+  state="$(_vetcoders_zellij_session_state "$session_name")"
+  case "$state" in
+    live)
+      export VIBECRAFT_OPERATOR_SESSION="$session_name"
+      return 0
+      ;;
+    dead)
+      _vetcoders_print_session_recovery_hint "$session_name"
+      return 1
+      ;;
+  esac
+
+  command_text="zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
+  if _vetcoders_open_iterm_command "$command_text"; then
+    :
+  elif _vetcoders_open_terminal_command "$command_text"; then
+    :
+  else
+    return 0
+  fi
+
+  if _vetcoders_wait_for_zellij_session "$session_name"; then
+    export VIBECRAFT_OPERATOR_SESSION="$session_name"
+  fi
+}
+
+_vetcoders_spawn_into_operator_session() {
+  local pane_name="$1"
+  local direction="$2"
+  local command_text="$3"
+  local session_name="${VIBECRAFT_OPERATOR_SESSION:-$(_vetcoders_operator_session_name)}"
+  local root_dir="${_vetcoders_contract_root:-$(_vetcoders_repo_root)}"
+
+  command -v zellij >/dev/null 2>&1 || return 1
+  zellij --session "$session_name" action new-pane \
+    --direction "$direction" \
+    --name "$pane_name" \
+    --cwd "$root_dir" \
+    -- /bin/zsh -l -c "$command_text"
+}
+
 _vetcoders_frontier_candidates() {
   local repo_root crafted_sidecar candidate seen=""
   repo_root="$(_vetcoders_repo_root)"
@@ -195,7 +377,45 @@ _vetcoders_launch_dashboard() {
   }
 
   session_name="$(_vetcoders_dashboard_session_name "$layout_name")"
-  zellij "$@" --session "$session_name" --new-session-with-layout "$layout_file"
+  case "$(_vetcoders_zellij_session_state "$session_name")" in
+    live)
+      zellij attach "$session_name"
+      ;;
+    dead)
+      _vetcoders_print_session_recovery_hint "$session_name"
+      return 1
+      ;;
+    *)
+      zellij "$@" --session "$session_name" --new-session-with-layout "$layout_file"
+      ;;
+  esac
+}
+
+_vetcoders_resume_operator_session() {
+  local session_name layout_file
+  session_name="$(_vetcoders_operator_session_name)"
+  layout_file="$(_vetcoders_operator_layout_file 2>/dev/null || true)"
+
+  command -v zellij >/dev/null 2>&1 || {
+    echo "zellij is required for vibecrafted resume." >&2
+    return 1
+  }
+
+  case "$(_vetcoders_zellij_session_state "$session_name")" in
+    dead)
+      zellij attach --force-run-commands "$session_name"
+      ;;
+    live)
+      zellij attach "$session_name"
+      ;;
+    *)
+      [[ -n "$layout_file" ]] || {
+        echo "Operator layout not found." >&2
+        return 1
+      }
+      zellij --session "$session_name" --new-session-with-layout "$layout_file"
+      ;;
+  esac
 }
 
 _vetcoders_prompt_file() {
@@ -370,6 +590,19 @@ _vetcoders_spawn_plan() {
   local plan_file="$3"
   shift 3
   local script
+  local runtime="$(_vetcoders_default_runtime)"
+  local idx=1
+  while (( idx <= $# )); do
+    if [[ "${!idx}" == "--runtime" ]]; then
+      ((idx+=1))
+      if (( idx <= $# )); then
+        runtime="${!idx}"
+      fi
+      break
+    fi
+    ((idx+=1))
+  done
+  _vetcoders_prepare_operator_runtime "$runtime" || return 1
   script="$(_vetcoders_spawn_script "$tool" "${tool}_spawn.sh")" || return 1
   bash "$script" --mode "$mode" "$plan_file" "$@"
 }
@@ -551,6 +784,15 @@ _vetcoders_marbles() {
   # Inside zellij: run marbles orchestrator in a pane below, keep operator free
   if [[ -n "${ZELLIJ:-}" ]] && command -v zellij >/dev/null 2>&1; then
     zellij run --name "marbles" --direction down -- /bin/zsh -l -c "export VIBECRAFT_ZELLIJ_SPAWN_DIRECTION=right; bash '$script' ${marbles_args[*]}"
+  elif [[ "$(_vetcoders_effective_runtime)" =~ ^(terminal|visible)$ ]]; then
+    _vetcoders_prepare_operator_runtime "$(_vetcoders_effective_runtime)" || return 1
+    if [[ -n "${VIBECRAFT_OPERATOR_SESSION:-}" ]]; then
+      local marbles_cmd
+      marbles_cmd="export VIBECRAFT_ZELLIJ_SPAWN_DIRECTION=right; bash '$script' ${marbles_args[*]}"
+      _vetcoders_spawn_into_operator_session "marbles" "down" "$marbles_cmd"
+    else
+      bash "$script" "${marbles_args[@]}"
+    fi
   else
     bash "$script" "${marbles_args[@]}"
   fi
@@ -952,6 +1194,11 @@ repo-full() {
 }
 
 vc-start() {
+  if [[ "${1:-}" == "resume" ]]; then
+    shift || true
+    _vetcoders_resume_operator_session "$@"
+    return
+  fi
   _vetcoders_launch_dashboard vibecrafted "$@"
 }
 

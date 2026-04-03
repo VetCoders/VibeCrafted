@@ -512,9 +512,20 @@ spawn_launch_headless() {
   printf 'Spawned headless launcher (pid=%s): %s\n' "$launcher_pid" "$launcher"
 }
 
+spawn_osascript_bin() {
+  local override="${VIBECRAFT_OSASCRIPT_BIN:-}"
+  if [[ -n "$override" && -x "$override" ]]; then
+    printf '%s\n' "$override"
+    return 0
+  fi
+
+  command -v osascript 2>/dev/null || return 1
+}
+
 spawn_open_terminal() {
   local launcher="$1"
-  command -v osascript >/dev/null 2>&1 || spawn_die "osascript is required for visible Terminal spawns."
+  local osascript_bin
+  osascript_bin="$(spawn_osascript_bin)" || spawn_die "osascript is required for visible Terminal spawns."
 
   local command_json
   command_json="$(python3 - "$launcher" "${SPAWN_ROOT:-}" <<'PY'
@@ -532,7 +543,7 @@ print(json.dumps(" && ".join(parts)))
 PY
 )"
 
-  osascript <<EOF_APPLE
+  "$osascript_bin" <<EOF_APPLE
  tell application "Terminal"
    activate
    do script $command_json
@@ -542,7 +553,8 @@ EOF_APPLE
 
 spawn_open_iterm() {
   local launcher="$1"
-  command -v osascript >/dev/null 2>&1 || return 1
+  local osascript_bin
+  osascript_bin="$(spawn_osascript_bin)" || return 1
   [[ "${TERM_PROGRAM:-}" == "iTerm.app" || -n "${ITERM_SESSION_ID:-}" ]] || return 1
 
   local command_json
@@ -561,7 +573,7 @@ print(json.dumps(" && ".join(parts)))
 PY
 )"
 
-  osascript <<EOF_APPLE
+  "$osascript_bin" <<EOF_APPLE
 tell application "iTerm2"
   tell current window
     create tab with default profile
@@ -584,6 +596,22 @@ spawn_in_zellij_pane() {
   return 1
 }
 
+spawn_in_operator_session() {
+  local launcher="$1"
+  local pane_name="${2:-agent}"
+  local direction="${VIBECRAFT_ZELLIJ_SPAWN_DIRECTION:-down}"
+  local session_name="${VIBECRAFT_OPERATOR_SESSION:-}"
+
+  [[ -n "$session_name" ]] || return 1
+  command -v zellij >/dev/null 2>&1 || return 1
+
+  zellij --session "$session_name" action new-pane \
+    --direction "$direction" \
+    --name "$pane_name" \
+    --cwd "${SPAWN_ROOT:-$(pwd)}" \
+    -- /bin/zsh -l -c "bash '$launcher'"
+}
+
 spawn_launch() {
   local launcher="$1"
   local runtime="${2:-terminal}"
@@ -604,9 +632,11 @@ spawn_launch() {
     terminal|visible)
       if spawn_in_zellij_pane "$launcher" "$pane_name"; then
         :
+      elif spawn_in_operator_session "$launcher" "$pane_name"; then
+        :
       elif spawn_open_iterm "$launcher" 2>/dev/null; then
         :
-      elif command -v osascript >/dev/null 2>&1; then
+      elif spawn_osascript_bin >/dev/null 2>&1; then
         spawn_open_terminal "$launcher"
       else
         printf 'Runtime fallback: visible Terminal requested, but osascript is unavailable. Running headless.\n' >&2

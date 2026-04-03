@@ -106,3 +106,47 @@ def test_spawn_in_zellij_pane_honors_requested_direction(tmp_path: Path) -> None
     assert "workflow" in payload
     assert "--direction" in payload
     assert "down" in payload
+
+
+def test_spawn_in_operator_session_targets_named_session(tmp_path: Path) -> None:
+    launcher = tmp_path / "launch.sh"
+    launcher.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    launcher.chmod(0o755)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture_file = tmp_path / "zellij-args.txt"
+    zellij = fake_bin / "zellij"
+    zellij.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'printf "%s\\n" "$@" > "$CAPTURE_FILE"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    zellij.chmod(0o755)
+
+    _bash(
+        f'''
+        set -euo pipefail
+        export PATH="{fake_bin}:$PATH"
+        export CAPTURE_FILE="{capture_file}"
+        export VIBECRAFT_OPERATOR_SESSION="vibecrafted"
+        export VIBECRAFT_ZELLIJ_SPAWN_DIRECTION=down
+        export SPAWN_ROOT="{tmp_path}"
+        source "{COMMON_SH}"
+        spawn_in_operator_session "{launcher}" "workflow"
+        '''
+    )
+
+    payload = capture_file.read_text(encoding="utf-8").splitlines()
+    assert "--session" in payload
+    assert "vibecrafted" in payload
+    assert "action" in payload
+    assert "new-pane" in payload
+    assert "--direction" in payload
+    assert "down" in payload
