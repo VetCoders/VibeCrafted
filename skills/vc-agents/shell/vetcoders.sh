@@ -137,18 +137,23 @@ _vetcoders_ensure_run_context() {
   local root="${3:-$(_vetcoders_repo_root)}"
   local skill_name="${VIBECRAFT_SKILL_NAME:-$mode}"
   local skill_code="${VIBECRAFT_SKILL_CODE:-}"
-  local run_id=""
-  local lock_file=""
+  local run_id="${VIBECRAFT_RUN_ID:-}"
+  local lock_file="${VIBECRAFT_RUN_LOCK:-}"
 
   [[ -n "$skill_code" ]] || skill_code="$(_vetcoders_skill_prefix "$skill_name")"
   [[ -n "${VIBECRAFT_SKILL_NAME:-}" ]] || export VIBECRAFT_SKILL_NAME="$skill_name"
   export VIBECRAFT_SKILL_CODE="$skill_code"
 
-  # Always generate fresh run_id — never inherit stale env from prior runs
-  run_id="$(_vetcoders_generate_run_id "$skill_code")"
+  # Preserve the first run_id created for this workflow so prompts, locks,
+  # operator sessions, and spawned workers stay traceable as one run.
+  if [[ -z "$run_id" ]]; then
+    run_id="$(_vetcoders_generate_run_id "$skill_code")"
+  fi
   export VIBECRAFT_RUN_ID="$run_id"
 
-  lock_file="$HOME/.vibecrafted/locks/$(_vetcoders_org_repo "$root")/${run_id}.lock"
+  if [[ -z "$lock_file" || ! -f "$lock_file" ]]; then
+    lock_file="$HOME/.vibecrafted/locks/$(_vetcoders_org_repo "$root")/${run_id}.lock"
+  fi
   if [[ ! -f "$lock_file" ]]; then
     lock_file="$(_vetcoders_create_run_lock "$run_id" "$tool" "$skill_name" "$root")"
   fi
@@ -275,11 +280,16 @@ _vetcoders_operator_layout_file() {
 }
 
 _vetcoders_operator_session_name() {
-  # Session name = repo basename. Stable, reusable. run_id is for telemetry, not sessions.
-  local root base
+  local root base run_id
   root="$(_vetcoders_repo_root)"
   base="$(basename "$root" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//')"
-  printf '%s\n' "${base:-vibecrafted}"
+  [[ -n "$base" ]] || base="vibecrafted"
+  run_id="${VIBECRAFT_RUN_ID:-}"
+  if [[ -n "$run_id" ]]; then
+    printf '%s-%s\n' "$base" "$run_id"
+  else
+    printf '%s\n' "$base"
+  fi
 }
 
 _vetcoders_in_target_session() {

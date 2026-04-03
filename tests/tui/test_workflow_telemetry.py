@@ -141,6 +141,94 @@ def _run_prompt_capture(
     return payload
 
 
+def test_workflow_skill_helpers_reuse_one_run_id_from_prompt_to_spawn(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    fake_spawn = tmp_path / "fake_spawn.sh"
+    capture_file = tmp_path / "run-trace.log"
+    counter_file = tmp_path / "run-id-counter.txt"
+
+    home.mkdir(parents=True)
+    fake_spawn.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "{",
+                '  printf "SPAWN_RUN_ID=%s\\n" "${VIBECRAFT_RUN_ID:-}"',
+                '  printf "SPAWN_RUN_LOCK=%s\\n" "${VIBECRAFT_RUN_LOCK:-}"',
+                '} >> "$CAPTURE_FILE"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_spawn.chmod(0o755)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["VETCODERS_SPAWN_RUNTIME"] = "headless"
+    env["VIBECRAFT_ROOT"] = str(REPO_ROOT)
+    env["RUN_ID_COUNTER_FILE"] = str(counter_file)
+
+    subprocess.run(
+        [
+            "bash",
+            "-lc",
+            "\n".join(
+                [
+                    "set -euo pipefail",
+                    f'source "{HELPER_SCRIPT}"',
+                    "_vetcoders_generate_run_id() {",
+                    '  local prefix="$1"',
+                    "  local counter=0",
+                    '  if [[ -f "$RUN_ID_COUNTER_FILE" ]]; then',
+                    '    counter="$(cat "$RUN_ID_COUNTER_FILE")"',
+                    "  fi",
+                    '  counter="$((counter + 1))"',
+                    '  printf "%s" "$counter" > "$RUN_ID_COUNTER_FILE"',
+                    '  if [[ "$counter" == "1" ]]; then',
+                    '    printf "%s-111111\\n" "$prefix"',
+                    "  else",
+                    '    printf "%s-222222\\n" "$prefix"',
+                    "  fi",
+                    "}",
+                    "_vetcoders_spawn_script() {",
+                    f'  printf "%s\\n" "{fake_spawn}"',
+                    "}",
+                    "_vetcoders_prompt_text() {",
+                    '  local tool="$1"',
+                    '  local mode="$2"',
+                    '  local prompt_text="$3"',
+                    "  {",
+                    '    printf "PROMPT_RUN_ID=%s\\n" "${VIBECRAFT_RUN_ID:-}"',
+                    '    printf "PROMPT_RUN_LOCK=%s\\n" "${VIBECRAFT_RUN_LOCK:-}"',
+                    '  } > "$CAPTURE_FILE"',
+                    "  shift 3",
+                    '  _vetcoders_spawn_plan "$tool" "$mode" /dev/null "$@"',
+                    "}",
+                    'codex-followup --prompt "Check runtime"',
+                ]
+            ),
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+    payload: dict[str, str] = {}
+    for line in capture_file.read_text(encoding="utf-8").splitlines():
+        key, value = line.split("=", 1)
+        payload[key] = value
+
+    assert payload["PROMPT_RUN_ID"] == "fwup-111111"
+    assert payload["SPAWN_RUN_ID"] == "fwup-111111"
+    assert payload["PROMPT_RUN_LOCK"] == payload["SPAWN_RUN_LOCK"]
+    assert counter_file.read_text(encoding="utf-8") == "1"
+
+
 def test_workflow_skill_helpers_create_run_context_before_prompt_text(
     tmp_path: Path,
 ) -> None:

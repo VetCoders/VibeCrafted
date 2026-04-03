@@ -106,11 +106,10 @@ def _write_fake_osascript(
 
 
 def _expected_operator_session(run_id: str | None = None) -> str:
-    # Session name is always bare repo basename — run_id is for telemetry, not sessions.
     base = (
         re.sub(r"[^a-z0-9]+", "-", REPO_ROOT.name.lower()).strip("-") or "vibecrafted"
     )
-    return base
+    return f"{base}-{run_id}" if run_id else base
 
 
 def test_vc_start_launches_operator_entrypoint_layout(tmp_path: Path) -> None:
@@ -341,8 +340,7 @@ def test_skill_bootstraps_operator_session_before_spawning(tmp_path: Path) -> No
     payload = capture_file.read_text(encoding="utf-8")
     assert "OSA " in payload
     assert "new-session-with-layout" in payload
-    # Session name is bare repo basename — no run_id suffix
-    assert _expected_operator_session() in payload
+    assert re.search(rf"{re.escape(REPO_ROOT.name.lower())}-fwup-\d{{6}}", payload)
 
 
 def test_skill_bootstraps_fresh_operator_session_when_existing_one_is_dead(
