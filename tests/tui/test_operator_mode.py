@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -103,6 +104,13 @@ def _write_fake_osascript(
     script.chmod(0o755)
 
 
+def _expected_operator_session(run_id: str | None = None) -> str:
+    base = (
+        re.sub(r"[^a-z0-9]+", "-", REPO_ROOT.name.lower()).strip("-") or "vibecrafted"
+    )
+    return f"{base}-{run_id}" if run_id else base
+
+
 def test_vc_start_launches_operator_entrypoint_layout(tmp_path: Path) -> None:
     home = tmp_path / "home"
     fake_bin = tmp_path / "bin"
@@ -156,6 +164,8 @@ def test_marbles_from_operator_mode_spawns_launcher_below_and_loops_right(
     env["VIBECRAFT_ROOT"] = str(REPO_ROOT)
     env["CAPTURE_FILE"] = str(capture_file)
     env["ZELLIJ"] = "operator"
+    env["VIBECRAFT_RUN_ID"] = "marb-014520"
+    env["ZELLIJ_SESSION_NAME"] = _expected_operator_session(env["VIBECRAFT_RUN_ID"])
 
     subprocess.run(
         [
@@ -282,12 +292,15 @@ def test_skill_bootstraps_operator_session_before_spawning(tmp_path: Path) -> No
     payload = capture_file.read_text(encoding="utf-8")
     assert "OSA " in payload
     assert "new-session-with-layout" in payload
-    assert (
-        "ZELLIJ --session vibecrafted action new-tab --name codex-followup" in payload
+    assert re.search(
+        r"ZELLIJ --session vibecrafted-fwup-\d{6} action new-tab --name codex-followup",
+        payload,
     )
 
 
-def test_skill_refuses_to_replace_dead_operator_session(tmp_path: Path) -> None:
+def test_skill_bootstraps_fresh_operator_session_when_existing_one_is_dead(
+    tmp_path: Path,
+) -> None:
     home = tmp_path / "home"
     fake_bin = tmp_path / "bin"
     capture_file = tmp_path / "capture.log"
@@ -297,6 +310,7 @@ def test_skill_refuses_to_replace_dead_operator_session(tmp_path: Path) -> None:
     fake_bin.mkdir()
     session_state_file.write_text("dead", encoding="utf-8")
     _write_stateful_zellij(fake_bin, capture_file, session_state_file)
+    _write_fake_osascript(fake_bin, capture_file, session_state_file)
     _write_capture_command(fake_bin, "codex", tmp_path / "unused-codex.txt")
 
     env = os.environ.copy()
@@ -306,21 +320,28 @@ def test_skill_refuses_to_replace_dead_operator_session(tmp_path: Path) -> None:
     env["VIBECRAFT_ROOT"] = str(REPO_ROOT)
     env["CAPTURE_FILE"] = str(capture_file)
     env["SESSION_STATE_FILE"] = str(session_state_file)
+    env["VIBECRAFT_OSASCRIPT_BIN"] = str(fake_bin / "osascript")
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
 
-    result = subprocess.run(
+    subprocess.run(
         [
             "bash",
             "-lc",
             f'source "{HELPER_SCRIPT}"; codex-followup --prompt "Check runtime"',
         ],
+        check=True,
         cwd=REPO_ROOT,
         env=env,
-        capture_output=True,
-        text=True,
     )
 
-    assert result.returncode == 1
-    assert "Run: vc-start resume" in result.stderr
+    payload = capture_file.read_text(encoding="utf-8")
+    assert re.search(
+        r'OSA .*zellij --session "vibecrafted-fwup-\d{6}-\d{4}" --new-session-with-layout',
+        payload,
+    )
+    assert re.search(
+        r"ZELLIJ --session vibecrafted-fwup-\d{6}-\d{4} action new-tab --name codex-followup",
+        payload,
+    )

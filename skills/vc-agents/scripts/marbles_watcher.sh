@@ -140,6 +140,40 @@ PY
   fi
 }
 
+# ── Verification tracking ─────────────────────────────────────────────
+_record_verification_start() {
+  local loop_nr="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$state_file" "$loop_nr" <<'PY'
+import json, sys, datetime
+with open(sys.argv[1]) as f: d = json.load(f)
+d["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+for loop in d["loops"]:
+    if loop["loop"] == int(sys.argv[2]):
+        loop["verification_status"] = "pending"
+with open(sys.argv[1] + ".tmp", "w") as f: json.dump(d, f, indent=2)
+PY
+    mv "$state_file.tmp" "$state_file"
+  fi
+}
+
+_record_verification_done() {
+  local loop_nr="$1" verified_report="$2"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$state_file" "$loop_nr" "$verified_report" <<'PY'
+import json, sys, datetime
+with open(sys.argv[1]) as f: d = json.load(f)
+d["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+for loop in d["loops"]:
+    if loop["loop"] == int(sys.argv[2]):
+        loop["verification_status"] = "completed"
+        loop["verified_report"] = sys.argv[3]
+with open(sys.argv[1] + ".tmp", "w") as f: json.dump(d, f, indent=2)
+PY
+    mv "$state_file.tmp" "$state_file"
+  fi
+}
+
 # ── Visual helpers ────────────────────────────────────────────────────
 _render_chain() {
   local current="$1" total="$2"
@@ -185,6 +219,8 @@ _render_loop_phase() {
 }
 
 # ── Session ID capture ────────────────────────────────────────────────
+# All agents emit "session: <uuid>" in transcripts after stream filtering.
+# Strip ANSI escapes first — gemini/codex transcripts bleed \e[0m into UUIDs.
 _capture_session_id() {
   local transcript="$1" agent_type="$2"
   local session_id="" attempts=0
@@ -197,17 +233,10 @@ _capture_session_id() {
       continue
     fi
 
-    case "$agent_type" in
-      claude)
-        session_id=$(grep -m1 -oE 'session: [a-f0-9-]{8,}' "$transcript" 2>/dev/null | awk '{print $2}' || true)
-        ;;
-      codex)
-        session_id=$(grep -m1 -oE '"id":\s*"[^"]+"' "$transcript" 2>/dev/null | head -1 | sed 's/.*"id":\s*"//;s/"//' || true)
-        ;;
-      gemini)
-        session_id=$(grep -m1 -oE '"sessionId":\s*"[^"]+"' "$transcript" 2>/dev/null | head -1 | sed 's/.*"sessionId":\s*"//;s/"//' || true)
-        ;;
-    esac
+    # Universal: strip ANSI escapes, then match "session: <uuid>"
+    session_id=$(sed 's/\x1b\[[0-9;]*m//g' "$transcript" 2>/dev/null \
+      | grep -m1 -oE 'session: [a-f0-9-]{8,}' \
+      | awk '{print $2}' || true)
   done
 
   printf '%s' "$session_id"
@@ -341,6 +370,7 @@ for ((loop_nr=1; loop_nr<=total_count; loop_nr++)); do
   while [[ -z "$actual_report" || ! -s "$actual_report" ]]; do
     sleep 5
     actual_report=$(find "$store/reports" -name "$report_pattern" \
+      ! -name '*_verified*' \
       ! -name '*.meta.json' ! -name '*.transcript.log' \
       2>/dev/null | sort | tail -1 || true)
     # Check stop during wait

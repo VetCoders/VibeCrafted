@@ -79,6 +79,9 @@ bundle:
 bundle-check:
 	@$(PYTHON) scripts/build_marketplace_bundle.py --check
 
+semgrep:
+	@semgrep scan --config auto --error --quiet --exclude-rule html.security.audit.missing-integrity.missing-integrity .
+
 test:
 	@PYTHONPATH="$(SOURCE)" uv run --with pytest pytest tests/tui -q
 

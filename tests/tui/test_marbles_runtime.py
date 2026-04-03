@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -45,6 +46,13 @@ def _write_replaying_zellij(script_path: Path) -> None:
     script_path.chmod(0o755)
 
 
+def _expected_operator_session(run_id: str | None = None) -> str:
+    base = (
+        re.sub(r"[^a-z0-9]+", "-", REPO_ROOT.name.lower()).strip("-") or "vibecrafted"
+    )
+    return f"{base}-{run_id}" if run_id else base
+
+
 def _run_marbles_prompt(tmp_path: Path, *, inside_zellij: bool) -> list[str]:
     home = tmp_path / "home"
     crafted_home = home / ".vibecrafted"
@@ -71,13 +79,15 @@ def _run_marbles_prompt(tmp_path: Path, *, inside_zellij: bool) -> list[str]:
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
+    env["VIBECRAFT_RUN_ID"] = "marb-014520"
+    operator_session = _expected_operator_session(env["VIBECRAFT_RUN_ID"])
 
     if inside_zellij:
         env["ZELLIJ"] = "operator"
         env["ZELLIJ_PANE_ID"] = "terminal_7"
-        env["ZELLIJ_SESSION_NAME"] = "vibecrafted"
+        env["ZELLIJ_SESSION_NAME"] = operator_session
     else:
-        env["VIBECRAFT_OPERATOR_SESSION"] = "vibecrafted"
+        env["VIBECRAFT_OPERATOR_SESSION"] = operator_session
 
     subprocess.run(
         [

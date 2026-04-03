@@ -203,6 +203,7 @@ spawn_finish_meta() {
   python3 - "$meta_path" "$status" "$exit_code" <<'PY'
 import datetime as dt
 import json
+import re
 import sys
 
 meta_path, status, exit_code = sys.argv[1:4]
@@ -223,6 +224,20 @@ payload["completed_at"] = completed_at.isoformat()
 payload["duration_s"] = duration_s
 payload["status"] = status
 payload["exit_code"] = int(exit_code)
+
+# Parse session_id from transcript (strip ANSI, match "session: <uuid>")
+transcript_path = payload.get("transcript", "")
+if transcript_path:
+    try:
+        with open(transcript_path, "r", errors="replace") as tf:
+            raw = tf.read(64 * 1024)  # first 64KB is enough
+        clean = re.sub(r'\x1b\[[0-9;]*m', '', raw)
+        m = re.search(r'session: ([a-f0-9-]{8,})', clean)
+        if m:
+            payload["session_id"] = m.group(1)
+    except (OSError, IOError):
+        pass  # transcript not readable — skip silently
+
 with open(meta_path, "w", encoding="utf-8") as fh:
     json.dump(payload, fh, indent=2, ensure_ascii=False)
     fh.write("\n")
@@ -253,7 +268,12 @@ spawn_prepare_paths() {
       SPAWN_LOOP_NR=0
       ;;
   esac
-  SPAWN_RUN_ID="${VIBECRAFT_RUN_ID:-$(printf '%s-%03d' "${SPAWN_SKILL_CODE:-impl}" "$SPAWN_LOOP_NR")}"
+  if [[ -n "${VIBECRAFT_RUN_ID:-}" ]]; then
+    SPAWN_RUN_ID="$VIBECRAFT_RUN_ID"
+  else
+    SPAWN_RUN_ID="$(printf '%s-%03d' "${SPAWN_SKILL_CODE:-impl}" "$SPAWN_LOOP_NR")"
+    printf 'Warning: VIBECRAFT_RUN_ID missing; falling back to synthetic run_id %s\n' "$SPAWN_RUN_ID" >&2
+  fi
 
   # Central store path (falls back to per-repo if no git remote)
   local store_base

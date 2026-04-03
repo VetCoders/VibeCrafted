@@ -47,6 +47,115 @@ _vetcoders_repo_root() {
   git rev-parse --show-toplevel 2>/dev/null || pwd
 }
 
+_vetcoders_org_repo() {
+  local root="${1:-$(_vetcoders_repo_root)}"
+  local org_repo=""
+  org_repo="$(cd "$root" && git remote get-url origin 2>/dev/null | sed -E 's|.*[:/]([^/]+)/([^/.]+)(\\.git)?$|\\1/\\2|' || true)"
+  if [[ -n "$org_repo" ]]; then
+    printf '%s\n' "$org_repo"
+  else
+    printf '%s\n' "$(basename "$root")"
+  fi
+}
+
+_vetcoders_skill_prefix() {
+  local name="${1:-}"
+  case "$name" in
+    agents) printf 'agnt\n' ;;
+    decorate) printf 'deco\n' ;;
+    delegate) printf 'delg\n' ;;
+    dou) printf 'vdou\n' ;;
+    followup) printf 'fwup\n' ;;
+    hydrate) printf 'hydr\n' ;;
+    implement|prompt) printf 'impl\n' ;;
+    init) printf 'init\n' ;;
+    justdo) printf 'just\n' ;;
+    marbles) printf 'marb\n' ;;
+    partner) printf 'prtn\n' ;;
+    plan) printf 'plan\n' ;;
+    prune) printf 'prun\n' ;;
+    release) printf 'rels\n' ;;
+    research) printf 'rsch\n' ;;
+    review) printf 'rvew\n' ;;
+    scaffold) printf 'scaf\n' ;;
+    workflow) printf 'wflw\n' ;;
+    *)
+      if [[ -n "$name" ]]; then
+        printf '%.4s\n' "$name"
+      else
+        printf 'impl\n'
+      fi
+      ;;
+  esac
+}
+
+_vetcoders_generate_run_id() {
+  local prefix="$1"
+  printf '%s-%s\n' "$prefix" "$(date +%H%M%S)"
+}
+
+_vetcoders_create_run_lock() {
+  local run_id="$1"
+  local agent="$2"
+  local skill="$3"
+  local root="$4"
+  local org_repo lock_dir lock_file
+  org_repo="$(_vetcoders_org_repo "$root")"
+  lock_dir="$HOME/.vibecrafted/locks/$org_repo"
+  mkdir -p "$lock_dir"
+  lock_file="$lock_dir/${run_id}.lock"
+  cat > "$lock_file" <<LOCK
+run_id=$run_id
+agent=$agent
+skill=$skill
+root=$root
+started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+status=running
+LOCK
+  printf '%s\n' "$lock_file"
+}
+
+_vetcoders_spawn_root_arg() {
+  local arg
+  while [[ $# -gt 0 ]]; do
+    arg="$1"
+    shift
+    case "$arg" in
+      --root)
+        [[ $# -gt 0 ]] || break
+        printf '%s\n' "$1"
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+_vetcoders_ensure_run_context() {
+  local tool="$1"
+  local mode="$2"
+  local root="${3:-$(_vetcoders_repo_root)}"
+  local skill_name="${VIBECRAFT_SKILL_NAME:-$mode}"
+  local skill_code="${VIBECRAFT_SKILL_CODE:-}"
+  local run_id="${VIBECRAFT_RUN_ID:-}"
+  local lock_file=""
+
+  [[ -n "$skill_code" ]] || skill_code="$(_vetcoders_skill_prefix "$skill_name")"
+  [[ -n "${VIBECRAFT_SKILL_NAME:-}" ]] || export VIBECRAFT_SKILL_NAME="$skill_name"
+  export VIBECRAFT_SKILL_CODE="$skill_code"
+
+  if [[ -z "$run_id" ]]; then
+    run_id="$(_vetcoders_generate_run_id "$skill_code")"
+    export VIBECRAFT_RUN_ID="$run_id"
+  fi
+
+  lock_file="$HOME/.vibecrafted/locks/$(_vetcoders_org_repo "$root")/${run_id}.lock"
+  if [[ ! -f "$lock_file" ]]; then
+    lock_file="$(_vetcoders_create_run_lock "$run_id" "$tool" "$skill_name" "$root")"
+  fi
+  export VIBECRAFT_RUN_LOCK="$lock_file"
+}
+
 _vetcoders_default_runtime() {
   printf '%s\n' "${VETCODERS_SPAWN_RUNTIME:-terminal}"
 }
@@ -167,11 +276,16 @@ _vetcoders_operator_layout_file() {
 }
 
 _vetcoders_operator_session_name() {
-  local root
+  local root base run_id
   root="$(_vetcoders_repo_root)"
-  local base
   base="$(basename "$root" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//')"
-  printf '%s\n' "${base:-vibecrafted}"
+  [[ -n "$base" ]] || base="vibecrafted"
+  run_id="${VIBECRAFT_RUN_ID:-}"
+  if [[ -n "$run_id" ]]; then
+    printf '%s-%s\n' "$base" "$run_id"
+  else
+    printf '%s\n' "$base"
+  fi
 }
 
 _vetcoders_in_target_session() {
@@ -509,6 +623,10 @@ _vetcoders_dashboard_session_name() {
   local layout_name slug base_session
   layout_name="$(_vetcoders_dashboard_layout_name "${1:-}")"
   base_session="$(_vetcoders_operator_session_name)"
+  if [[ -n "${VIBECRAFT_RUN_ID:-}" ]]; then
+    printf '%s\n' "$base_session"
+    return 0
+  fi
   if [[ "$layout_name" == "vibecrafted" ]]; then
     printf '%s\n' "$base_session"
     return 0
@@ -773,7 +891,7 @@ _vetcoders_spawn_plan() {
   local mode="$2"
   local plan_file="$3"
   shift 3
-  local script
+  local script root
   local runtime="$(_vetcoders_default_runtime)"
   local idx=1
   while (( idx <= $# )); do
@@ -786,6 +904,9 @@ _vetcoders_spawn_plan() {
     fi
     ((idx+=1))
   done
+  root="$(_vetcoders_spawn_root_arg "$@" 2>/dev/null || true)"
+  [[ -n "$root" ]] || root="$(_vetcoders_repo_root)"
+  _vetcoders_ensure_run_context "$tool" "$mode" "$root"
   _vetcoders_prepare_operator_runtime "$runtime" || return 1
   script="$(_vetcoders_spawn_script "$tool" "${tool}_spawn.sh")" || return 1
   bash "$script" --mode "$mode" "$plan_file" "$@"
@@ -894,7 +1015,6 @@ _vetcoders_skill() {
   local tool="$1"
   local skill="$2"
   shift 2
-  local code="${skill:0:4}"
   local loop_nr="${VIBECRAFT_LOOP_NR:-0}"
   _vetcoders_parse_contract "$@" || return 1
   [[ -z "$_vetcoders_contract_count" ]] || {
@@ -913,7 +1033,7 @@ _vetcoders_skill() {
   prompt="$(_vetcoders_compose_skill_prompt "$skill" "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1
   local spawn_args=(--runtime "$(_vetcoders_effective_runtime)")
   [[ -n "$_vetcoders_contract_root" ]] && spawn_args+=(--root "$_vetcoders_contract_root")
-  VIBECRAFT_SKILL_CODE="$code" VIBECRAFT_LOOP_NR="$loop_nr" VIBECRAFT_SKILL_NAME="$skill" _vetcoders_prompt_text "$tool" implement "$prompt" "${spawn_args[@]}"
+  VIBECRAFT_SKILL_CODE="$(_vetcoders_skill_prefix "$skill")" VIBECRAFT_LOOP_NR="$loop_nr" VIBECRAFT_SKILL_NAME="$skill" _vetcoders_prompt_text "$tool" implement "$prompt" "${spawn_args[@]}"
 }
 
 _vetcoders_skill_entry() {

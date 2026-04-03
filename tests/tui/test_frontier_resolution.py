@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -35,6 +36,13 @@ def _write_capture_binary(bin_dir: Path, name: str, capture_file: Path) -> None:
         encoding="utf-8",
     )
     script.chmod(0o755)
+
+
+def _expected_operator_session(run_id: str | None = None) -> str:
+    base = (
+        re.sub(r"[^a-z0-9]+", "-", REPO_ROOT.name.lower()).strip("-") or "vibecrafted"
+    )
+    return f"{base}-{run_id}" if run_id else base
 
 
 def test_vc_frontier_paths_mix_repo_prompt_with_companion_zellij(
@@ -112,6 +120,49 @@ def test_vc_dashboard_mixes_companion_zellij_config_with_repo_layout(
         str(REPO_ROOT / "config" / "zellij" / "layouts" / "vc-marbles.kdl") in payload
     )
     assert f"ZELLIJ_CONFIG_DIR={zellij_config.parent}" in payload
+
+
+def test_vc_dashboard_uses_base_run_id_session_without_layout_suffix(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    xdg_config_home = tmp_path / "xdg"
+    fake_bin = tmp_path / "bin"
+    capture_file = tmp_path / "zellij-args.txt"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_capture_binary(fake_bin, "zellij", capture_file)
+
+    zellij_config = xdg_config_home / "vetcoders" / "frontier" / "zellij" / "config.kdl"
+    zellij_config.parent.mkdir(parents=True)
+    zellij_config.write_text("layout {}\n", encoding="utf-8")
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["XDG_CONFIG_HOME"] = str(xdg_config_home)
+    env["VIBECRAFT_ROOT"] = str(REPO_ROOT)
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["VIBECRAFT_RUN_ID"] = "marb-014520"
+    env.pop("ZELLIJ_CONFIG_DIR", None)
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_PANE_ID", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+
+    subprocess.run(
+        ["bash", "-lc", f'source "{HELPER_SCRIPT}"; vc-dashboard vc-marbles'],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+    payload = capture_file.read_text(encoding="utf-8").splitlines()
+    assert "--session" in payload
+    assert _expected_operator_session(env["VIBECRAFT_RUN_ID"]) in payload
+    assert (
+        f"{_expected_operator_session(env['VIBECRAFT_RUN_ID'])}-marbles" not in payload
+    )
 
 
 def test_sourcing_helper_exports_frontier_sidecars_per_asset(
