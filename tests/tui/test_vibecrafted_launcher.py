@@ -161,3 +161,35 @@ def test_dashboard_subcommand_launches_repo_owned_zellij_layout(tmp_path: Path) 
         str(REPO_ROOT / "config" / "zellij" / "layouts" / "vc-dashboard.kdl") in payload
     )
     assert f"ZELLIJ_CONFIG_DIR={REPO_ROOT / 'config' / 'zellij'}" in payload
+
+
+def test_start_subcommand_launches_operator_entrypoint_layout(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    capture_file = tmp_path / "zellij-args.txt"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_fake_command(fake_bin, "zellij", capture_file)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["CAPTURE_FILE"] = str(capture_file)
+    env.pop("ZELLIJ_CONFIG_DIR", None)
+
+    subprocess.run(
+        ["bash", str(LAUNCHER), "start"],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+    payload = capture_file.read_text(encoding="utf-8").splitlines()
+    assert "--session" in payload
+    assert "vibecrafted" in payload
+    assert "--new-session-with-layout" in payload
+    assert (
+        str(REPO_ROOT / "config" / "zellij" / "layouts" / "vibecrafted.kdl") in payload
+    )
+    assert f"ZELLIJ_CONFIG_DIR={REPO_ROOT / 'config' / 'zellij'}" in payload

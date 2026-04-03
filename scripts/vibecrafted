@@ -323,7 +323,8 @@ cmd_help_full() {
 }
 
 cmd_start() {
-  cmd_dashboard "$@"
+  _ensure_helpers_loaded || return 1
+  _run_helper vc-start "$@"
 }
 
 cmd_init() {

@@ -167,6 +167,10 @@ _vetcoders_dashboard_layout_file() {
 _vetcoders_dashboard_session_name() {
   local layout_name slug
   layout_name="$(_vetcoders_dashboard_layout_name "${1:-}")"
+  if [[ "$layout_name" == "vibecrafted" ]]; then
+    printf 'vibecrafted\n'
+    return 0
+  fi
   slug="${layout_name#vc-}"
   printf 'vibecrafted-%s\n' "$slug"
 }
@@ -546,7 +550,7 @@ _vetcoders_marbles() {
 
   # Inside zellij: run marbles orchestrator in a pane below, keep operator free
   if [[ -n "${ZELLIJ:-}" ]] && command -v zellij >/dev/null 2>&1; then
-    zellij run --name "marbles" --direction down -- /bin/zsh -l -c "bash '$script' ${marbles_args[*]}"
+    zellij run --name "marbles" --direction down -- /bin/zsh -l -c "export VIBECRAFT_ZELLIJ_SPAWN_DIRECTION=right; bash '$script' ${marbles_args[*]}"
   else
     bash "$script" "${marbles_args[@]}"
   fi
@@ -945,6 +949,10 @@ repo-full() {
   echo
 
   echo "==================== DONE ===================="
+}
+
+vc-start() {
+  _vetcoders_launch_dashboard vibecrafted "$@"
 }
 
 vc-frontier-paths() {

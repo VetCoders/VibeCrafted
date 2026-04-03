@@ -65,3 +65,44 @@ def test_generated_launcher_runs_from_spawn_root(tmp_path: Path) -> None:
     )
 
     assert report.read_text(encoding="utf-8").strip() == str(root_dir)
+
+
+def test_spawn_in_zellij_pane_honors_requested_direction(tmp_path: Path) -> None:
+    launcher = tmp_path / "launch.sh"
+    launcher.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    launcher.chmod(0o755)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture_file = tmp_path / "zellij-args.txt"
+    zellij = fake_bin / "zellij"
+    zellij.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'printf "%s\\n" "$@" > "$CAPTURE_FILE"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    zellij.chmod(0o755)
+
+    _bash(
+        f'''
+        set -euo pipefail
+        export PATH="{fake_bin}:$PATH"
+        export CAPTURE_FILE="{capture_file}"
+        export ZELLIJ=1
+        export VIBECRAFT_ZELLIJ_SPAWN_DIRECTION=down
+        source "{COMMON_SH}"
+        spawn_in_zellij_pane "{launcher}" "workflow"
+        '''
+    )
+
+    payload = capture_file.read_text(encoding="utf-8").splitlines()
+    assert "--name" in payload
+    assert "workflow" in payload
+    assert "--direction" in payload
+    assert "down" in payload
