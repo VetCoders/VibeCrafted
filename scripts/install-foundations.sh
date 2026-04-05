@@ -26,7 +26,20 @@ AICX_REPO="VetCoders/ai-contexters"
 PRVIEW_CRATE="prview"
 PRVIEW_REPO="VetCoders/prview"
 
-PREFIX="${VIBECRAFTED_BIN:-$VIBECRAFTED_ROOT/.vibecrafted/bin}"
+default_vibecrafted_home() {
+  if [[ -n "${VIBECRAFTED_HOME:-}" ]]; then
+    printf '%s\n' "$VIBECRAFTED_HOME"
+    return
+  fi
+  if [[ -n "${VIBECRAFTED_ROOT:-}" ]]; then
+    printf '%s\n' "$VIBECRAFTED_ROOT/.vibecrafted"
+    return
+  fi
+  printf '%s\n' "$HOME/.vibecrafted"
+}
+
+VIBECRAFTED_HOME="$(default_vibecrafted_home)"
+PREFIX="${VIBECRAFTED_BIN:-$VIBECRAFTED_HOME/bin}"
 CHECK_ONLY=0
 INSTALL_ALL=0
 TARGETS=()
@@ -317,7 +330,7 @@ install_prview() {
 # ---------------------------------------------------------------------------
 
 usage() {
-  cat <<'EOF'
+  cat <<EOF
 Usage: install-foundations.sh [options] [targets...]
 
 Targets:
@@ -329,7 +342,7 @@ Targets:
 Options:
   --all        Install all foundations (including optional)
   --check      Dry-run: show what would be installed
-  --prefix DIR Install binaries to DIR (default: $VIBECRAFTED_ROOT/.vibecrafted/bin)
+  --prefix DIR Install binaries to DIR (default: $PREFIX)
   --help       Show this help
 EOF
 }
