@@ -59,6 +59,10 @@
     --banner-height: 36px;
     --chrome-offset: 108px;
     --page-shell: min(1240px, calc(100% - 8vw));
+    --footer-peek: clamp(4.6rem, 8vh, 5.6rem);
+    --footer-hover-bridge: clamp(1.05rem, 2vw, 1.8rem);
+    --strip-bleed-pad: clamp(1rem, 3vw, 2.25rem);
+    --strip-fade-width: clamp(4.5rem, 9vw, 8rem);
     --gap-section: clamp(2.5rem, 5vh, 4rem);
     --hero-canvas-max: min(480px, calc(100svh - var(--nav-height) - var(--banner-height) - var(--space-xl) - var(--space-lg)));
 
@@ -2124,6 +2128,52 @@ footer {
     flex-direction: column;
     align-items: center;
     gap: 0.75rem;
+    position: relative;
+    overflow: visible;
+}
+
+.footer-shell {
+    isolation: isolate;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .shell {
+        padding-bottom: calc(var(--footer-peek) + 1.5rem);
+    }
+
+    .footer-shell {
+        position: fixed;
+        left: 50%;
+        bottom: 0.75rem;
+        width: min(var(--page-shell), calc(100% - 3rem));
+        margin: 0;
+        z-index: 95;
+        transform: translate3d(-50%, calc(100% - var(--footer-peek)), 0);
+        transition: transform 0.25s cubic-bezier(0.18, 0.9, 0.24, 1) 0.08s,
+                    border-color 0.18s ease 0.08s,
+                    box-shadow 0.18s ease 0.08s;
+        will-change: transform;
+    }
+
+    .footer-shell::before {
+        content: "";
+        position: absolute;
+        left: -1rem;
+        right: -1rem;
+        top: calc(-1 * var(--footer-hover-bridge));
+        bottom: -0.75rem;
+        background: transparent;
+        pointer-events: auto;
+    }
+
+    .footer-shell:hover,
+    .footer-shell:focus-within,
+    .footer-shell[data-drawer-open="true"] {
+        transform: translate3d(-50%, 0, 0);
+        border-color: rgba(184, 115, 51, 0.32);
+        box-shadow: 0 22px 46px rgba(0, 0, 0, 0.24), inset 0 1px 0 var(--glass-panel-highlight);
+        transition-delay: 0s;
+    }
 }
 
 .footer-brand {
@@ -2429,8 +2479,11 @@ footer {
 /* FRAMEWORK FILM STRIP */
 .framework-strip-wrap {
     position: relative;
-    width: 100%;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    padding-inline: var(--strip-bleed-pad);
     overflow: hidden;
+    isolation: isolate;
 }
 
 .framework-strip {
@@ -2440,7 +2493,8 @@ footer {
     scroll-snap-type: none;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
-    padding: var(--space-md) var(--space-xl);
+    padding: var(--space-md) 0 calc(var(--space-md) + 0.25rem);
+    scroll-padding-inline: calc(var(--strip-bleed-pad) + 0.5rem);
     scrollbar-width: none;
 }
 
@@ -2449,7 +2503,7 @@ footer {
 }
 
 .framework-strip .card {
-    flex: 0 0 300px;
+    flex: 0 0 clamp(280px, 22vw, 320px);
     scroll-snap-align: none;
 }
 
@@ -2460,7 +2514,7 @@ footer {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 80px;
+    width: var(--strip-fade-width);
     z-index: 2;
     pointer-events: none;
 }
@@ -2494,6 +2548,7 @@ footer {
     display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
 }
 
 .strip-arrow:hover {
@@ -2502,11 +2557,11 @@ footer {
 }
 
 .strip-arrow--left {
-    left: 8px;
+    left: clamp(0.55rem, 1.4vw, 1rem);
 }
 
 .strip-arrow--right {
-    right: 8px;
+    right: clamp(0.55rem, 1.4vw, 1rem);
 }
 
 @media (hover: none) {

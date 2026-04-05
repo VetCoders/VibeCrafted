@@ -1208,6 +1208,10 @@ function shuffleArr(a) {
     if (!originals.length) return;
     var cycleWidth = 0;
     var resetQueued = false;
+    var targetScrollLeft = 0;
+    var velocity = 0;
+    var animationFrame = 0;
+    var isMomentumScroll = false;
 
     function cloneCard(card) {
         var clone = card.cloneNode(true);
@@ -1237,19 +1241,27 @@ function shuffleArr(a) {
         }, 0);
     }
 
+    function normalizeScrollLeft(value) {
+        if (!cycleWidth) return value;
+        while (value < cycleWidth * 0.5) {
+            value += cycleWidth;
+        }
+        while (value > cycleWidth * 1.5) {
+            value -= cycleWidth;
+        }
+        return value;
+    }
+
     function jumpToMiddle(force) {
         measureCycleWidth();
         if (!cycleWidth) return;
         if (force) {
             strip.scrollLeft = cycleWidth;
+            targetScrollLeft = cycleWidth;
             return;
         }
-        while (strip.scrollLeft < cycleWidth * 0.5) {
-            strip.scrollLeft += cycleWidth;
-        }
-        while (strip.scrollLeft > cycleWidth * 1.5) {
-            strip.scrollLeft -= cycleWidth;
-        }
+        strip.scrollLeft = normalizeScrollLeft(strip.scrollLeft);
+        targetScrollLeft = normalizeScrollLeft(targetScrollLeft || strip.scrollLeft);
     }
 
     function queueWrap() {
@@ -1269,11 +1281,64 @@ function shuffleArr(a) {
         return width + gap;
     }
 
+    function stopMomentum() {
+        velocity = 0;
+        if (!animationFrame) return;
+        cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
+    }
+
+    function stepMomentum() {
+        animationFrame = 0;
+        measureCycleWidth();
+        if (!cycleWidth) return;
+
+        var current = strip.scrollLeft;
+        var delta = targetScrollLeft - current;
+        var attraction = prefersReducedMotion ? 0.18 : 0.11;
+        var damping = prefersReducedMotion ? 0.56 : 0.82;
+
+        velocity += delta * attraction;
+        velocity *= damping;
+
+        if (Math.abs(delta) < 0.35 && Math.abs(velocity) < 0.16) {
+            isMomentumScroll = true;
+            strip.scrollLeft = targetScrollLeft;
+            queueWrap();
+            isMomentumScroll = false;
+            velocity = 0;
+            return;
+        }
+
+        isMomentumScroll = true;
+        strip.scrollLeft = current + velocity;
+        queueWrap();
+        animationFrame = requestAnimationFrame(stepMomentum);
+    }
+
+    function ensureMomentum() {
+        if (prefersReducedMotion) {
+            stopMomentum();
+            strip.scrollLeft = targetScrollLeft;
+            queueWrap();
+            return;
+        }
+        if (!animationFrame) {
+            animationFrame = requestAnimationFrame(stepMomentum);
+        }
+    }
+
+    function pushMomentum(distance, impulseMultiplier) {
+        measureCycleWidth();
+        if (!cycleWidth) return;
+        targetScrollLeft = normalizeScrollLeft((targetScrollLeft || strip.scrollLeft) + distance);
+        velocity += distance * impulseMultiplier;
+        ensureMomentum();
+    }
+
     function scrollStrip(direction) {
-        strip.scrollBy({
-            left: direction * getScrollAmount(),
-            behavior: prefersReducedMotion ? 'auto' : 'smooth'
-        });
+        var amount = getScrollAmount() * (prefersReducedMotion ? 1 : 1.15);
+        pushMomentum(direction * amount, prefersReducedMotion ? 0.02 : 0.04);
     }
 
     seedInfiniteStrip();
@@ -1287,18 +1352,72 @@ function shuffleArr(a) {
         scrollStrip(1);
     });
 
-    strip.addEventListener('scroll', queueWrap, {passive: true});
+    strip.addEventListener('pointerdown', function () {
+        stopMomentum();
+        targetScrollLeft = strip.scrollLeft;
+    });
+
+    strip.addEventListener('touchstart', function () {
+        stopMomentum();
+        targetScrollLeft = strip.scrollLeft;
+    }, {passive: true});
+
+    strip.addEventListener('scroll', function () {
+        if (!isMomentumScroll) {
+            targetScrollLeft = strip.scrollLeft;
+        }
+        queueWrap();
+        isMomentumScroll = false;
+    }, {passive: true});
 
     wrap.addEventListener('wheel', function (event) {
         var delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
         if (!delta) return;
         event.preventDefault();
-        strip.scrollLeft += delta;
-        queueWrap();
+        pushMomentum(delta, prefersReducedMotion ? 0.02 : 0.035);
     }, {passive: false});
 
     window.addEventListener('resize', function () {
+        stopMomentum();
         jumpToMiddle(false);
+    });
+})();
+
+// ============ FOOTER DRAWER STABILIZER ============
+(function () {
+    var footer = document.querySelector('.footer-shell');
+    if (!footer || !window.matchMedia || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
+    var closeTimer = 0;
+
+    function openDrawer() {
+        if (closeTimer) {
+            clearTimeout(closeTimer);
+            closeTimer = 0;
+        }
+        footer.setAttribute('data-drawer-open', 'true');
+    }
+
+    function closeDrawerSoon() {
+        if (closeTimer) clearTimeout(closeTimer);
+        closeTimer = window.setTimeout(function () {
+            footer.removeAttribute('data-drawer-open');
+            closeTimer = 0;
+        }, 120);
+    }
+
+    footer.addEventListener('pointerenter', openDrawer);
+    footer.addEventListener('pointerleave', closeDrawerSoon);
+    footer.addEventListener('focusin', openDrawer);
+    footer.addEventListener('focusout', function (event) {
+        if (footer.contains(event.relatedTarget)) return;
+        closeDrawerSoon();
+    });
+
+    window.addEventListener('blur', function () {
+        if (closeTimer) clearTimeout(closeTimer);
+        closeTimer = 0;
+        footer.removeAttribute('data-drawer-open');
     });
 })();
 
