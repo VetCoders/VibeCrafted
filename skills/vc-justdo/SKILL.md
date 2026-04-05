@@ -117,6 +117,9 @@ While implementing:
 - Do not refactor unrelated code
 - Do not add features the user did not ask for
 - Commit logical chunks, not one mega-diff
+- In `decorate` rounds, preserve progress incrementally like marbles. Use local
+  numbered commits such as `decorate 1: ...`, `decorate 2: ...` as verified
+  seams harden.
 
 ### 5. Followup (mandatory)
 

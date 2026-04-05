@@ -105,6 +105,10 @@ needs it:
   need to read other agents' plan files unless the plan explicitly requires it.
 - If the original plan clearly calls for a stabilization checkpoint, the agent
   must preserve its tranche of work with a local commit, without push.
+- During active `decorate` rounds, prefer incremental local commits over one
+  giant end-of-task snapshot. Use numbered subjects in the form
+  `decorate 1: ...`, `decorate 2: ...`, and continue upward as the round
+  hardens distinct seams.
 - Never change branches during active work. The intent is to stay on the
   current working branch and keep building inside that living tree.
 - Plans may explicitly instruct the agent to finish and harden one seam, spawn
