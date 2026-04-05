@@ -166,7 +166,7 @@ if (( use_watcher )); then
     --failure-hook "$failure_hook"
   )
 
-  VIBECRAFTED_STORE_DIR="$store" bash "$SCRIPT_DIR/${agent}_spawn.sh" "${spawn_args[@]}" "$l1_plan" &
+  VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right VIBECRAFTED_STORE_DIR="$store" bash "$SCRIPT_DIR/${agent}_spawn.sh" "${spawn_args[@]}" "$l1_plan" &
 
   # Hand off to watcher as foreground process
   exec bash "$SCRIPT_DIR/marbles_watcher.sh" \
@@ -186,5 +186,5 @@ else
     --failure-hook "$failure_hook"
   )
 
-  VIBECRAFTED_STORE_DIR="$store" bash "$SCRIPT_DIR/${agent}_spawn.sh" "${spawn_args[@]}" "$l1_plan"
+  VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right VIBECRAFTED_STORE_DIR="$store" bash "$SCRIPT_DIR/${agent}_spawn.sh" "${spawn_args[@]}" "$l1_plan"
 fi

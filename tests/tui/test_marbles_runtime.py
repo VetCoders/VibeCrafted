@@ -95,7 +95,7 @@ def _run_marbles_prompt(tmp_path: Path, *, inside_zellij: bool) -> list[str]:
             "-lc",
             (
                 f'source "{HELPER_SCRIPT}"; '
-                'vc-marbles claude --count 1 --prompt "weź i vc-justdo wszystko co marbles znajdzie"'
+                'claude-marbles --count 1 --prompt "weź i vc-justdo wszystko co marbles znajdzie"'
             ),
         ],
         check=True,
