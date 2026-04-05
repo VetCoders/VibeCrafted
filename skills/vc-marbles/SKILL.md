@@ -67,10 +67,10 @@ intolerance, or discrimination towards any other agent.
 ### Marbles living tree exception
 
 **`vc-marbles` is the one of the skills where keeping the living tree is disallowed**
-Agent is obliged to commit all the changes whit canonical commit message consist at the end of the loop.\*\*
+Agent is obliged to commit all the changes whit canonical commit message consist of the loop number and the description of the changes made during it.
 
-The marbles are the convergence
-If any other agent left a living tree after its job, and you \*\*
+**The marbles are the convergence driven process**
+It has the telemetry and the metrics that are used to determine the stability of the codebase after each round.
 
 ### Evidence-Based Execution
 
