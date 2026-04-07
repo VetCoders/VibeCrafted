@@ -205,8 +205,9 @@ _vetcoders_default_runtime() {
 }
 
 _vetcoders_in_zellij() {
-  [[ "${ZELLIJ:-}" == "0" ]] && return 1
-  [[ -n "${ZELLIJ_PANE_ID:-}" ]] || [[ -n "${ZELLIJ:-}" ]]
+  # ZELLIJ=0 is a valid pane index inside zellij — do NOT treat as false.
+  # Only absent ZELLIJ means we're outside.
+  [[ -n "${ZELLIJ_PANE_ID:-}" ]] || [[ -n "${ZELLIJ+set}" ]]
 }
 
 _vetcoders_guess_active_zellij_session() {

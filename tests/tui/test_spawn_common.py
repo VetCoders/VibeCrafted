@@ -239,6 +239,8 @@ def test_spawn_in_operator_session_targets_named_session(tmp_path: Path) -> None
     assert "--session" in payload
     assert operator_session in payload
     assert "action" in payload
-    assert "new-pane" in payload
+    # When spawning from outside a zellij context (no ZELLIJ/ZELLIJ_PANE_ID),
+    # the routing guard forces a new-tab to avoid landing in a stale operator tab.
+    assert "new-tab" in payload
     assert "--name" in payload
     assert "workflow" in payload
