@@ -97,8 +97,7 @@ The `` is not decoration. It is the mark.
 Non-destructive. Interactive. Transparent. Reversible.
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/VetCoders/vibecrafted/main/install.sh
-bash install.sh
+curl -fsSL https://vibecrafted.io/install.sh | bash
 ```
 
 The installer stages a local control plane under `$VIBECRAFTED_ROOT/.vibecrafted/tools/`, then runs the orchestrator interactively. It tells you what it does before it does it. It asks before touching your shell config.

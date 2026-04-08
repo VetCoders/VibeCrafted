@@ -6,8 +6,7 @@ and start converging.
 ## 1. Install
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/VetCoders/vibecrafted/main/install.sh
-bash install.sh
+curl -fsSL https://vibecrafted.io/install.sh | bash
 ```
 
 Non-destructive. Interactive. Tells you what it does before it does it.

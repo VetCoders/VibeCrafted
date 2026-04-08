@@ -800,7 +800,7 @@ _vetcoders_launch_dashboard() {
   local layout_name layout_file session_name repo_source repo_zellij_dir
   _vetcoders_normalize_ambient_context
   layout_name="$(_vetcoders_dashboard_layout_name "${1:-}")"
-  shift || true
+  (( $# )) && shift
 
   command -v zellij >/dev/null 2>&1 || {
     echo "zellij is required for vibecrafted dashboard." >&2

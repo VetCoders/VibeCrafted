@@ -12,8 +12,8 @@ Interactive terminals always enter the installer TUI.
 Non-interactive runs bypass TUI and call the compact installer directly.
 
 Examples:
-  curl -fsSLO <raw-install-url> && bash install.sh
-  curl -fsSLO <raw-install-url> && bash install.sh --ref develop
+  curl -fsSL https://vibecrafted.io/install.sh | bash
+  curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --ref develop
   bash install.sh doctor
   bash install.sh --archive-file /tmp/vibecrafted.tar.gz vibecrafted
 EOF_USAGE
