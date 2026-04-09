@@ -1,5 +1,90 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=SC2120
+spawn_workflow_label() {
+  local skill_name="${1:-${SPAWN_SKILL_NAME:-${VIBECRAFTED_SKILL_NAME:-}}}"
+  if [[ -n "$skill_name" ]]; then
+    printf 'vc-%s\n' "$skill_name"
+  else
+    printf 'vc-workflow\n'
+  fi
+}
+
+spawn_write_startup_monitor_script() {
+  local script_path="$1"
+  local common_path="$2"
+  local meta_path="$3"
+  local transcript_path="$4"
+  local report_path="$5"
+  local session_name="$6"
+  local workflow_name="$7"
+  local landing_kind="$8"
+  local landing_name="$9"
+
+  local q_common q_meta q_transcript q_report q_session q_workflow q_kind q_name
+  q_common="$(spawn_shell_quote "$common_path")"
+  q_meta="$(spawn_shell_quote "$meta_path")"
+  q_transcript="$(spawn_shell_quote "$transcript_path")"
+  q_report="$(spawn_shell_quote "$report_path")"
+  q_session="$(spawn_shell_quote "$session_name")"
+  q_workflow="$(spawn_shell_quote "$workflow_name")"
+  q_kind="$(spawn_shell_quote "$landing_kind")"
+  q_name="$(spawn_shell_quote "$landing_name")"
+
+  cat > "$script_path" <<EOF_MONITOR
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'rm -f "\$0"' EXIT
+source $q_common
+session_name=$q_session
+workflow_name=$q_workflow
+landing_kind=$q_kind
+landing_name=$q_name
+
+printf 'Your vibecrafted session %s invoked the %s run that landed in %s %s.\\n' "\$session_name" "\$workflow_name" "\$landing_kind" "\$landing_name"
+printf 'Watching startup for %ss...\\n\\n' "\${VIBECRAFTED_SPAWN_WATCH_SECONDS:-10}"
+spawn_watch_startup $q_meta $q_transcript $q_report
+EOF_MONITOR
+
+  chmod +x "$script_path"
+}
+
+spawn_open_startup_monitor_pane() {
+  local session_name="$1"
+  local workflow_name="$2"
+  local landing_kind="$3"
+  local landing_name="$4"
+  local root_dir="${5:-${SPAWN_ROOT:-$(pwd)}}"
+  local common_path monitor_script cmd_script
+
+  [[ -n "$session_name" ]] || return 1
+  [[ -n "${SPAWN_META:-}" && -n "${SPAWN_TRANSCRIPT:-}" && -n "${SPAWN_REPORT:-}" ]] || return 1
+  command -v zellij >/dev/null 2>&1 || return 1
+
+  common_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)/common.sh"
+  monitor_script="$(mktemp "${TMPDIR:-/tmp}/vc-startup-monitor.XXXXXX")"
+  cmd_script="$(mkdir -p "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tmp" && mktemp "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tmp/vc-spawn-cmd.XXXXXX")"
+
+  spawn_write_startup_monitor_script \
+    "$monitor_script" \
+    "$common_path" \
+    "${SPAWN_META:-}" \
+    "${SPAWN_TRANSCRIPT:-}" \
+    "${SPAWN_REPORT:-}" \
+    "$session_name" \
+    "$workflow_name" \
+    "$landing_kind" \
+    "$landing_name"
+
+  spawn_write_command_script "$cmd_script" "bash '$monitor_script'; exit" || return 1
+
+  zellij --session "$session_name" action new-pane \
+    --direction down \
+    --height 30% \
+    --name "startup-monitor" \
+    --cwd "$root_dir" \
+    -- "$cmd_script"
+}
 
 spawn_in_zellij_context() {
   # ZELLIJ=0 is a valid pane index inside zellij — do NOT treat as false.
@@ -71,58 +156,6 @@ spawn_pane_direction() {
   fi
 }
 
-spawn_current_tab_name() {
-  # Return the name of the currently focused zellij tab via env.
-  printf '%s\n' "${ZELLIJ_TAB_NAME:-}"
-}
-
-spawn_in_marbles_tab() {
-  # Route a pane into the dedicated marbles tab, then restore operator focus.
-  # Called only when SPAWN_LOOP_NR > 0 AND VIBECRAFTED_MARBLES_TAB_NAME is set.
-  local launcher="$1"
-  local pane_name="$2"
-  local direction="$3"
-  local marbles_tab="${VIBECRAFTED_MARBLES_TAB_NAME:-}"
-  local original_tab=""
-  local cmd_script=""
-  local launch_cmd="bash '$launcher'"
-
-  [[ -n "$marbles_tab" ]] || return 1
-
-  # Capture operator's current tab before switching.
-  original_tab="$(spawn_current_tab_name)"
-
-  cmd_script="$(spawn_tmp_script_path "vc-spawn-cmd" "${SPAWN_ROOT:-$(pwd)}")"
-  spawn_write_command_script "$cmd_script" "$launch_cmd"
-
-  # Focus (or create) the marbles tab.
-  zellij action go-to-tab-name "$marbles_tab" --create 2>/dev/null || true
-
-  # Create the pane inside the marbles tab.  Even when grid policy says
-  # new-tab, inside marbles context we add a pane to the existing marbles
-  # tab to keep everything grouped.
-  if [[ "$direction" == "new-tab" ]]; then
-    zellij action new-pane \
-      --direction right \
-      --name "$pane_name" \
-      --cwd "${SPAWN_ROOT:-$(pwd)}" \
-      -- "$cmd_script" >/dev/null
-  else
-    zellij action new-pane \
-      --direction "$direction" \
-      --name "$pane_name" \
-      --cwd "${SPAWN_ROOT:-$(pwd)}" \
-      -- "$cmd_script" >/dev/null
-  fi
-
-  # Restore operator's focus to their original tab.
-  if [[ -n "$original_tab" ]]; then
-    zellij action go-to-tab-name "$original_tab" 2>/dev/null || true
-  fi
-
-  return 0
-}
-
 spawn_in_zellij_pane() {
   local launcher="$1"
   local pane_name="${2:-agent}"
@@ -139,14 +172,6 @@ spawn_in_zellij_pane() {
       return 1
     fi
 
-    # Marbles loop panes (L2, L3...) route to dedicated marbles tab to avoid
-    # stealing operator focus.
-    if [[ "${SPAWN_LOOP_NR:-0}" -gt 0 && -n "${VIBECRAFTED_MARBLES_TAB_NAME:-}" ]]; then
-      if spawn_in_marbles_tab "$launcher" "$pane_name" "$direction"; then
-        return 0
-      fi
-    fi
-
     session_name="$(spawn_effective_operator_session 2>/dev/null || true)"
     workflow_name="$(spawn_workflow_label)"
     if [[ "$direction" == "new-tab" && -n "$session_name" ]]; then
@@ -155,20 +180,20 @@ spawn_in_zellij_pane() {
       fi
     fi
 
-    cmd_script="$(spawn_tmp_script_path "vc-spawn-cmd" "${SPAWN_ROOT:-$(pwd)}")"
+    cmd_script="$(mkdir -p "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tmp" && mktemp "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tmp/vc-spawn-cmd.XXXXXX")"
     spawn_write_command_script "$cmd_script" "$launch_cmd"
 
     if [[ "$direction" == "new-tab" ]]; then
       zellij action new-tab \
         --name "$pane_name" \
         --cwd "${SPAWN_ROOT:-$(pwd)}" \
-        -- "$cmd_script" >/dev/null
+        -- "$cmd_script"
     else
       zellij action new-pane \
         --direction "$direction" \
         --name "$pane_name" \
         --cwd "${SPAWN_ROOT:-$(pwd)}" \
-        -- "$cmd_script" >/dev/null
+        -- "$cmd_script"
     fi
     return 0
   fi
@@ -206,7 +231,7 @@ spawn_in_operator_session() {
     fi
   fi
 
-  cmd_script="$(spawn_tmp_script_path "vc-spawn-cmd" "${SPAWN_ROOT:-$(pwd)}")"
+  cmd_script="$(mkdir -p "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tmp" && mktemp "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tmp/vc-spawn-cmd.XXXXXX")"
   spawn_write_command_script "$cmd_script" "$launch_cmd"
 
   # External spawn into existing operator session — route as pane or new tab per grid policy.
@@ -214,35 +239,12 @@ spawn_in_operator_session() {
     zellij --session "$session_name" action new-tab \
       --name "$pane_name" \
       --cwd "${SPAWN_ROOT:-$(pwd)}" \
-      -- "$cmd_script" >/dev/null
+      -- "$cmd_script"
   else
     zellij --session "$session_name" action new-pane \
       --direction "$effective_direction" \
       --name "$pane_name" \
       --cwd "${SPAWN_ROOT:-$(pwd)}" \
-      -- "$cmd_script" >/dev/null
+      -- "$cmd_script"
   fi
-}
-
-spawn_probe() {
-  local transcript_path="$1"
-  local probe_seconds="${VIBECRAFTED_SPAWN_PROBE_SECONDS:-15}"
-  local agent_name="${SPAWN_AGENT:-agent}"
-
-  # Skip if disabled or not in zellij
-  [[ "${VIBECRAFTED_SPAWN_PROBE:-1}" == "1" ]] || return 0
-  spawn_in_zellij_context || return 0
-  command -v zellij >/dev/null 2>&1 || return 0
-  [[ -n "$transcript_path" ]] || return 0
-
-  # Brief delay for transcript file to appear
-  (
-    sleep 2
-    [[ -f "$transcript_path" ]] || exit 0
-    zellij run --floating --close-on-exit \
-      --width 20% --x 80% --y 10% --height 40% \
-      --name "probe-${agent_name}" \
-      -- timeout "$probe_seconds" tail -f "$transcript_path" \
-      2>/dev/null || true
-  ) &
 }
