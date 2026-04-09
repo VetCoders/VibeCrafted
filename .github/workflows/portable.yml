@@ -3,6 +3,7 @@ name: Portable Checks
 on:
   push:
   pull_request:
+  merge_group:
 
 jobs:
   portable:
@@ -22,6 +23,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
+      - name: Install shellcheck on macOS
+        if: matrix.os == 'macOS'
+        run: brew install shellcheck
       - name: Run shell checks
         run: make check
       - name: Install uv
@@ -39,6 +43,7 @@ jobs:
 
   curl-bootstrap:
     name: curl | bash bootstrap
+    if: github.event_name == 'merge_group'
     needs: portable
     runs-on: ubuntu-latest
     steps:

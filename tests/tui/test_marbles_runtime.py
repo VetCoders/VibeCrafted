@@ -30,6 +30,7 @@ def _write_replaying_zellij(script_path: Path) -> None:
             [
                 "#!/usr/bin/env python3",
                 "import os",
+                "import shutil",
                 "import subprocess",
                 "import sys",
                 "from pathlib import Path",
@@ -37,7 +38,8 @@ def _write_replaying_zellij(script_path: Path) -> None:
                 "args = sys.argv[1:]",
                 'Path(os.environ["ZELLIJ_CAPTURE_FILE"]).write_text("\\n".join(args) + "\\n", encoding="utf-8")',
                 "if args:",
-                "    subprocess.run(['/bin/zsh', '-lc', args[-1]], check=True, env=os.environ.copy())",
+                "    shell = shutil.which('zsh') or shutil.which('bash') or '/bin/sh'",
+                "    subprocess.run([shell, '-lc', args[-1]], check=True, env=os.environ.copy())",
             ]
         )
         + "\n",

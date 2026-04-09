@@ -22,10 +22,10 @@ session_lock="$8"
 state_dir="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/marbles/$run_id"
 mkdir -p "$state_dir"
 state_file="$state_dir/state.json"
-report_timeout_s="${VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S:-3600}"
+report_timeout_s="${VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S:-5400}"
 case "$report_timeout_s" in
   ''|*[!0-9]*)
-    report_timeout_s=3600
+    report_timeout_s=5400
     ;;
 esac
 report_poll_s=5
@@ -331,6 +331,55 @@ _extract_metrics() {
   printf '%s %s %s %s' "${p0:-}" "${p1:-}" "${p2:-}" "${score:-}"
 }
 
+# ── Fix A: Meta.json-based path resolution ───────────────────────────
+# spawn_write_meta() records authoritative transcript/report paths in
+# meta.json keyed by run_id.  Pattern-based matching is unreliable when
+# the L-plan slug diverges from the original plan slug after truncation.
+
+_find_meta_for_loop() {
+  local loop_nr="$1"
+  local expected_run_id="${run_id}-$(printf '%03d' "$loop_nr")"
+  python3 - "$store/reports" "$expected_run_id" <<'PY'
+import json, os, sys
+reports_dir, target_run_id = sys.argv[1:3]
+if not os.path.isdir(reports_dir):
+    sys.exit(0)
+for fname in sorted(os.listdir(reports_dir), reverse=True):
+    if not fname.endswith(".meta.json"):
+        continue
+    fpath = os.path.join(reports_dir, fname)
+    try:
+        with open(fpath) as f:
+            meta = json.load(f)
+        if meta.get("run_id") == target_run_id:
+            print(fpath)
+            sys.exit(0)
+    except (OSError, json.JSONDecodeError):
+        continue
+PY
+}
+
+_read_meta_field() {
+  local meta_path="$1" field="$2"
+  python3 -c "
+import json,sys
+with open(sys.argv[1]) as f: m=json.load(f)
+print(m.get(sys.argv[2],''))
+" "$meta_path" "$field" 2>/dev/null || true
+}
+
+# ── Fix B: Commit trigger ────────────────────────────────────────────
+_fresh_commit_since() {
+  local since_epoch="$1"
+  if command -v git >/dev/null 2>&1 && [[ -d "$root_dir/.git" || -f "$root_dir/.git" ]]; then
+    local latest_epoch
+    latest_epoch=$(git -C "$root_dir" log -1 --format=%ct 2>/dev/null || echo 0)
+    (( latest_epoch > since_epoch ))
+  else
+    return 1
+  fi
+}
+
 # ── Wait for report file ─────────────────────────────────────────────
 _find_report() {
   local report_pattern="$1"
@@ -474,20 +523,9 @@ for ((loop_nr=1; loop_nr<=total_count; loop_nr++)); do
 
   # ── Resolve paths for this loop ──────────────────────────────────
   ln_plan="$store/plans/marbles-${plan_slug}_L${loop_nr}.md"
-  # Plan file already created by marbles_spawn.sh (L1) or marbles_next.sh (L2+)
-  # We just need to know the expected report + transcript paths
-  report_base="$(spawn_timestamp)_marbles-${plan_slug}_L${loop_nr}_${agent}"
-  expected_report="$store/reports/${report_base}.md"
-  expected_transcript="$store/reports/${report_base}.transcript.log"
-
-  # Spawn scripts own the timestamp prefix, but the plan slug is stable for this run.
-  # Matching on the slug keeps us inside the current marbles run without racing
-  # against state-file timestamps that are updated during observation.
-  report_pattern="*_marbles-${plan_slug}_L${loop_nr}_${agent}.md"
-  transcript_pattern="*_marbles-${plan_slug}_L${loop_nr}_${agent}.transcript.log"
 
   # ── Promise phase ────────────────────────────────────────────────
-  _record_loop_start "$loop_nr" "$expected_transcript"
+  _record_loop_start "$loop_nr" ""
   _render_loop_phase "$loop_nr" "promise"
 
   loop_start=$(date +%s)
@@ -496,15 +534,44 @@ for ((loop_nr=1; loop_nr<=total_count; loop_nr++)); do
   #    For L2+, marbles_next.sh handles spawning via success_hook
   #    Watcher's job is to OBSERVE, not spawn ──────────────────────
 
-  # ── Capture session ID ───────────────────────────────────────────
-  # Find the actual transcript file (may have different timestamp prefix)
-  sleep 3  # brief wait for transcript file to appear
+  # ── Fix A: Find transcript/report via meta.json (authoritative) ──
+  # spawn_write_meta writes real paths keyed by run_id.  Pattern-based
+  # matching broke when the L-plan slug diverged from the original slug
+  # after 60-char truncation (double marbles- prefix, _L suffix lost).
+  sleep 3  # brief wait for spawn to create meta.json
   actual_transcript=""
-  for _try in $(seq 1 10); do
-    actual_transcript=$(find "$store/reports" -name "$transcript_pattern" 2>/dev/null | sort | tail -1 || true)
-    [[ -n "$actual_transcript" ]] && break
+  actual_report_hint=""
+  meta_path=""
+  for _try in $(seq 1 15); do
+    meta_path="$(_find_meta_for_loop "$loop_nr")"
+    if [[ -n "$meta_path" ]]; then
+      actual_transcript="$(_read_meta_field "$meta_path" "transcript")"
+      actual_report_hint="$(_read_meta_field "$meta_path" "report")"
+      [[ -n "$actual_transcript" ]] && break
+    fi
     sleep 2
   done
+
+  # ── Fix C: Run-ID fallback — any meta.json with this run_id ──────
+  if [[ -z "$actual_transcript" && -n "$meta_path" ]]; then
+    # Meta found but transcript field empty — should not happen, but defend
+    actual_transcript="$(_read_meta_field "$meta_path" "transcript")"
+  fi
+
+  # ── Legacy pattern fallback (defense-in-depth) ────────────────────
+  if [[ -z "$actual_transcript" ]]; then
+    transcript_pattern="*_marbles-${plan_slug}_L${loop_nr}_${agent}.transcript.log"
+    for _try in $(seq 1 5); do
+      actual_transcript=$(find "$store/reports" -name "$transcript_pattern" 2>/dev/null | sort | tail -1 || true)
+      [[ -n "$actual_transcript" ]] && break
+      sleep 2
+    done
+  fi
+
+  # Update state with resolved transcript path
+  if [[ -n "$actual_transcript" ]]; then
+    _record_loop_start "$loop_nr" "$actual_transcript"
+  fi
 
   if [[ -n "$actual_transcript" ]]; then
     session_id=$(_capture_session_id "$actual_transcript" "$agent")
@@ -515,11 +582,33 @@ for ((loop_nr=1; loop_nr<=total_count; loop_nr++)); do
   fi
 
   # ── Wait for report ──────────────────────────────────────────────
+  # Fix A: If meta.json already gave us the report path and it exists, skip wait
   actual_report=""
-  if actual_report="$(_wait_for_report "$report_pattern" "$report_timeout_s" "$actual_transcript")"; then
-    :
-  else
-    wait_status=$?
+  if [[ -n "$actual_report_hint" && -s "$actual_report_hint" ]]; then
+    actual_report="$actual_report_hint"
+  fi
+
+  wait_status=0
+  if [[ -z "$actual_report" ]]; then
+    report_pattern="*_marbles-${plan_slug}_L${loop_nr}_${agent}.md"
+    if ! actual_report="$(_wait_for_report "$report_pattern" "$report_timeout_s" "$actual_transcript")"; then
+      wait_status=$?
+
+      # Fix B: Before giving up on timeout, check for a fresh commit.
+      # A new commit since loop_start is strong evidence the agent finished;
+      # retry meta.json lookup to find the report it wrote.
+      if (( wait_status == 2 )) && _fresh_commit_since "$loop_start"; then
+        meta_path="$(_find_meta_for_loop "$loop_nr")"
+        if [[ -n "$meta_path" ]]; then
+          actual_report="$(_read_meta_field "$meta_path" "report")"
+          [[ -n "$actual_report" && -s "$actual_report" ]] || actual_report=""
+        fi
+      fi
+    fi
+  fi
+
+  # Handle failure cases when no report was resolved
+  if [[ -z "$actual_report" || ! -s "$actual_report" ]] && (( wait_status != 0 )); then
     loop_end=$(date +%s)
     duration=$((loop_end - loop_start))
     duration_fmt="$(printf '%dm %02ds' $((duration/60)) $((duration%60)))"

@@ -30,10 +30,10 @@ plan_slug="$(spawn_slug_from_path "$original_plan")"
 # ── State directory (watcher writes session_id here) ─────────────────
 state_dir="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/marbles/$run_id"
 state_file="$state_dir/state.json"
-report_sync_timeout_s="${VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S:-3600}"
+report_sync_timeout_s="${VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S:-5400}"
 case "$report_sync_timeout_s" in
   ''|*[!0-9]*)
-    report_sync_timeout_s=3600
+    report_sync_timeout_s=5400
     ;;
 esac
 report_poll_s=5
@@ -75,8 +75,52 @@ PY
   fi
 }
 
+_find_meta_for_loop() {
+  local loop_nr="$1"
+  local expected_run_id="${run_id}-$(printf '%03d' "$loop_nr")"
+  python3 - "$store/reports" "$expected_run_id" <<'PY'
+import json, os, sys
+reports_dir, target_run_id = sys.argv[1:3]
+if not os.path.isdir(reports_dir):
+    sys.exit(0)
+for fname in sorted(os.listdir(reports_dir), reverse=True):
+    if not fname.endswith(".meta.json"):
+        continue
+    fpath = os.path.join(reports_dir, fname)
+    try:
+        with open(fpath) as f:
+            meta = json.load(f)
+        if meta.get("run_id") == target_run_id:
+            print(fpath)
+            sys.exit(0)
+    except (OSError, json.JSONDecodeError):
+        continue
+PY
+}
+
+_read_meta_field() {
+  local meta_path="$1" field="$2"
+  python3 -c "
+import json,sys
+with open(sys.argv[1]) as f: m=json.load(f)
+print(m.get(sys.argv[2],''))
+" "$meta_path" "$field" 2>/dev/null || true
+}
+
 _find_loop_report() {
   local loop_nr="$1"
+  # Fix A: Try meta.json first (authoritative paths from spawn)
+  local meta_path
+  meta_path="$(_find_meta_for_loop "$loop_nr")"
+  if [[ -n "$meta_path" ]]; then
+    local report
+    report="$(_read_meta_field "$meta_path" "report")"
+    if [[ -n "$report" && -s "$report" ]]; then
+      printf '%s\n' "$report"
+      return 0
+    fi
+  fi
+  # Legacy pattern fallback
   find "$store/reports" -name "*_marbles-${plan_slug}_L${loop_nr}_${agent}.md" \
     ! -name '*_verified.md' \
     ! -name '*.meta.json' ! -name '*.transcript.log' 2>/dev/null \

@@ -54,11 +54,14 @@ vibecrafted marbles codex --prompt 'Fix the 3 failing portable tests'
 vc-marbles codex --prompt 'Harden the installer shell surface'
 ```
 
-Multiple rounds (convergence loop — the orchestrator re-spawns the agent N times):
+Multiple rounds (convergence loop — the runtime orchestrator script
+spawns the new agent N times):
 
 ```bash
-vibecrafted marbles codex --count 3 --prompt 'Stabilize until P0=0'
-vc-marbles claude --count 5 --prompt 'Denoise the test suite'
+vibecrafted marbles codex --count 5 \
+   --prompt 'Stabilize until P0=0'
+vc-marbles claude --count 8 \
+   --prompt 'Refactor the 1500 LOC monoliths across the project'
 ```
 
 From a plan file:
@@ -69,7 +72,8 @@ vc-marbles gemini --count 2 --file /path/to/plan.md
 ```
 
 **This is NOT the same as `vibecrafted codex implement <plan>`.**
-`implement` is one-shot execution. `marbles` wraps the agent in a convergence
+`implement` is one-shot execution. `marbles` wraps the agent in
+a convergence
 loop: each round measures, targets, fixes, scores, commits, and reports.
 The `--count` flag controls how many rounds the outer loop runs.
 
