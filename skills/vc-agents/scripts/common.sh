@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
-# common.sh — thin aggregator, sources all library modules.
-# Consumer interface unchanged: `source "$SCRIPT_DIR/common.sh"`
+set -euo pipefail
 
 _SPAWN_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
-
-# Load order matters: util first (no deps), then paths, then the rest.
-source "$_SPAWN_LIB_DIR/util.sh"
-source "$_SPAWN_LIB_DIR/paths.sh"
-source "$_SPAWN_LIB_DIR/meta.sh"
-source "$_SPAWN_LIB_DIR/frontier.sh"
-source "$_SPAWN_LIB_DIR/lock.sh"
-source "$_SPAWN_LIB_DIR/prompt.sh"
-source "$_SPAWN_LIB_DIR/session_ambient.sh"
-source "$_SPAWN_LIB_DIR/session.sh"
-source "$_SPAWN_LIB_DIR/launcher_terminal.sh"
-source "$_SPAWN_LIB_DIR/launcher_watch.sh"
-source "$_SPAWN_LIB_DIR/launcher.sh"
-source "$_SPAWN_LIB_DIR/zellij_monitor.sh"
 source "$_SPAWN_LIB_DIR/zellij.sh"
-source "$_SPAWN_LIB_DIR/ancestor.sh"
-source "$_SPAWN_LIB_DIR/rotation.sh"
+source "$_SPAWN_LIB_DIR/launcher.sh"
+source "$_SPAWN_LIB_DIR/session.sh"
+source "$_SPAWN_LIB_DIR/prompt.sh"
+source "$_SPAWN_LIB_DIR/lock.sh"
+source "$_SPAWN_LIB_DIR/frontier.sh"
+source "$_SPAWN_LIB_DIR/meta.sh"
+source "$_SPAWN_LIB_DIR/paths.sh"
+source "$_SPAWN_LIB_DIR/util.sh"
+
+# Central artifact store: $HOME/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/
+# Override with VIBECRAFTED_HOME env var for custom location
+# Falls back to <repo>/.vibecrafted/ if git remote unavailable
+VIBECRAFTED_HOME="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
+
+spawn_normalize_ambient_context
+

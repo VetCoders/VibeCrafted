@@ -49,11 +49,7 @@ spawn_org_repo() {
 }
 
 spawn_timestamp() {
-  if [[ -n "${VIBECRAFTED_SPAWN_TS:-}" ]]; then
-    printf '%s\n' "${VIBECRAFTED_SPAWN_TS}"
-  else
-    date +%Y%m%d_%H%M
-  fi
+  date +%Y%m%d_%H%M
 }
 
 spawn_framework_version() {
@@ -112,27 +108,4 @@ spawn_validate_runtime() {
       spawn_die "Invalid runtime '$runtime'. Valid values: terminal, visible, headless, background, detached."
       ;;
   esac
-}
-
-spawn_check_shell_syntax() {
-  local path="${1:-}"
-  local label="${2:-shell script}"
-  local output=""
-
-  spawn_require_file "$path"
-
-  if output="$(bash -n "$path" 2>&1)"; then
-    return 0
-  fi
-
-  printf 'Shell syntax error in %s: %s\n' "$label" "$path" >&2
-  [[ -n "$output" ]] && printf '%s\n' "$output" >&2
-  return 1
-}
-
-spawn_require_shell_syntax() {
-  local path="${1:-}"
-  local label="${2:-shell script}"
-
-  spawn_check_shell_syntax "$path" "$label" || spawn_die "Shell syntax check failed: $path"
 }
