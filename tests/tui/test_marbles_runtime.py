@@ -261,6 +261,22 @@ def _expected_operator_session(run_id: str | None = None) -> str:
     return f"{base}-{run_id}" if run_id else base
 
 
+def test_marbles_spawn_chains_with_agent_and_ancestor_plan_contract() -> None:
+    script = (
+        REPO_ROOT / "skills" / "vc-agents" / "scripts" / "marbles_spawn.sh"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        'success_hook="bash $q_scripts/marbles_next.sh $q_agent $q_plan $count 1 '
+        '$marbles_run_id $q_root $q_runtime $q_scripts $q_lock $q_store"' in script
+    )
+    assert (
+        'failure_hook="bash $q_scripts/marbles_next.sh --failed $q_agent $q_plan '
+        '$count 1 $marbles_run_id $q_root $q_runtime $q_scripts $q_lock $q_store"'
+        in script
+    )
+
+
 def _run_marbles_prompt(
     tmp_path: Path, *, inside_zellij: bool
 ) -> tuple[list[str], list[str]]:
