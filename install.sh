@@ -3,17 +3,16 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF_USAGE'
-Usage: install.sh [--gui] [--ref <branch>] [--archive-url <url> | --archive-file <path>] [--tools-dir <dir>] [make-target]
+Usage: install.sh [--ref <branch>] [--archive-url <url> | --archive-file <path>] [--tools-dir <dir>] [make-target]
 
 Bootstrap a local 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. source snapshot into $VIBECRAFTED_ROOT/.vibecrafted/tools and then
 run a local staged install path from that copy.
 
-Use `--gui` when you want the browser-based guided installer.
-Non-interactive runs without `--gui` bypass the browser and call the compact installer directly.
+Interactive terminals always enter the installer TUI.
+Non-interactive runs bypass TUI and call the compact installer directly.
 
 Examples:
   curl -fsSL https://vibecrafted.io/install.sh | bash
-  curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --gui
   curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --ref develop
   bash install.sh doctor
   bash install.sh --archive-file /tmp/vibecrafted.tar.gz vibecrafted
@@ -55,13 +54,9 @@ archive_url=""
 archive_file=""
 tools_dir="$default_tools_dir"
 target="vibecrafted"
-use_gui=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --gui)
-      use_gui=1
-      ;;
     --ref)
       shift
       [[ $# -gt 0 ]] || die "Missing value for --ref"
@@ -103,10 +98,6 @@ if [[ -n "$archive_url" && -n "$archive_file" ]]; then
   die "Use either --archive-url or --archive-file, not both"
 fi
 
-if [[ "$use_gui" == "1" && "$target" != "vibecrafted" ]]; then
-  die "--gui can only be used with the default vibecrafted install target"
-fi
-
 if [[ -z "$archive_url" && -z "$archive_file" ]]; then
   # Resolve latest version from the channel manifest instead of hard-pinning.
   channel_url="https://vibecrafted.io/channel/${ref}.json"
@@ -119,9 +110,9 @@ if [[ -z "$archive_url" && -z "$archive_file" ]]; then
     archive_url="$resolved_url"
     info "Resolved from channel ($ref): $archive_url"
   else
-    # Fallback: source snapshot for pre-channel / pre-deploy kickoffs.
-    archive_url="https://github.com/VetCoders/vibecrafted/archive/refs/heads/${ref}.tar.gz"
-    info "[note] Channel manifest not available — using GitHub source snapshot for ${ref}"
+    # Fallback: frozen URL for offline / pre-channel deployments.
+    archive_url="https://vibecrafted.io/vibecrafted-v1.2.1.tar.gz"
+    info "[note] Channel manifest not available — using frozen v1.2.1 URL"
   fi
 fi
 
@@ -233,33 +224,23 @@ fi
 post_install_banner() {
   printf '\n'
   info "---------------------------------------------------------------"
-  info " Staged: vibecrafted $_installed_version"
-  info " Channel:   tarball"
+  info " Installed: vibecrafted $_installed_version"
+  info " Channel:   tarball (no self-update)"
   info ""
-  info " The archive has been extracted and symlinked."
-  info " Shell integration runs next — if the step below fails,"
-  info " re-run the install command."
+  info " To upgrade, re-run the install command — the channel manifest"
+  info " will resolve the latest version automatically when available."
+  info " There is currently no in-place 'vibecrafted update' for"
+  info " tarball installs."
   info ""
-  info " Update:  vibecrafted update"
-  info " Health:  vibecrafted doctor"
+  info " Run 'vibecrafted doctor' to check installation health."
   info "---------------------------------------------------------------"
 }
-
-if [[ "$target" == "vibecrafted" && "$use_gui" == "1" ]]; then
-  gui_installer="$current_link/scripts/installer_gui.py"
-  [[ -f "$gui_installer" ]] || die "Guided installer not found: $gui_installer"
-  post_install_banner
-  info "Launching guided installer UI:"
-  info "  python3 $gui_installer --source $current_link"
-  printf '\n'
-  exec python3 "$gui_installer" --source "$current_link"
-fi
 
 if [[ "$target" == "vibecrafted" ]] && ! is_interactive_session; then
   installer="$current_link/scripts/vetcoders_install.py"
   [[ -f "$installer" ]] || die "Installer not found: $installer"
   info "Non-interactive bootstrap detected:"
-  info "  bypassing the browser UI and running compact installer"
+  info "  bypassing TUI and running compact installer"
 
   # Install foundations (loctree, aicx) from GH releases before the main installer.
   foundations_script="$current_link/scripts/install-foundations.sh"
@@ -281,42 +262,6 @@ if [[ "$target" == "vibecrafted" ]] && ! is_interactive_session; then
   info "  python3 $installer install --source $current_link --with-shell --compact --non-interactive"
   printf '\n'
   exec python3 "$installer" install --source "$current_link" --with-shell --compact --non-interactive
-fi
-
-# Interactive terminal session: default target is the built-in
-# vetcoders-installer sequential runner, executed out of the staged repo's
-# own scripts/installer/ sub-package via `uv run --project`. The browser
-# GUI is opt-in via `--gui` (handled above). Other make targets still fall
-# through to the Makefile.
-if [[ "$target" == "vibecrafted" ]]; then
-  manifest="$current_link/install.toml"
-  installer_dir="$current_link/scripts/installer"
-  [[ -f "$manifest" ]] || die "Install manifest not found: $manifest"
-  [[ -d "$installer_dir" ]] || die "Built-in installer package not found: $installer_dir"
-
-  # Make sure user-local binaries (cargo, .local) are visible to the installer's
-  # subprocesses — otherwise tools installed outside PATH won't be detected.
-  for _p in "${vibecrafted_home}/bin" "${vibecrafted_home}/tools/node/bin" "$HOME/.cargo/bin" "$HOME/.local/bin"; do
-    case ":${PATH}:" in
-      *":${_p}:"*) ;;
-      *) [[ -d "$_p" ]] && export PATH="${_p}:${PATH}" ;;
-    esac
-  done
-
-  if ! command -v uv >/dev/null 2>&1; then
-    info "Bootstrapping uv (one-time setup)..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh \
-      || die "Failed to bootstrap uv"
-    # shellcheck disable=SC1090
-    [[ -f "$HOME/.local/bin/env" ]] && source "$HOME/.local/bin/env"
-    export PATH="$HOME/.local/bin:$PATH"
-  fi
-
-  post_install_banner
-  info "Running built-in installer:"
-  info "  uv run --project $installer_dir vetcoders-installer $manifest"
-  printf '\n'
-  exec uv run --project "$installer_dir" --quiet vetcoders-installer "$manifest"
 fi
 
 post_install_banner
