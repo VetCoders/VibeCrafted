@@ -110,6 +110,13 @@ EOF_LAUNCH
   exit "$exit_code"
 fi
 EOF_LAUNCH
+
+  if ! spawn_check_shell_syntax "$launcher" "generated launcher"; then
+    if [[ -f "$meta_path" ]]; then
+      spawn_finish_meta "$meta_path" "failed" "1" 2>/dev/null || true
+    fi
+    spawn_die "Generated launcher has invalid shell syntax: $launcher"
+  fi
 }
 
 spawn_launch_headless() {

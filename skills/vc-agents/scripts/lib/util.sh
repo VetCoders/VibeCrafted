@@ -113,3 +113,26 @@ spawn_validate_runtime() {
       ;;
   esac
 }
+
+spawn_check_shell_syntax() {
+  local path="${1:-}"
+  local label="${2:-shell script}"
+  local output=""
+
+  spawn_require_file "$path"
+
+  if output="$(bash -n "$path" 2>&1)"; then
+    return 0
+  fi
+
+  printf 'Shell syntax error in %s: %s\n' "$label" "$path" >&2
+  [[ -n "$output" ]] && printf '%s\n' "$output" >&2
+  return 1
+}
+
+spawn_require_shell_syntax() {
+  local path="${1:-}"
+  local label="${2:-shell script}"
+
+  spawn_check_shell_syntax "$path" "$label" || spawn_die "Shell syntax check failed: $path"
+}

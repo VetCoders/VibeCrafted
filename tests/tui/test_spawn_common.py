@@ -101,6 +101,44 @@ def test_generated_launcher_runs_from_spawn_root(tmp_path: Path) -> None:
     assert report.read_text(encoding="utf-8").strip() == str(root_dir)
 
 
+def test_generated_launcher_fails_fast_on_invalid_hook_syntax(tmp_path: Path) -> None:
+    launcher = tmp_path / "launch.sh"
+    meta = tmp_path / "meta.json"
+    report = tmp_path / "report.txt"
+    transcript = tmp_path / "trace.log"
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'''
+            set -euo pipefail
+            source "{COMMON_SH}"
+            export SPAWN_ROOT="{tmp_path}"
+            export SPAWN_AGENT="claude"
+            export SPAWN_PROMPT_ID="prompt-123"
+            export SPAWN_RUN_ID="run-123"
+            export SPAWN_LOOP_NR="1"
+            export SPAWN_SKILL_CODE="marb"
+            cmd='printf "ok\\n" > "{report}"'
+            bad_hook="echo '"
+            spawn_write_meta "{meta}" "launching" "claude" "marbles" "{tmp_path}" "{launcher}" "{report}" "{transcript}" "{launcher}"
+            spawn_generate_launcher "{launcher}" "{meta}" "{report}" "{transcript}" "{COMMON_SH}" "$cmd" "" "$bad_hook"
+            ''',
+        ],
+        check=False,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Generated launcher has invalid shell syntax" in result.stderr
+    payload = json.loads(meta.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["exit_code"] == 1
+
+
 def test_spawn_watch_startup_reports_pass_and_dashboard_hint(tmp_path: Path) -> None:
     meta = tmp_path / "meta.json"
     report = tmp_path / "report.md"

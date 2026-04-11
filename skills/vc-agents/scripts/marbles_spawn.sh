@@ -60,6 +60,13 @@ spawn_require_positive_int "$count" "--count"
 spawn_rotation_validate_mode "$rotation"
 [[ -z "$depth" ]] || spawn_require_positive_int "$depth" "--depth"
 
+spawn_require_shell_syntax "$SCRIPT_DIR/common.sh" "shared spawn library"
+spawn_require_shell_syntax "$SCRIPT_DIR/${agent}_spawn.sh" "${agent} spawn"
+spawn_require_shell_syntax "$SCRIPT_DIR/marbles_next.sh" "marbles next hop"
+if (( use_watcher )); then
+  spawn_require_shell_syntax "$SCRIPT_DIR/marbles_watcher.sh" "marbles watcher"
+fi
+
 sources=0
 [[ -n "$depth" ]]  && ((sources++)) || true
 [[ -n "$task" ]]   && ((sources++)) || true
