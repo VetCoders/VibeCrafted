@@ -982,6 +982,55 @@ def test_marbles_materializes_failed_loop_when_child_spawn_dies_before_meta(
     assert "no meta.json within" not in result.stdout
 
 
+def test_marbles_spawn_fails_fast_when_watcher_script_is_invalid(
+    tmp_path: Path,
+) -> None:
+    scripts_dir, capture_file = _prepare_fake_marbles_bundle(tmp_path)
+    watcher = scripts_dir / "marbles_watcher.sh"
+    watcher.write_text(
+        watcher.read_text(encoding="utf-8") + "\necho '\n", encoding="utf-8"
+    )
+    watcher.chmod(0o755)
+
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    home.mkdir()
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["VIBECRAFTED_HOME"] = str(crafted_home)
+    env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_PANE_ID", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+    env.pop("VIBECRAFTED_OPERATOR_SESSION", None)
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(scripts_dir / "marbles_spawn.sh"),
+            "--agent",
+            "codex",
+            "--count",
+            "2",
+            "--runtime",
+            "headless",
+            "--prompt",
+            "Guard marbles against broken watcher syntax",
+        ],
+        check=False,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Shell syntax check failed" in result.stderr
+    assert "marbles_watcher.sh" in result.stderr
+    assert not capture_file.exists()
+
+
 def test_marbles_watcher_waits_for_meta_completion_before_advancing(
     tmp_path: Path,
 ) -> None:
