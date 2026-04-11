@@ -11,7 +11,6 @@ authors = [
 ]
 dependencies = [
     "rich>=13.0",
-    "textual>=8.2.3",
 ]
 
 [project.scripts]
