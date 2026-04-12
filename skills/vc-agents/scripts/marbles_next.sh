@@ -566,6 +566,7 @@ _launch_next_loop() {
   VIBECRAFTED_SKILL_CODE="marb" \
   VIBECRAFTED_SKILL_NAME="marbles" \
   VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right \
+  VIBECRAFTED_MARBLES_TAB_NAME="${VIBECRAFTED_MARBLES_TAB_NAME:-}" \
   VIBECRAFTED_STORE_DIR="$store" \
   VIBECRAFTED_STORE_ROOT="$root_dir" \
   bash "$scripts_dir/${loop_agent}_spawn.sh" "${spawn_args[@]}" "$loop_plan"

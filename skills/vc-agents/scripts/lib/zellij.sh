@@ -71,6 +71,58 @@ spawn_pane_direction() {
   fi
 }
 
+spawn_current_tab_name() {
+  # Return the name of the currently focused zellij tab via env.
+  printf '%s\n' "${ZELLIJ_TAB_NAME:-}"
+}
+
+spawn_in_marbles_tab() {
+  # Route a pane into the dedicated marbles tab, then restore operator focus.
+  # Called only when SPAWN_LOOP_NR > 0 AND VIBECRAFTED_MARBLES_TAB_NAME is set.
+  local launcher="$1"
+  local pane_name="$2"
+  local direction="$3"
+  local marbles_tab="${VIBECRAFTED_MARBLES_TAB_NAME:-}"
+  local original_tab=""
+  local cmd_script=""
+  local launch_cmd="bash '$launcher'"
+
+  [[ -n "$marbles_tab" ]] || return 1
+
+  # Capture operator's current tab before switching.
+  original_tab="$(spawn_current_tab_name)"
+
+  cmd_script="$(spawn_tmp_script_path "vc-spawn-cmd" "${SPAWN_ROOT:-$(pwd)}")"
+  spawn_write_command_script "$cmd_script" "$launch_cmd"
+
+  # Focus (or create) the marbles tab.
+  zellij action go-to-tab-name "$marbles_tab" --create 2>/dev/null || true
+
+  # Create the pane inside the marbles tab.  Even when grid policy says
+  # new-tab, inside marbles context we add a pane to the existing marbles
+  # tab to keep everything grouped.
+  if [[ "$direction" == "new-tab" ]]; then
+    zellij action new-pane \
+      --direction right \
+      --name "$pane_name" \
+      --cwd "${SPAWN_ROOT:-$(pwd)}" \
+      -- "$cmd_script" >/dev/null
+  else
+    zellij action new-pane \
+      --direction "$direction" \
+      --name "$pane_name" \
+      --cwd "${SPAWN_ROOT:-$(pwd)}" \
+      -- "$cmd_script" >/dev/null
+  fi
+
+  # Restore operator's focus to their original tab.
+  if [[ -n "$original_tab" ]]; then
+    zellij action go-to-tab-name "$original_tab" 2>/dev/null || true
+  fi
+
+  return 0
+}
+
 spawn_in_zellij_pane() {
   local launcher="$1"
   local pane_name="${2:-agent}"
@@ -85,6 +137,14 @@ spawn_in_zellij_pane() {
     # pane in the current live session. Fall through to spawn_in_operator_session().
     if ! spawn_in_target_zellij_session; then
       return 1
+    fi
+
+    # Marbles loop panes (L2, L3...) route to dedicated marbles tab to avoid
+    # stealing operator focus.
+    if [[ "${SPAWN_LOOP_NR:-0}" -gt 0 && -n "${VIBECRAFTED_MARBLES_TAB_NAME:-}" ]]; then
+      if spawn_in_marbles_tab "$launcher" "$pane_name" "$direction"; then
+        return 0
+      fi
     fi
 
     session_name="$(spawn_effective_operator_session 2>/dev/null || true)"
@@ -162,4 +222,27 @@ spawn_in_operator_session() {
       --cwd "${SPAWN_ROOT:-$(pwd)}" \
       -- "$cmd_script" >/dev/null
   fi
+}
+
+spawn_probe() {
+  local transcript_path="$1"
+  local probe_seconds="${VIBECRAFTED_SPAWN_PROBE_SECONDS:-15}"
+  local agent_name="${SPAWN_AGENT:-agent}"
+
+  # Skip if disabled or not in zellij
+  [[ "${VIBECRAFTED_SPAWN_PROBE:-1}" == "1" ]] || return 0
+  spawn_in_zellij_context || return 0
+  command -v zellij >/dev/null 2>&1 || return 0
+  [[ -n "$transcript_path" ]] || return 0
+
+  # Brief delay for transcript file to appear
+  (
+    sleep 2
+    [[ -f "$transcript_path" ]] || exit 0
+    zellij run --floating --close-on-exit \
+      --width 20% --x 80% --y 10% --height 40% \
+      --name "probe-${agent_name}" \
+      -- timeout "$probe_seconds" tail -f "$transcript_path" \
+      2>/dev/null || true
+  ) &
 }
