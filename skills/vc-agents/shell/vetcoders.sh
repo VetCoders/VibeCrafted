@@ -1631,12 +1631,17 @@ _vetcoders_marbles() {
   # Inside zellij: marbles gets its own tab — operator's workspace stays clean.
   # Temp script keeps zellij args ASCII-safe (no inline UTF-8 prompt bytes).
   if [[ "$runtime" =~ ^(terminal|visible)$ ]] && _vetcoders_in_zellij && command -v zellij >/dev/null 2>&1; then
-    local cmd_script
+    local cmd_script marbles_tab_name
     export VIBECRAFTED_OPERATOR_SESSION="$(_vetcoders_current_zellij_session_name)"
+    marbles_tab_name="marbles-${marbles_run_id}"
+    export VIBECRAFTED_MARBLES_TAB_NAME="$marbles_tab_name"
+    marbles_env+=(VIBECRAFTED_MARBLES_TAB_NAME="$marbles_tab_name")
+    quoted_env="$(_vetcoders_shell_quote_join "${marbles_env[@]}")"
+    marbles_cmd="env ${quoted_env} bash $(_vetcoders_shell_quote "$script") ${quoted_args}"
     cmd_script="$(_vetcoders_tmp_script_path "vibecrafted-marbles" "$root_dir")"
     _vetcoders_write_command_script "$cmd_script" "$marbles_cmd" || return 1
     zellij action new-tab \
-      --name "marbles" \
+      --name "$marbles_tab_name" \
       --cwd "$root_dir" \
       -- "$cmd_script" >/dev/null || return 1
     _vetcoders_tail_marbles_l1_transcript "$root_dir" "$marbles_run_id"
@@ -1722,6 +1727,7 @@ marbles-stop()    { local s; s="$(_vetcoders_spawn_script claude "marbles_ctl.sh
 marbles-resume()  { local s; s="$(_vetcoders_spawn_script claude "marbles_ctl.sh")" && bash "$s" resume "$@"; }
 marbles-session() { local s; s="$(_vetcoders_spawn_script claude "marbles_ctl.sh")" && bash "$s" session "$@"; }
 marbles-inspect() { local s; s="$(_vetcoders_spawn_script claude "marbles_ctl.sh")" && bash "$s" inspect "$@"; }
+marbles-gc()      { local s; s="$(_vetcoders_spawn_script claude "marbles_ctl.sh")" && bash "$s" gc "$@"; }
 
 codex-decorate() { _vetcoders_skill codex decorate "$@"; }
 claude-decorate() { _vetcoders_skill claude decorate "$@"; }
