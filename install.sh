@@ -223,12 +223,13 @@ info "  $staged_dir"
 info "Current control plane:"
 info "  $current_link"
 
-# Extract version from the archive URL or staged Makefile for the post-install banner.
+# Read canonical VERSION file from the staged source tree for the post-install banner.
+# The repo ships VERSION at the root; fall back to 'unknown' if absent (e.g. custom tarballs).
 _installed_version=""
-if [[ -f "$staged_dir/Makefile" ]]; then
-  _installed_version="$(grep -oP 'VERSION\s*:?=\s*\K\S+' "$staged_dir/Makefile" 2>/dev/null || true)"
+if [[ -f "$staged_dir/VERSION" ]]; then
+  _installed_version="$(tr -d '[:space:]' < "$staged_dir/VERSION" 2>/dev/null || true)"
 fi
-[[ -n "$_installed_version" ]] || _installed_version="$(basename "$archive_url" .tar.gz 2>/dev/null || echo 'unknown')"
+[[ -n "$_installed_version" ]] || _installed_version="unknown"
 
 post_install_banner() {
   printf '\n'

@@ -51,9 +51,9 @@ vibecrafted: init-hooks
 	@if ! command -v uv >/dev/null 2>&1; then \
 		echo "bootstrapping uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
-		export PATH="$$HOME/.local/bin:$$PATH"; \
-	fi
-	@uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
+	fi; \
+	export PATH="$$HOME/.local/bin:$$PATH"; \
+	uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
 
 wizard: init-hooks
 	@$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"
@@ -64,9 +64,9 @@ install: init-hooks
 	@if ! command -v uv >/dev/null 2>&1; then \
 		echo "bootstrapping uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
-		export PATH="$$HOME/.local/bin:$$PATH"; \
-	fi
-	@uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes
+	fi; \
+	export PATH="$$HOME/.local/bin:$$PATH"; \
+	uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes
 
 skills:
 	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --non-interactive
