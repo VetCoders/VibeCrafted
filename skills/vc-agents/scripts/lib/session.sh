@@ -79,6 +79,17 @@ spawn_marbles_write_child_plan() {
   cat >> "$child_plan" <<'ROUND_CONTRACT'
 
 ---
+## Worker Contract
+
+### Hard Rule
+- The worker must remain on the operator-assigned substrate.
+- The worker is expected to maneuver intelligently within the assigned surface, inside the living tree, and around concurrent edits by others. That maneuverability is part of the craft.
+- But `vc-marbles` does not permit escaping the assigned substrate.
+- Do not switch branches.
+- Do not create or move to a worktree.
+- Do not relocate execution to another lane or clone.
+- If the substrate is too poisoned to operate on, return control to the operator/runtime layer. Do not solve substrate invalidity by moving sideways.
+
 ## Exit Contract
 - **COMMIT**: mandatory. One commit when done.
 - **REPORT**: mandatory. Write to the report path given at the end of this prompt.
