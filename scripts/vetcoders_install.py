@@ -3859,6 +3859,50 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
                 elif entry.is_dir():
                     shutil.rmtree(entry)
                 print(f"  {dim('-')} {entry}")
+
+        if not dry_run:
+            for launcher_bin_dir in _launcher_bin_dirs():
+                if launcher_bin_dir.exists() and not any(launcher_bin_dir.iterdir()):
+                    try:
+                        launcher_bin_dir.rmdir()
+                        print(f"  {dim('-')} {launcher_bin_dir} (empty)")
+                    except OSError:
+                        pass
+        print()
+
+    # Remove framework artifacts
+    artifacts_to_remove = [
+        shared_home / "install.log",
+        start_here_path(),
+        shared_home / "tools" / "vibecrafted-current",
+    ]
+    removed_artifacts = False
+    for art in artifacts_to_remove:
+        if art.exists() or art.is_symlink():
+            if not removed_artifacts:
+                print(bold("Removing framework artifacts..."))
+                removed_artifacts = True
+            if dry_run:
+                print(f"  {dim('rm')} {art}")
+            else:
+                if art.is_symlink() or art.is_file():
+                    art.unlink(missing_ok=True)
+                elif art.is_dir():
+                    shutil.rmtree(art)
+                print(f"  {dim('-')} {art}")
+
+    if not dry_run:
+        tools_dir = shared_home / "tools"
+        if tools_dir.exists() and not any(tools_dir.iterdir()):
+            try:
+                tools_dir.rmdir()
+                if not removed_artifacts:
+                    print(bold("Removing framework artifacts..."))
+                    removed_artifacts = True
+                print(f"  {dim('-')} {tools_dir} (empty)")
+            except OSError:
+                pass
+    if removed_artifacts:
         print()
 
     # Always scrub launcher PATH/source hints even if the helper files were already gone.
