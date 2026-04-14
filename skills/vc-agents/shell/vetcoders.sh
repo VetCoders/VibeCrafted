@@ -1633,17 +1633,27 @@ _vetcoders_marbles() {
   if [[ "$runtime" =~ ^(terminal|visible)$ ]] && _vetcoders_in_zellij && command -v zellij >/dev/null 2>&1; then
     local cmd_script marbles_tab_name
     export VIBECRAFTED_OPERATOR_SESSION="$(_vetcoders_current_zellij_session_name)"
-    marbles_tab_name="marbles-${marbles_run_id}"
+    marbles_tab_name="marbles"
     export VIBECRAFTED_MARBLES_TAB_NAME="$marbles_tab_name"
     marbles_env+=(VIBECRAFTED_MARBLES_TAB_NAME="$marbles_tab_name")
     quoted_env="$(_vetcoders_shell_quote_join "${marbles_env[@]}")"
     marbles_cmd="env ${quoted_env} bash $(_vetcoders_shell_quote "$script") ${quoted_args}"
     cmd_script="$(_vetcoders_tmp_script_path "vibecrafted-marbles" "$root_dir")"
     _vetcoders_write_command_script "$cmd_script" "$marbles_cmd" || return 1
-    zellij action new-tab \
-      --name "$marbles_tab_name" \
+    
+    local original_tab
+    original_tab="${ZELLIJ_TAB_NAME:-}"
+    
+    zellij action go-to-tab-name "$marbles_tab_name" --create 2>/dev/null || true
+    zellij action new-pane \
+      --name "$marbles_run_id" \
       --cwd "$root_dir" \
       -- "$cmd_script" >/dev/null || return 1
+      
+    if [[ -n "$original_tab" ]]; then
+      zellij action go-to-tab-name "$original_tab" 2>/dev/null || true
+    fi
+    
     _vetcoders_tail_marbles_l1_transcript "$root_dir" "$marbles_run_id"
   elif [[ "$runtime" =~ ^(terminal|visible)$ ]]; then
     _vetcoders_prepare_operator_runtime "$runtime" || return 1

@@ -10,13 +10,14 @@ which installer is public, which one is expert-only, and what counts as
 
 - Public human front door: browser-guided installer in `scripts/installer_gui.py`
 - Public CTA: `curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --gui`
-- Local human entrypoint: `make vibecrafted`
-- Expert fallback: `make wizard`
+- Local terminal-native entrypoint: `make vibecrafted`
+- Local browser GUI entrypoint: `make wizard` (alias: `make gui-install`)
 - Mutation engine: `scripts/vetcoders_install.py`
 
-The GUI-first path won because it is the most effortless surface for founders
-and launch-day strangers. The TUI path stays valuable, but it is not the first
-thing a new adopter should see.
+The public GUI-first path won because it is the most effortless surface for
+founders and launch-day strangers. A local checkout still defaults to
+`make vibecrafted` so repo-native operators keep a terminal-first path, while
+`make wizard` stays the browser surface on demand.
 
 ## Reference sources
 
@@ -60,9 +61,9 @@ The browser installer is only shippable if all of these remain true:
 - `install.sh --gui`
   Chooses the browser-guided front door for human onboarding.
 - `make vibecrafted`
-  Opens the same browser-guided installer from a local checkout.
-- `make wizard`
-  Keeps the terminal-native expert path alive without becoming the default.
+  Runs the terminal-native installer wizard from a local checkout.
+- `make wizard` / `make gui-install`
+  Open the browser-guided installer from a local checkout when you want the GUI surface.
 - `scripts/vetcoders_install.py`
   Owns filesystem mutations, doctor output, and the reusable install truth.
 - `scripts/installer_tui.py`
@@ -74,7 +75,7 @@ The installer contract is ready for release only when:
 
 1. README, Quick Start, FAQ, submission pack, and portal CTA all point to the
    same guided install command.
-2. The GUI stays browser-first and the TUI stays fallback-first.
+2. The public CTA stays browser-first and the local checkout path stays shell-first.
 3. The browser wizard keeps the no page scroll contract on laptop and mobile
    viewports.
 4. The finish state hands off to `START_HERE`, `vibecrafted help`, and

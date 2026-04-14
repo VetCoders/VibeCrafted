@@ -63,3 +63,10 @@ def test_makefile_keeps_terminal_first_and_gui_fallback() -> None:
         "install recipe must chain the uv bootstrap `fi` into the same "
         "shell as `uv run` via `fi; \\`"
     )
+
+
+def test_bundle_check_uses_portable_mktemp_template() -> None:
+    text = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert 'mktemp "$$tmp_root/vibecrafted-bundle.XXXXXX"' in text
+    assert 'mktemp "$$tmp_root/vibecrafted-bundle.XXXXXX.plugin"' not in text

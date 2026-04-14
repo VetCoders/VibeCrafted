@@ -97,7 +97,7 @@ bundle:
 
 bundle-check:
 	@tmp_root="$${TMPDIR:-/tmp}"; \
-	tmp_bundle="$$(mktemp "$$tmp_root/vibecrafted-bundle.XXXXXX.plugin")"; \
+	tmp_bundle="$$(mktemp "$$tmp_root/vibecrafted-bundle.XXXXXX")"; \
 	trap 'rm -f "$$tmp_bundle"' EXIT; \
 	$(PYTHON) scripts/build_marketplace_bundle.py --output "$$tmp_bundle"; \
 	if cmp -s "$$tmp_bundle" "$(SOURCE)/vibecrafted-framework.plugin"; then \

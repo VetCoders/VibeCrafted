@@ -386,7 +386,7 @@ def test_vc_marbles_preserves_prompt_as_single_argument_inside_zellij(
     assert "1" in payload
     assert "--prompt" in payload
     assert "weź i vc-justdo wszystko co marbles znajdzie" in payload
-    assert "new-tab" in zellij_payload
+    assert "new-pane" in zellij_payload
     assert any("vibecrafted-marbles." in line for line in zellij_payload)
     assert any(str(expected_tmp_root) in line for line in zellij_payload)
     assert not any("//vibecrafted-marbles." in line for line in zellij_payload)
