@@ -1644,14 +1644,14 @@ _vetcoders_marbles() {
     local original_tab
     original_tab="${ZELLIJ_TAB_NAME:-}"
     
-    zellij action go-to-tab-name "$marbles_tab_name" --create 2>/dev/null || true
+    zellij action go-to-tab-name "$marbles_tab_name" --create >/dev/null 2>&1 || true
     zellij action new-pane \
       --name "$marbles_run_id" \
       --cwd "$root_dir" \
       -- "$cmd_script" >/dev/null || return 1
       
     if [[ -n "$original_tab" ]]; then
-      zellij action go-to-tab-name "$original_tab" 2>/dev/null || true
+      zellij action go-to-tab-name "$original_tab" >/dev/null 2>&1 || true
     fi
     
     _vetcoders_tail_marbles_l1_transcript "$root_dir" "$marbles_run_id"

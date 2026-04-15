@@ -814,6 +814,71 @@ def test_spawn_in_operator_session_suppresses_zellij_tab_number_output(
     assert result.stdout == ""
 
 
+def test_spawn_in_zellij_pane_marbles_tab_suppresses_tab_number_output(
+    tmp_path: Path,
+) -> None:
+    run_id = "marb-014520"
+    operator_session = _expected_operator_session(run_id)
+    launcher = tmp_path / "launch.sh"
+    launcher.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    launcher.chmod(0o755)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture_file = tmp_path / "zellij-calls.txt"
+    zellij = fake_bin / "zellij"
+    zellij.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "{",
+                '  printf -- "--CALL--\\n"',
+                '  printf "%s\\n" "$@"',
+                '} >> "$CAPTURE_FILE"',
+                'printf "12\\n"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    zellij.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'''
+            set -euo pipefail
+            export PATH="{fake_bin}:$PATH"
+            export CAPTURE_FILE="{capture_file}"
+            export ZELLIJ=1
+            export ZELLIJ_PANE_ID=terminal_1
+            export ZELLIJ_SESSION_NAME="{operator_session}"
+            export ZELLIJ_TAB_NAME="operator-tab"
+            export VIBECRAFTED_RUN_ID="{run_id}"
+            export VIBECRAFTED_OPERATOR_SESSION="{operator_session}"
+            export VIBECRAFTED_MARBLES_TAB_NAME="marbles"
+            export SPAWN_ROOT="{tmp_path}"
+            export SPAWN_LOOP_NR=1
+            source "{COMMON_SH}"
+            spawn_in_zellij_pane "{launcher}" "workflow"
+            ''',
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout == ""
+    calls = _split_zellij_calls(capture_file.read_text(encoding="utf-8"))
+    assert len(calls) == 3
+    assert calls[0][:3] == ["action", "go-to-tab-name", "marbles"]
+    assert calls[1][:3] == ["action", "new-pane", "--direction"]
+    assert calls[2][:3] == ["action", "go-to-tab-name", "operator-tab"]
+
+
 def test_spawn_in_operator_session_new_tab_opens_monitor_and_disables_inline_watch(
     tmp_path: Path,
 ) -> None:

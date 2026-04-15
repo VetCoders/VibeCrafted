@@ -96,7 +96,7 @@ spawn_in_marbles_tab() {
   spawn_write_command_script "$cmd_script" "$launch_cmd"
 
   # Focus (or create) the marbles tab.
-  zellij action go-to-tab-name "$marbles_tab" --create 2>/dev/null || true
+  zellij action go-to-tab-name "$marbles_tab" --create >/dev/null 2>&1 || true
 
   # Create the pane inside the marbles tab.  Even when grid policy says
   # new-tab, inside marbles context we add a pane to the existing marbles
@@ -117,7 +117,7 @@ spawn_in_marbles_tab() {
 
   # Restore operator's focus to their original tab.
   if [[ -n "$original_tab" ]]; then
-    zellij action go-to-tab-name "$original_tab" 2>/dev/null || true
+    zellij action go-to-tab-name "$original_tab" >/dev/null 2>&1 || true
   fi
 
   return 0
