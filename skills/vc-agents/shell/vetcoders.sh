@@ -1595,6 +1595,32 @@ layout {
 EOF
 }
 
+_vetcoders_research_help() {
+  cat <<'HELP'
+⚒  research
+─────────────────────────────────────────
+Triple-agent research swarm launcher (claude + codex + gemini).
+
+Usage:
+  vc-research --prompt "Question to research"
+  vc-research --file /path/to/plan.md
+
+Common flags:
+  -p, --prompt <text>            Inline prompt
+  -f, --file <path.md>           Input file as prompt context
+  --runtime <runtime>             Runtime backend (terminal|headless|visible)
+  --root <path>                   Root workspace for this research run
+
+Examples:
+  vc-research --prompt "Compare API alternatives for oauth libraries"
+  vc-research --file /path/to/research-plan.md
+  vibecrafted research --prompt "State of the art for MCP streaming"
+
+Do not pass an agent to vc-research.
+Use `vibecrafted <agent> research <plan.md>` if you intentionally need single-agent mode.
+HELP
+}
+
 _vetcoders_research() {
   local first_arg="${1:-}"
   local inherited_run_id inherited_run_lock
@@ -1602,12 +1628,23 @@ _vetcoders_research() {
   local claude_launcher codex_launcher gemini_launcher
   local claude_cmd codex_cmd gemini_cmd session_name
 
-  if _has_agent "$first_arg"; then
+  for _arg in "$@"; do
+    case "$_arg" in
+      help|-h|--help)
+        _vetcoders_research_help
+        return 0
+        ;;
+    esac
+  done
+
+  case "$first_arg" in
+    claude|codex|gemini)
     printf 'vc-research is a triple-agent swarm launcher. Do not pass %s.\n' "$first_arg" >&2
     printf 'Use vc-research --prompt "..." or vc-research --file /path/to/plan.md.\n' >&2
     printf 'If you intentionally want one researcher, use vibecrafted <agent> research <plan.md>.\n' >&2
     return 1
-  fi
+      ;;
+  esac
 
   _vetcoders_parse_contract "$@" || return 1
   [[ -z "$_vetcoders_contract_count" ]] || {

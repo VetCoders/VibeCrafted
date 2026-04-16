@@ -626,7 +626,9 @@ cmd_help() {
   printf '  %bvibecrafted init%b [agent]              Start an interactive init session\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted dashboard%b [layout]        Launch an optional repo-owned Zellij dashboard\n' "$_cyan" "$_reset"
   printf '  %btelemetry smoke%b [flags]              Smoke the marbles telemetry path\n' "$_cyan" "$_reset"
-  printf '  %bvibecrafted%b <skill> <agent> [flags]   Run a framework skill\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted%b <skill> <agent> [flags]   Run an agent-scoped framework skill\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted%b research [--prompt <text>|--file <path>]   Triple-agent research launcher\n' "$_cyan" "$_reset"
+  printf '  %bvc-research%b [--prompt <text>|--file <path>]     Triple-agent research launcher\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted resume%b <agent> [flags]    Resume an existing agent session\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted%b <agent> <mode> [args]     implement/research/review/plan/prompt/observe\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted status%b                    Today'"'"'s agent activity\n' "$_cyan" "$_reset"
@@ -698,11 +700,18 @@ cmd_help_full() {
   printf '%b=== MODES (per agent) ===%b\n' "$_bold" "$_reset"
   printf '\n'
   printf '  %bvibecrafted <agent> implement%b <plan.md>   Execute a plan file\n' "$_cyan" "$_reset"
-  printf '  %bvibecrafted <agent> research%b  <plan.md>   Research a topic\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted <agent> research%b  <plan.md>   Single-agent research mode\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted <agent> review%b    <plan.md>   Review code or architecture\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted <agent> plan%b      <plan.md>   Generate an implementation plan\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted <agent> prompt%b    <plan.md>   Free-form prompt with context\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted <agent> observe%b   --last      Check last agent report/transcript\n' "$_cyan" "$_reset"
+  printf '\n'
+  printf '%b=== RESEARCH (launcher) ===%b\n' "$_bold" "$_reset"
+  printf '\n'
+  printf '  %bvibecrafted research%b --prompt "text"%b   Launch Claude + codex + gemini swarm\n' "$_cyan" "$_reset" "$_reset"
+  printf '  %bvc-research%b --prompt "text"%b         Launch Claude + codex + gemini swarm\n' "$_cyan" "$_reset" "$_reset"
+  printf '  %bvibecrafted research%b --file plan.md%b    Launch swarm from plan file\n' "$_cyan" "$_reset" "$_reset"
+  printf '  %bvc-research%b --file plan.md%b          Launch swarm from plan file\n' "$_cyan" "$_reset" "$_reset"
   printf '\n'
   printf '%b=== TELEMETRY ===%b\n' "$_bold" "$_reset"
   printf '\n'

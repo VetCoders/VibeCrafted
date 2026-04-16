@@ -3,6 +3,8 @@ set -euo pipefail
 
 export VIBECRAFTED_OPERATOR_MODE=1
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
 shell_bin="${SHELL:-}"
 if [[ -z "$shell_bin" || ! -x "$shell_bin" ]]; then
   if command -v zsh >/dev/null 2>&1; then
