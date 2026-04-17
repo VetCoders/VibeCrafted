@@ -64,8 +64,8 @@ reopening the whole framework strategy.
 - Launch logic is duplicated:
   - Python: `scripts/control_plane_launch.py::build_launch_command`
   - Rust: `operator-tui/src/launch.rs::build_launch_command`
-  Both target the same command deck, but they encode the workflow contract in
-  two languages.
+    Both target the same command deck, but they encode the workflow contract in
+    two languages.
 - Loctree flags the Python/Rust `build_launch_command` duplication directly,
   which is a stronger signal than a stylistic complaint because it sits on the
   workflow boundary.
@@ -119,8 +119,8 @@ reopening the whole framework strategy.
 - Existing repo-local research disagreement is productive here:
   - the earlier Codex pass favored "thin front doors over one shared contract"
   - the current Gemini pass favored "move the control plane into Rust"
-  My synthesis is that the contract must converge before the ownership language
-  choice becomes a healthy decision.
+    My synthesis is that the contract must converge before the ownership language
+    choice becomes a healthy decision.
 
 ## Synthesis
 
