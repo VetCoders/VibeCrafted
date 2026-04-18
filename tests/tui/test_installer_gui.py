@@ -233,3 +233,63 @@ def test_launch_workflow_returns_control_plane_payload(
     assert payload["accepted"] is True
     assert payload["spec"]["payload"]["skill"] == "workflow"
     assert payload["source_dir"] == str(tmp_path)
+
+
+def _stub_controller_deps(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(installer_gui, "read_framework_version", lambda _: "0.0.0")
+    monkeypatch.setattr(installer_gui, "run_diagnostics", lambda: {})
+    monkeypatch.setattr(
+        installer_gui,
+        "summarize_diagnostics",
+        lambda diagnostics: ([], [], {}),
+    )
+
+
+def _make_bundle_shape(root: Path) -> Path:
+    install_page = root / "en" / "install" / "index.html"
+    install_page.parent.mkdir(parents=True)
+    install_page.write_text("<html><body>bundle</body></html>", encoding="utf-8")
+    return root
+
+
+def test_resolve_site_dist_finds_bundle_in_source_tree(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _stub_controller_deps(monkeypatch, tmp_path)
+    bundle = _make_bundle_shape(tmp_path / "site" / "dist")
+
+    controller = installer_gui.InstallController(str(tmp_path))
+
+    assert controller.site_dist_dir == bundle.resolve()
+
+
+def test_resolve_site_dist_respects_bundle_dir_flag(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _stub_controller_deps(monkeypatch, tmp_path)
+    bundle = _make_bundle_shape(tmp_path / "prebuilt")
+
+    controller = installer_gui.InstallController(str(tmp_path), bundle_dir=str(bundle))
+
+    assert controller.site_dist_dir == bundle.resolve()
+
+
+def test_resolve_site_dist_respects_env_var(monkeypatch, tmp_path: Path) -> None:
+    _stub_controller_deps(monkeypatch, tmp_path)
+    bundle = _make_bundle_shape(tmp_path / "env-bundle")
+    monkeypatch.setenv("VIBECRAFTED_SITE_BUNDLE", str(bundle))
+
+    controller = installer_gui.InstallController(str(tmp_path))
+
+    assert controller.site_dist_dir == bundle.resolve()
+
+
+def test_resolve_site_dist_returns_none_when_absent(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _stub_controller_deps(monkeypatch, tmp_path)
+    monkeypatch.delenv("VIBECRAFTED_SITE_BUNDLE", raising=False)
+
+    controller = installer_gui.InstallController(str(tmp_path))
+
+    assert controller.site_dist_dir is None

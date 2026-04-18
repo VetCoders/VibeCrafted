@@ -9,7 +9,7 @@ SHELL_INSTALLER := skills/vc-agents/scripts/install-shell.sh
 SOURCE   := $(CURDIR)
 BRANCH   ?= main
 
-.PHONY: help vibecrafted gui-install wizard check test install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep
 
 help:
 	@printf "\n"
@@ -55,10 +55,33 @@ vibecrafted: init-hooks
 	export PATH="$$HOME/.local/bin:$$PATH"; \
 	uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
 
+# BUNDLE_DIR accepts an external prebuilt Svelte site/dist tree
+# (e.g. from the sibling vibecrafted-io repo). When empty, the GUI
+# installer falls back to its built-in inline HTML.
+BUNDLE_DIR ?=
+
 wizard: init-hooks
-	@$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"
+	@$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"$(if $(BUNDLE_DIR), --bundle-dir "$(BUNDLE_DIR)")
 
 gui-install: wizard
+
+# Development helper: auto-detects the sibling vibecrafted-io checkout,
+# rebuilds the Svelte bundle, and launches the wizard served by the
+# local HTTP server. Use when iterating on the LiveInstaller component.
+wizard-dev: init-hooks
+	@site_repo=""; \
+	for p in "$(CURDIR)/../vc-runtime/vibecrafted-io" "$(CURDIR)/../vibecrafted-io" "$$HOME/Libraxis/vc-runtime/vibecrafted-io"; do \
+		if [ -d "$$p/site" ]; then site_repo="$$p"; break; fi; \
+	done; \
+	if [ -z "$$site_repo" ]; then \
+		echo "[wizard-dev] vibecrafted-io sibling not found — falling back to inline HTML"; \
+		$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"; \
+		exit 0; \
+	fi; \
+	echo "[wizard-dev] Building Svelte site at $$site_repo"; \
+	(cd "$$site_repo/site" && pnpm install --frozen-lockfile=false && pnpm run build) || { echo "[wizard-dev] site build failed"; exit 1; }; \
+	echo "[wizard-dev] Launching wizard with bundle from $$site_repo/site/dist"; \
+	$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)" --bundle-dir "$$site_repo/site/dist"
 
 install: init-hooks
 	@if ! command -v uv >/dev/null 2>&1; then \

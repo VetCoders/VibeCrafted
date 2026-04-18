@@ -178,7 +178,7 @@ class InstallRun:
 
 
 class InstallController:
-    def __init__(self, source_dir: str) -> None:
+    def __init__(self, source_dir: str, *, bundle_dir: str | None = None) -> None:
         self.source_dir = str(Path(source_dir).resolve())
         self.version = read_framework_version(self.source_dir)
         self.diagnostics = run_diagnostics()
@@ -187,6 +187,33 @@ class InstallController:
         )
         self._lock = threading.Lock()
         self._run = InstallRun()
+        self.site_dist_dir = self._resolve_site_dist(bundle_dir)
+
+    def _resolve_site_dist(self, explicit: str | None) -> Path | None:
+        """Locate the Svelte site bundle shipped with the source tree.
+
+        Resolution order:
+        1. --bundle-dir flag (explicit)
+        2. VIBECRAFTED_SITE_BUNDLE env var
+        3. <source>/site/dist (authored layout)
+        4. <source>/dist (release-tarball layout)
+
+        Returns None when no bundle is present; the request handler
+        then falls back to the legacy inline HTML.
+        """
+        candidates: list[Path] = []
+        if explicit:
+            candidates.append(Path(explicit))
+        env_bundle = os.environ.get("VIBECRAFTED_SITE_BUNDLE")
+        if env_bundle:
+            candidates.append(Path(env_bundle))
+        root = Path(self.source_dir)
+        candidates.extend([root / "site" / "dist", root / "dist"])
+
+        for candidate in candidates:
+            if (candidate / "en" / "install" / "index.html").is_file():
+                return candidate.resolve()
+        return None
 
     def _category_cards(self) -> list[dict[str, Any]]:
         cards: list[dict[str, Any]] = []
@@ -413,24 +440,110 @@ class InstallerHTTPServer(ThreadingHTTPServer):
         self.controller = controller
 
 
+STATIC_MIME_TYPES: dict[str, str] = {
+    ".html": "text/html; charset=utf-8",
+    ".htm": "text/html; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".mjs": "application/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".gif": "image/gif",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+    ".txt": "text/plain; charset=utf-8",
+    ".xml": "application/xml; charset=utf-8",
+    ".webmanifest": "application/manifest+json",
+}
+
+
 class InstallerRequestHandler(BaseHTTPRequestHandler):
     server: InstallerHTTPServer
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
-        if parsed.path == "/":
+        path = parsed.path
+        if path.startswith("/api/"):
+            if path == "/api/preflight":
+                self._send_json(self.server.controller.preflight_payload())
+                return
+            if path == "/api/install/status":
+                self._send_json(self.server.controller.status_payload())
+                return
+            if path == "/api/control-plane":
+                self._send_json(self.server.controller.control_plane_payload())
+                return
+            self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+
+        static_file = self._resolve_static(path)
+        if static_file is not None:
+            self._send_file(static_file)
+            return
+
+        if path == "/":
             self._send_html(build_html(self.server.controller.preflight_payload()))
             return
-        if parsed.path == "/api/preflight":
-            self._send_json(self.server.controller.preflight_payload())
-            return
-        if parsed.path == "/api/install/status":
-            self._send_json(self.server.controller.status_payload())
-            return
-        if parsed.path == "/api/control-plane":
-            self._send_json(self.server.controller.control_plane_payload())
-            return
+
         self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+
+    def _resolve_static(self, url_path: str) -> Path | None:
+        site_dist = self.server.controller.site_dist_dir
+        if site_dist is None:
+            return None
+
+        if url_path in ("/", ""):
+            candidate = site_dist / "en" / "install" / "index.html"
+        elif url_path in ("/en/install", "/en/install/"):
+            candidate = site_dist / "en" / "install" / "index.html"
+        elif url_path in ("/pl/install", "/pl/install/"):
+            candidate = site_dist / "pl" / "install" / "index.html"
+        else:
+            relative = url_path.lstrip("/")
+            if not relative:
+                return None
+            candidate = site_dist / relative
+            if url_path.endswith("/"):
+                candidate = candidate / "index.html"
+
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError):
+            return None
+
+        try:
+            resolved.relative_to(site_dist)
+        except ValueError:
+            return None
+
+        if resolved.is_file():
+            return resolved
+        return None
+
+    def _send_file(self, path: Path) -> None:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            self._send_json(
+                {"error": "Asset not readable"}, status=HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+            return
+        mime = STATIC_MIME_TYPES.get(path.suffix.lower(), "application/octet-stream")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
@@ -2287,12 +2400,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Start the local server without opening a browser tab.",
     )
+    parser.add_argument(
+        "--bundle-dir",
+        default=None,
+        help=(
+            "Optional path to the pre-built Svelte site bundle (site/dist). "
+            "Takes precedence over VIBECRAFTED_SITE_BUNDLE env var and the "
+            "default <source>/site/dist lookup."
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    controller = InstallController(args.source)
+    controller = InstallController(args.source, bundle_dir=args.bundle_dir)
     server = InstallerHTTPServer((args.host, args.port), controller)
     host, port = server.server_address[:2]
     url = f"http://{host}:{port}/"
