@@ -46,9 +46,10 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(title), rows[0]);
 
     let context = format!(
-        "mission root: {}  |  active runs: {}",
+        "mission root: {}  |  active runs: {}  |  focus: {}",
         app.config.launch_root.to_string_lossy(),
-        app.active_run_count()
+        app.active_run_count(),
+        app.active_tab().label()
     );
     frame.render_widget(
         Paragraph::new(context).style(Style::default().fg(Color::DarkGray)),
@@ -57,16 +58,21 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
-    let tabs = Tabs::new(AppTab::TITLES)
-        .block(Block::default().borders(Borders::ALL).title("Surface"))
-        .select(app.active_tab)
-        .divider("│")
-        .style(Style::default().fg(Color::Gray))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+    let tabs = Tabs::new(
+        app.tab_labels()
+            .into_iter()
+            .map(Line::from)
+            .collect::<Vec<_>>(),
+    )
+    .block(Block::default().borders(Borders::ALL).title("Surface"))
+    .select(app.active_tab)
+    .divider("│")
+    .style(Style::default().fg(Color::Gray))
+    .highlight_style(
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
     frame.render_widget(tabs, area);
 }
 

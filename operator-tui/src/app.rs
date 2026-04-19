@@ -16,6 +16,14 @@ pub enum AppTab {
 impl AppTab {
     pub const TITLES: [&'static str; 3] = ["Monitor", "Dispatch", "Controls"];
 
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Monitor => "Monitor",
+            Self::Dispatch => "Dispatch",
+            Self::Controls => "Controls",
+        }
+    }
+
     pub fn from_index(index: usize) -> Self {
         match index % Self::TITLES.len() {
             0 => Self::Monitor,
@@ -514,6 +522,25 @@ impl App {
             .iter()
             .filter(|run| matches!(run.kind, RunKind::Active | RunKind::Stalled))
             .count()
+    }
+
+    pub fn tab_labels(&self) -> [String; 3] {
+        let monitor = if self.filter_active_only {
+            format!("Monitor {}/{}", self.active_run_count(), self.runs.len())
+        } else {
+            format!("Monitor {}", self.runs.len())
+        };
+        let dispatch = format!(
+            "Dispatch {}/{}",
+            self.launch_kind.label(),
+            self.selected_agent()
+        );
+        let controls = if self.selected_run().is_some() {
+            format!("Controls {}", self.deep_actions().len())
+        } else {
+            "Controls -".to_string()
+        };
+        [monitor, dispatch, controls]
     }
 
     pub fn deep_actions(&self) -> Vec<DeepAction> {

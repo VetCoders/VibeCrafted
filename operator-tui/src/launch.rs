@@ -34,10 +34,16 @@ impl LaunchKind {
 
     pub fn human_description(self) -> &'static str {
         match self {
-            LaunchKind::Workflow => "Best default. Examine the surface, plan the cut, then implement.",
+            LaunchKind::Workflow => {
+                "Best default. Examine the surface, plan the cut, then implement."
+            }
             LaunchKind::Research => "Send a research pass first when the shape is still unclear.",
-            LaunchKind::Review => "Audit an existing surface for risk, regressions, and weak claims.",
-            LaunchKind::Marbles => "Run convergence loops when the code works but still lies or drifts.",
+            LaunchKind::Review => {
+                "Audit an existing surface for risk, regressions, and weak claims."
+            }
+            LaunchKind::Marbles => {
+                "Run convergence loops when the code works but still lies or drifts."
+            }
         }
     }
 }

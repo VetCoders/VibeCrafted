@@ -405,6 +405,66 @@ fn tab_navigation_wraps_and_dispatch_focus_tracks_selected_field() {
 }
 
 #[test]
+fn tab_labels_surface_monitor_dispatch_and_controls_context() {
+    let snapshot = RunSnapshot {
+        run_id: "run-7".to_string(),
+        session_id: Some("sess-7".to_string()),
+        agent: Some("codex".to_string()),
+        skill: Some("workflow".to_string()),
+        mode: Some("implement".to_string()),
+        state: Some("running".to_string()),
+        status: None,
+        started_at: Some("2026-04-16T10:00:00Z".to_string()),
+        updated_at: Some("2026-04-16T10:02:00Z".to_string()),
+        last_heartbeat: Some("2026-04-16T10:03:00Z".to_string()),
+        root: Some("/tmp/repo".to_string()),
+        operator_session: Some("repo-run-7".to_string()),
+        latest_report: Some("/tmp/repo/report.md".to_string()),
+        latest_transcript: Some("/tmp/repo/transcript.log".to_string()),
+        last_error: None,
+        extra: Default::default(),
+    };
+    let run = RenderedRun {
+        snapshot,
+        kind: RunKind::Active,
+        age_label: "1m ago".to_string(),
+        recent_events: Vec::new(),
+    };
+    let mut app = App {
+        config: AppConfig {
+            state_root: "/tmp/state".into(),
+            command_deck: "/usr/bin/vibecrafted".into(),
+            launch_root: "/tmp/repo".into(),
+            launch_runtime: LaunchRuntime::Terminal,
+            tick_rate: Duration::from_millis(250),
+        },
+        state: ControlPlaneState::empty("/tmp/state"),
+        runs: vec![run],
+        selected: 0,
+        active_tab: AppTab::Monitor.index(),
+        launch_kind: LaunchKind::Marbles,
+        launch_agent: 2,
+        launch_prompt: "Converge".to_string(),
+        launch_runtime: LaunchRuntime::Visible,
+        dispatch_selected: DispatchFocus::Runtime as usize,
+        focus: LaunchFocus::Browse,
+        status_line: String::new(),
+        launch_history: Vec::new(),
+        deep_selected: 0,
+        filter_active_only: true,
+    };
+
+    let labels = app.tab_labels();
+    assert_eq!(labels[0], "Monitor 1/1");
+    assert_eq!(labels[1], "Dispatch marbles/gemini");
+    assert_eq!(labels[2], "Controls 5");
+
+    app.selected = 1;
+    let labels = app.tab_labels();
+    assert_eq!(labels[2], "Controls -");
+}
+
+#[test]
 fn changing_launch_kind_reorients_the_operator_into_dispatch() {
     let mut app = App {
         config: AppConfig {
