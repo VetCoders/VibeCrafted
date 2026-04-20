@@ -46,6 +46,33 @@ def _write_fake_command(bin_dir: Path, name: str, capture_file: Path) -> None:
     script.chmod(0o755)
 
 
+def _write_gc_zellij(bin_dir: Path, capture_file: Path, listing: str) -> None:
+    script = bin_dir / "zellij"
+    script.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import os",
+                "import sys",
+                "from pathlib import Path",
+                "",
+                "args = sys.argv[1:]",
+                'capture = Path(os.environ["CAPTURE_FILE"])',
+                'listing = os.environ.get("FAKE_ZELLIJ_LISTING", "")',
+                'with capture.open("a", encoding="utf-8") as fh:',
+                '    fh.write(" ".join(args) + "\\n")',
+                'if args[:1] == ["list-sessions"]:',
+                "    print(listing, end='')",
+                "    sys.exit(0)",
+                "sys.exit(0)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+
 def _write_capture_script(script_path: Path, capture_file: Path) -> None:
     script_path.parent.mkdir(parents=True, exist_ok=True)
     script_path.write_text(
@@ -1180,3 +1207,111 @@ def test_dashboard_switch_outside_zellij_uses_attach(tmp_path: Path) -> None:
     payload = capture_file.read_text(encoding="utf-8").splitlines()
     assert "attach" in payload
     assert "target-session" in payload
+
+
+def test_dashboard_gc_prunes_dead_sessions(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    capture_file = tmp_path / "zellij-args.txt"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_gc_zellij(
+        fake_bin,
+        capture_file,
+        "\n".join(
+            [
+                "vc-runtime [Created 144h ago]",
+                "joyous-hill [Created 72h ago] (EXITED - attach to resurrect)",
+                "didactic-cactus [Created 5h ago] (EXITED - attach to resurrect)",
+                "",
+            ]
+        ),
+    )
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["FAKE_ZELLIJ_LISTING"] = "\n".join(
+        [
+            "vc-runtime [Created 144h ago]",
+            "joyous-hill [Created 72h ago] (EXITED - attach to resurrect)",
+            "didactic-cactus [Created 5h ago] (EXITED - attach to resurrect)",
+            "",
+        ]
+    )
+
+    result = subprocess.run(
+        ["bash", str(LAUNCHER), "dashboard", "gc", "--apply"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = capture_file.read_text(encoding="utf-8")
+    assert "list-sessions" in payload
+    assert "kill-session joyous-hill" in payload
+    assert "kill-session didactic-cactus" in payload
+    assert "kill-session vc-runtime" not in payload
+
+
+def test_dashboard_gc_include_live_prunes_only_stale_detached_sessions(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    capture_file = tmp_path / "zellij-args.txt"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_gc_zellij(
+        fake_bin,
+        capture_file,
+        "\n".join(
+            [
+                "active-one [Created 72h ago] (current)",
+                "stale-live [Created 72h ago]",
+                "fresh-live [Created 2h ago]",
+                "",
+            ]
+        ),
+    )
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["FAKE_ZELLIJ_LISTING"] = "\n".join(
+        [
+            "active-one [Created 72h ago] (current)",
+            "stale-live [Created 72h ago]",
+            "fresh-live [Created 2h ago]",
+            "",
+        ]
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(LAUNCHER),
+            "dashboard",
+            "gc",
+            "--apply",
+            "--include-live",
+            "--max-age-hours",
+            "24",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = capture_file.read_text(encoding="utf-8")
+    assert "kill-session stale-live" in payload
+    assert "kill-session fresh-live" not in payload
+    assert "kill-session active-one" not in payload

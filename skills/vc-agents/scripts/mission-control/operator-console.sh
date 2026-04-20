@@ -26,7 +26,11 @@ printf '  normal workflows -> launcher opens below this pane\n'
 printf '  marbles -> state launcher opens below, loop panes grow to the right\n'
 printf '\n'
 
-if [[ -x "$SCRIPT_DIR/restore-orphaned.sh" ]]; then
+if [[ -x "$SCRIPT_DIR/zellij-gc.sh" ]]; then
+  bash "$SCRIPT_DIR/zellij-gc.sh" --apply --quiet || true
+fi
+
+if [[ "${VIBECRAFTED_RESTORE_ORPHANED:-0}" == "1" && -x "$SCRIPT_DIR/restore-orphaned.sh" ]]; then
   bash "$SCRIPT_DIR/restore-orphaned.sh" &
 fi
 

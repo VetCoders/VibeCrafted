@@ -2509,7 +2509,7 @@ def run_doctor(store_path: Path, state: InstallState) -> List[DoctorFinding]:
                             "warn",
                             "zellij:dead-sessions",
                             f"{len(dead_sessions)} dead session(s): {names}{suffix}"
-                            " — run 'zellij kill-session <name>' to clean up",
+                            " — run 'vibecrafted dashboard gc --apply' to clean up safely",
                         )
                     )
                 else:

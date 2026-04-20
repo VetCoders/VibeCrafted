@@ -432,12 +432,14 @@ cmd_dashboard_help() {
   printf '  vibecrafted dashboard switch <name>     Switch session (inside Zellij) or attach (outside)\n'
   printf '  vibecrafted dashboard attach <name>     Attach to a session from outside Zellij\n'
   printf '  vibecrafted dashboard kill <name>       Kill a Zellij session\n'
+  printf '  vibecrafted dashboard gc [flags]        Prune dead sessions and optionally stale detached ones\n'
   printf '\n'
   printf '%bLayouts:%b  vc-dashboard (default), vc-marbles, vc-workflow, vc-research, vibecrafted\n' "$_bold" "$_reset"
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted dashboard                   # default dashboard\n'
   printf '  vibecrafted dashboard ls                # list sessions\n'
+  printf '  vibecrafted dashboard gc --apply        # prune dead EXITED sessions\n'
   printf '  vibecrafted dashboard vc-marbles        # marbles layout\n'
   printf '  vibecrafted dashboard switch my-session  # switch/attach\n'
   printf '\n'
@@ -890,6 +892,7 @@ cmd_help_full() {
   printf '\n'
   printf '  %bvibecrafted dashboard%b [layout]        Open/switch to a Zellij dashboard\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted dashboard ls%b              List active Zellij sessions\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted dashboard gc%b [flags]      Prune dead/stale Zellij sessions\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted dashboard switch%b <name>   Switch to session (Zellij-native)\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted start%b [layout]            Alias for %bvibecrafted dashboard%b\n' "$_cyan" "$_reset" "$_cyan" "$_reset"
   printf '  %bvibecrafted gui%b                       Public/local-web launch + observe surface\n' "$_cyan" "$_reset"
@@ -1072,6 +1075,12 @@ cmd_dashboard() {
       }
       [[ -n "${1:-}" ]] || { printf '%b[error]%b Session name required.\n' "$_red" "$_reset" >&2; return 1; }
       zellij kill-session "$1"
+      return
+      ;;
+    gc)
+      shift || true
+      _ensure_helpers_loaded || return 1
+      _run_helper vc-dashboard gc "$@"
       return
       ;;
   esac

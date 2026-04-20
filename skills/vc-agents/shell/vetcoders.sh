@@ -411,9 +411,6 @@ _vetcoders_guess_active_zellij_session() {
   command -v zellij >/dev/null 2>&1 || return 0
   local active
   active="$(zellij ls 2>/dev/null | _vetcoders_strip_ansi | grep -E '\(attached\)|\(current\)' | head -1 | awk '{print $1}')"
-  if [[ -z "$active" ]]; then
-    active="$(zellij ls 2>/dev/null | _vetcoders_strip_ansi | grep -v '(EXITED' | head -1 | awk '{print $1}')"
-  fi
   printf '%s\n' "$active"
 }
 
@@ -551,6 +548,17 @@ _vetcoders_operator_session_name() {
   _vetcoders_operator_session_name_for_run_id "$run_id"
 }
 
+_vetcoders_zellij_gc_script() {
+  _vetcoders_spawn_script "vc-agents" "mission-control/zellij-gc.sh"
+}
+
+_vetcoders_auto_gc_dead_zellij_sessions() {
+  local gc_script
+  gc_script="$(_vetcoders_zellij_gc_script 2>/dev/null || true)"
+  [[ -n "$gc_script" && -f "$gc_script" ]] || return 0
+  bash "$gc_script" --apply --quiet >/dev/null 2>&1 || true
+}
+
 
 _vetcoders_wait_for_zellij_session() {
   local session_name="$1"
@@ -661,6 +669,7 @@ _vetcoders_prepare_operator_runtime() {
   local runtime="${1:-$(_vetcoders_default_runtime)}"
   local session_name layout_file state command_text
   _vetcoders_normalize_ambient_context
+  _vetcoders_auto_gc_dead_zellij_sessions
 
   case "$runtime" in
     terminal|visible) ;;
@@ -694,7 +703,8 @@ _vetcoders_prepare_operator_runtime() {
       return 0
       ;;
     dead)
-      command_text="zellij attach --force-run-commands \"$session_name\""
+      zellij kill-session "$session_name" 2>/dev/null || true
+      command_text="zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
       ;;
     *)
       command_text="zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
@@ -1036,10 +1046,22 @@ _vetcoders_launch_dashboard() {
       zellij kill-session "${1:?session name required}"
       return
       ;;
+    gc)
+      shift || true
+      local gc_script
+      gc_script="$(_vetcoders_zellij_gc_script 2>/dev/null || true)"
+      [[ -n "$gc_script" && -f "$gc_script" ]] || {
+        echo "zellij GC helper not found." >&2
+        return 1
+      }
+      bash "$gc_script" "$@"
+      return
+      ;;
   esac
 
   local layout_name layout_file session_name repo_source repo_zellij_dir
   _vetcoders_normalize_ambient_context
+  _vetcoders_auto_gc_dead_zellij_sessions
   layout_name="$(_vetcoders_dashboard_layout_name "${first_arg}")" || return 1
   (( $# )) && shift
 

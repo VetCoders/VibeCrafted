@@ -471,7 +471,8 @@ def test_skill_bootstraps_fresh_operator_session_when_existing_one_is_dead(
     assert result.returncode == 0
     assert result.stdout.strip().endswith(expected_session)
     payload = capture_file.read_text(encoding="utf-8")
-    assert "attach --force-run-commands" in payload and expected_session in payload
+    assert f"kill-session {expected_session}" in payload
+    assert "--new-session-with-layout" in payload and expected_session in payload
     assert "OSA " in payload
     # Session name appears in the osascript zellij command (possibly escaped)
     assert expected_session in payload
