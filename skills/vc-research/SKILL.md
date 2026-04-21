@@ -31,7 +31,7 @@ Operator enters the framework session through:
 vibecrafted start
 # or
 vc-start
-# same default board as: vc-start vibecrafted
+# same default board as: vc-start operator
 ```
 
 Then launch this workflow through the command deck, not raw `skills/.../*.sh` paths:
@@ -194,7 +194,7 @@ vc-research --file "$PLAN"
 The repo-owned spawn scripts remain the internal engine behind that surface. Do
 not document raw `bash skills/...spawn.sh` paths as the operator entrypoint.
 
-The launcher opens one shared Zellij research tab using `vc-research.kdl`,
+The launcher opens one shared Zellij research tab using `research.kdl`,
 keeps a common `run_id`, and starts claude + codex + gemini against the same
 plan. This is intentional — divergence between reports reveals blind spots.
 

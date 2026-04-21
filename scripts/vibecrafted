@@ -401,18 +401,18 @@ cmd_start_help() {
   printf '\n'
   printf '%b⚒%b  %bstart%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
   printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
-  printf '  Start the operator Zellij session (default board: vibecrafted).\n'
+  printf '  Start the operator Zellij session (default board: operator).\n'
   printf '\n'
   printf '%bUsage:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted start\n'
-  printf '  vibecrafted start vibecrafted\n'
+  printf '  vibecrafted start operator\n'
   printf '  vc-start\n'
-  printf '  vc-start vibecrafted\n'
+  printf '  vc-start operator\n'
   printf '  vc-start resume\n'
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted start\n'
-  printf '  vc-start vibecrafted\n'
+  printf '  vc-start operator\n'
   printf '  vc-start resume\n'
   printf '\n'
   printf '  Direct %bvc-<workflow> <agent>%b calls outside Zellij auto-enter the\n' "$_cyan" "$_reset"
@@ -434,13 +434,13 @@ cmd_dashboard_help() {
   printf '  vibecrafted dashboard kill <name>       Kill a Zellij session\n'
   printf '  vibecrafted dashboard gc [flags]        Prune dead sessions and optionally stale detached ones\n'
   printf '\n'
-  printf '%bLayouts:%b  vc-dashboard (default), vc-marbles, vc-workflow, vc-research, vibecrafted\n' "$_bold" "$_reset"
+  printf '%bLayouts:%b  dashboard (default), marbles, workflow, research, operator\n' "$_bold" "$_reset"
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted dashboard                   # default dashboard\n'
   printf '  vibecrafted dashboard ls                # list sessions\n'
   printf '  vibecrafted dashboard gc --apply        # prune dead EXITED sessions\n'
-  printf '  vibecrafted dashboard vc-marbles        # marbles layout\n'
+  printf '  vibecrafted dashboard marbles           # marbles layout\n'
   printf '  vibecrafted dashboard switch my-session  # switch/attach\n'
   printf '\n'
 }
@@ -814,7 +814,7 @@ cmd_help() {
   printf '  vibecrafted init claude\n'
   printf '  vibecrafted gui --no-open\n'
   printf '  vibecrafted tui\n'
-  printf '  vibecrafted dashboard vc-marbles\n'
+  printf '  vibecrafted dashboard marbles\n'
   printf '  telemetry smoke --count 1 --no-watch\n'
   printf '  vibecrafted workflow claude --prompt "Plan and implement auth"\n'
   printf '  vibecrafted justdo codex --prompt "Ship the feature"\n'
@@ -956,7 +956,7 @@ cmd_help_full() {
   printf '  vibecrafted init claude\n'
   printf '  vibecrafted gui\n'
   printf '  vibecrafted tui\n'
-  printf '  vibecrafted dashboard vc-workflow\n'
+  printf '  vibecrafted dashboard workflow\n'
   printf '  telemetry smoke --count 1 --no-watch\n'
   printf '  vibecrafted workflow claude --prompt "Plan and implement auth"\n'
   printf '  vibecrafted workflow claude --file /path/to/brief.md\n'
@@ -1146,6 +1146,88 @@ _fetch_channel_version() {
   python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version',''),d.get('archive_url',''))" <<< "$payload" 2>/dev/null || return 1
 }
 
+_sha256_file() {
+  local file="$1"
+  local actual=""
+  actual="$(shasum -a 256 "$file" 2>/dev/null || sha256sum "$file" 2>/dev/null)" || return 1
+  printf '%s\n' "${actual%% *}"
+}
+
+_expected_sha_from_sums() {
+  local sums_file="$1"
+  local target_name="$2"
+  awk -v target="$target_name" '
+    NF >= 2 {
+      name=$2
+      sub(/^\*/, "", name)
+      if (name == target) {
+        print $1
+        exit
+      }
+    }
+  ' "$sums_file"
+}
+
+_fetch_checked_release_file() {
+  local file_url="$1"
+  local output_file="$2"
+  local label="${3:-$(basename "$output_file")}"
+  local base_url="${file_url%/*}"
+  local sums_file expected actual
+
+  sums_file="$(dirname "$output_file")/SHA256SUMS"
+
+  if ! curl -fsSL "$file_url" -o "$output_file"; then
+    printf '%b[error]%b Could not fetch %s from %s.\n' "$_red" "$_reset" "$label" "$file_url" >&2
+    return 1
+  fi
+
+  printf '  Verifying %s via SHA256SUMS\n' "$label"
+  if ! curl -fsSL "${base_url}/SHA256SUMS" -o "$sums_file"; then
+    printf '%b[error]%b Could not fetch SHA256SUMS from %s.\n' "$_red" "$_reset" "${base_url}/SHA256SUMS" >&2
+    return 1
+  fi
+
+  expected="$(_expected_sha_from_sums "$sums_file" "$(basename "$output_file")")"
+  [[ -n "$expected" ]] || {
+    printf '%b[error]%b SHA256SUMS does not contain an entry for %s.\n' "$_red" "$_reset" "$(basename "$output_file")" >&2
+    return 1
+  }
+
+  actual="$(_sha256_file "$output_file")" || {
+    printf '%b[error]%b Could not compute SHA256 for %s.\n' "$_red" "$_reset" "$label" >&2
+    return 1
+  }
+
+  if [[ "$actual" != "$expected" ]]; then
+    printf '%b[error]%b SHA256 mismatch for %s: expected %s, got %s.\n' "$_red" "$_reset" "$label" "$expected" "$actual" >&2
+    return 1
+  fi
+
+  printf '  %bSHA256 ✓%b\n' "$_green" "$_reset"
+}
+
+_run_remote_install_fallback() {
+  local install_url="$1"
+  local channel_ref="$2"
+  local tmpdir install_file status=0
+
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/vibecrafted-update.XXXXXX")" || {
+    printf '%b[error]%b Could not create a temporary directory for install.sh.\n' "$_red" "$_reset" >&2
+    return 1
+  }
+  install_file="$tmpdir/install.sh"
+
+  if ! _fetch_checked_release_file "$install_url" "$install_file" "install.sh"; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  bash "$install_file" --ref "$channel_ref" || status=$?
+  rm -rf "$tmpdir"
+  return "$status"
+}
+
 _post_update_cleanup() {
   # Remove known stale files that may survive across version transitions.
   local tools_dir="${crafted_tools:-$HOME/.vibecrafted/tools/vibecrafted-current}"
@@ -1239,9 +1321,16 @@ cmd_update() {
   fi
 
   # Last resort: fetch install.sh from the web.
-  printf '  No local install surface found — fetching install.sh from vibecrafted.io\n\n' >&2
-  curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --ref "$channel_ref"
-  update_status=$?
+  local remote_install_url="https://vibecrafted.io/install.sh"
+  if [[ -n "$available_url" ]]; then
+    remote_install_url="${available_url%/*}/install.sh"
+  fi
+
+  printf '  No local install surface found — fetching install.sh from %s\n\n' "$remote_install_url" >&2
+  if ! _run_remote_install_fallback "$remote_install_url" "$channel_ref"; then
+    return 1
+  fi
+  update_status=0
   _post_update_banner "$installed_ver"
   return "$update_status"
 }

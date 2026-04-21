@@ -1,5 +1,5 @@
-// vc-marbles — convergence workspace
-// Launch: vibecrafted marbles dashboard | vibecrafted dashboard vc-marbles
+// marbles — convergence workspace
+// Launch: vibecrafted marbles dashboard | vibecrafted dashboard marbles
 //
 // Design: operator-centric. The operator pane is full-width and focused.
 // Convergence monitoring lives in a compact bottom bar — always visible but

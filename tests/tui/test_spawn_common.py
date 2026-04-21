@@ -390,7 +390,8 @@ def test_codex_spawn_marks_meta_failed_when_codex_emits_non_json_auth_error(
         text=True,
     )
 
-    assert "Agent launched. Report will land at:" in result.stdout
+    assert "Agent launched." in result.stdout
+    assert "Await:" in result.stdout
 
     meta_files: list[Path] = []
     deadline = time.time() + 5
@@ -408,9 +409,13 @@ def test_codex_spawn_marks_meta_failed_when_codex_emits_non_json_auth_error(
     assert meta_payload["status"] == "failed"
     assert meta_payload["exit_code"] == 17
 
-    report_file = meta_files[0].with_name(
-        meta_files[0].name.replace(".meta.json", ".md")
-    )
+    report_file = Path(meta_payload["report"])
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if report_file.exists():
+            break
+        time.sleep(0.1)
+
     assert report_file.exists()
     assert (
         "Codex failed before writing a standalone report file."
@@ -477,7 +482,8 @@ def test_claude_spawn_marks_meta_failed_when_stream_has_no_json(
         text=True,
     )
 
-    assert "Agent launched. Report will land at:" in result.stdout
+    assert "Agent launched." in result.stdout
+    assert "Await:" in result.stdout
 
     meta_files: list[Path] = []
     deadline = time.time() + 5

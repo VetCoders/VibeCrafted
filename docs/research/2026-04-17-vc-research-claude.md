@@ -270,6 +270,7 @@ contract first, then decide whether the packaged public CLI should become
 ## Architecture Decision
 
 - **Chosen approach**: Keep the two convergence targets side by side:
+
   1. Yesterday's install-side target (single install graph, single mutator, thin
      front doors).
   2. A new operator-side target: single control-plane contract under
@@ -318,6 +319,7 @@ test` and `cargo clippy -- -D warnings` still pass. This is the charter
    `tests/tui/test_control_plane_state.py` at the same fixtures.
 
 5. **Promote operator docs.** Add `docs/operator/CONTROL_PLANE.md` that describes:
+
    - the state directory layout
    - the state vocabulary (`ACTIVE_STATES`, `FINAL_STATES`, classification rules)
    - the event shape

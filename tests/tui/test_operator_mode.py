@@ -155,9 +155,7 @@ def test_vc_start_launches_operator_entrypoint_layout(tmp_path: Path) -> None:
     assert "--session" in payload
     assert _expected_operator_session() in payload
     assert "--new-session-with-layout" in payload
-    assert (
-        str(REPO_ROOT / "config" / "zellij" / "layouts" / "vibecrafted.kdl") in payload
-    )
+    assert str(REPO_ROOT / "config" / "zellij" / "layouts" / "operator.kdl") in payload
 
 
 def test_helper_exports_vc_skill_wrappers() -> None:
@@ -511,3 +509,43 @@ def test_skill_bootstraps_fresh_operator_session_when_existing_one_is_dead(
     assert "OSA " in payload
     # Session name appears in the osascript zellij command (possibly escaped)
     assert expected_session in payload
+
+
+def test_dashboard_alt_layout_reuses_live_repo_session_instead_of_layout_session(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    capture_file = tmp_path / "capture.log"
+    session_state_file = tmp_path / "session-state.txt"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    session_state_file.write_text("live", encoding="utf-8")
+    _write_stateful_zellij(fake_bin, capture_file, session_state_file)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "xdg")
+    env["VIBECRAFTED_ROOT"] = str(REPO_ROOT)
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["SESSION_STATE_FILE"] = str(session_state_file)
+    env["FAKE_ZELLIJ_SESSION"] = _expected_operator_session()
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_PANE_ID", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+
+    subprocess.run(
+        ["bash", "-lc", f'source "{HELPER_SCRIPT}"; vc-dashboard vc-marbles'],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+    payload = capture_file.read_text(encoding="utf-8")
+    expected_session = _expected_operator_session()
+    assert f"--session {expected_session} action new-tab --layout" in payload
+    assert f"attach {expected_session}" in payload
+    assert "--new-session-with-layout" not in payload
+    assert f"{expected_session}-marbles" not in payload

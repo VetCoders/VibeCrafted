@@ -23,7 +23,7 @@ Operator enters the framework session through:
 vibecrafted start
 # or
 vc-start
-# same default board as: vc-start vibecrafted
+# same default board as: vc-start operator
 ```
 
 Do not launch `vc-delegate` directly. Its operator-facing replacement is:

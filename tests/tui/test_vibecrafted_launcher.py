@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -97,6 +99,50 @@ def _write_fake_python3(bin_dir: Path, capture_file: Path) -> None:
                 "#!/usr/bin/env bash",
                 "set -euo pipefail",
                 'printf "%s\\n" "$*" >> "$CAPTURE_FILE"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+
+def _write_fake_curl(bin_dir: Path) -> None:
+    script = bin_dir / "curl"
+    script.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import json",
+                "import os",
+                "import sys",
+                "from pathlib import Path",
+                "",
+                "args = sys.argv[1:]",
+                "routes = json.loads(os.environ.get('FAKE_CURL_ROUTES', '{}'))",
+                "capture = os.environ.get('CURL_CAPTURE_FILE')",
+                "url = None",
+                "output_path = None",
+                "idx = 0",
+                "while idx < len(args):",
+                "    arg = args[idx]",
+                "    if arg == '-o' and idx + 1 < len(args):",
+                "        output_path = args[idx + 1]",
+                "        idx += 2",
+                "        continue",
+                "    if not arg.startswith('-'):",
+                "        url = arg",
+                "    idx += 1",
+                "if capture and url:",
+                "    with Path(capture).open('a', encoding='utf-8') as fh:",
+                "        fh.write(url + '\\n')",
+                "if not url or url not in routes:",
+                "    sys.exit(22)",
+                "payload = routes[url]",
+                "if output_path:",
+                "    Path(output_path).write_text(payload, encoding='utf-8')",
+                "else:",
+                "    sys.stdout.write(payload)",
             ]
         )
         + "\n",
@@ -592,6 +638,126 @@ def test_repo_launcher_is_directly_executable() -> None:
     assert "START_HERE.md" in result.stdout
 
 
+def test_update_web_fallback_verifies_install_sh_against_sha256sums(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    wrapper = tmp_path / "vibecrafted"
+    install_capture = tmp_path / "install-args.txt"
+    curl_capture = tmp_path / "curl-urls.txt"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    wrapper.symlink_to(LAUNCHER)
+    _write_fake_curl(fake_bin)
+
+    install_body = (
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'printf "%s\\n" "$@" > "$INSTALL_CAPTURE"',
+            ]
+        )
+        + "\n"
+    )
+    install_sha = hashlib.sha256(install_body.encode("utf-8")).hexdigest()
+    routes = {
+        "https://vibecrafted.io/channel/main.json": json.dumps(
+            {
+                "version": "9.9.9",
+                "archive_url": "https://downloads.example/vibecrafted-9.9.9.tar.gz",
+            }
+        ),
+        "https://downloads.example/install.sh": install_body,
+        "https://downloads.example/SHA256SUMS": (
+            f"{install_sha}  install.sh\ndeadbeef  vibecrafted-9.9.9.tar.gz\n"
+        ),
+    }
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin"
+    env["INSTALL_CAPTURE"] = str(install_capture)
+    env["CURL_CAPTURE_FILE"] = str(curl_capture)
+    env["FAKE_CURL_ROUTES"] = json.dumps(routes)
+
+    result = subprocess.run(
+        ["bash", str(wrapper), "update", "--ref", "main"],
+        check=True,
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert install_capture.read_text(encoding="utf-8").splitlines() == ["--ref", "main"]
+    assert curl_capture.read_text(encoding="utf-8").splitlines() == [
+        "https://vibecrafted.io/channel/main.json",
+        "https://downloads.example/install.sh",
+        "https://downloads.example/SHA256SUMS",
+    ]
+    assert "Verifying install.sh via SHA256SUMS" in (result.stdout + result.stderr)
+    assert "SHA256" in (result.stdout + result.stderr)
+
+
+def test_update_web_fallback_aborts_on_install_sh_sha256_mismatch(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    wrapper = tmp_path / "vibecrafted"
+    install_capture = tmp_path / "install-args.txt"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    wrapper.symlink_to(LAUNCHER)
+    _write_fake_curl(fake_bin)
+
+    install_body = (
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'printf "%s\\n" "$@" > "$INSTALL_CAPTURE"',
+            ]
+        )
+        + "\n"
+    )
+    routes = {
+        "https://vibecrafted.io/channel/main.json": json.dumps(
+            {
+                "version": "9.9.9",
+                "archive_url": "https://downloads.example/vibecrafted-9.9.9.tar.gz",
+            }
+        ),
+        "https://downloads.example/install.sh": install_body,
+        "https://downloads.example/SHA256SUMS": (
+            "0000000000000000000000000000000000000000000000000000000000000000  install.sh\n"
+        ),
+    }
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin"
+    env["INSTALL_CAPTURE"] = str(install_capture)
+    env["FAKE_CURL_ROUTES"] = json.dumps(routes)
+
+    result = subprocess.run(
+        ["bash", str(wrapper), "update", "--ref", "main"],
+        check=False,
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert not install_capture.exists()
+    assert "SHA256 mismatch for install.sh" in (result.stdout + result.stderr)
+
+
 def test_installed_launcher_gui_uses_python_control_plane_surface(
     tmp_path: Path,
 ) -> None:
@@ -984,12 +1150,10 @@ def test_dashboard_subcommand_launches_repo_owned_zellij_layout(tmp_path: Path) 
 
     payload = capture_file.read_text(encoding="utf-8").splitlines()
     assert "--session" in payload
-    # vc-dashboard (default layout) uses the canonical operator session, no suffix.
+    # dashboard (default layout) uses the canonical operator session, no suffix.
     assert _expected_operator_session() in payload
     assert "--new-session-with-layout" in payload
-    assert (
-        str(REPO_ROOT / "config" / "zellij" / "layouts" / "vc-dashboard.kdl") in payload
-    )
+    assert str(REPO_ROOT / "config" / "zellij" / "layouts" / "dashboard.kdl") in payload
     assert f"ZELLIJ_CONFIG_DIR={REPO_ROOT / 'config' / 'zellij'}" in payload
 
 
@@ -1023,9 +1187,7 @@ def test_start_subcommand_launches_operator_entrypoint_layout(tmp_path: Path) ->
     assert "--session" in payload
     assert _expected_operator_session() in payload
     assert "--new-session-with-layout" in payload
-    assert (
-        str(REPO_ROOT / "config" / "zellij" / "layouts" / "vibecrafted.kdl") in payload
-    )
+    assert str(REPO_ROOT / "config" / "zellij" / "layouts" / "operator.kdl") in payload
     assert f"ZELLIJ_CONFIG_DIR={REPO_ROOT / 'config' / 'zellij'}" in payload
 
 

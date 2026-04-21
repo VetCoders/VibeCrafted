@@ -1,5 +1,5 @@
-// vibecrafted — operator entrypoint
-// Launch: vibecrafted start | vc-start
+// operator — operator entrypoint
+// Launch: vibecrafted start | vc-start | vibecrafted dashboard operator
 //
 // Design: operator gets a clean, full-screen workspace. Agents spawned via
 // marbles/workflow/research open as ADDITIONAL TABS in this session — visible

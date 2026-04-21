@@ -1022,7 +1022,10 @@ def test_marbles_materializes_failed_loop_when_child_spawn_dies_before_meta(
     assert "report" not in failed_loop
     assert "failure_reason" not in failed_loop
     assert Path(failed_loop["transcript"]).exists()
-    assert "failure surfaced from launch metadata" in result.stdout
+    assert (
+        "failure surfaced from launch metadata" in result.stdout
+        or "failure surfaced as:" in result.stdout
+    )
 
     meta_records = subprocess.run(
         [

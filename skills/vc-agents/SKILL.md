@@ -18,7 +18,7 @@ Operator enters the framework session through:
 vibecrafted start
 # or
 vc-start
-# same default board as: vc-start vibecrafted
+# same default board as: vc-start operator
 ```
 
 `vc-agents` is the delegation contract behind active workflows, not the primary

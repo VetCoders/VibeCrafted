@@ -162,10 +162,77 @@ PY
 
 _vetcoders_session_base_name() {
   local root base
-  root="$(_vetcoders_repo_root)"
+  root="$(_vetcoders_session_scope_root)"
   base="$(basename "$root" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//')"
   [[ -n "$base" ]] || base="vibecrafted"
   printf '%s\n' "$base"
+}
+
+_vetcoders_zellij_session_scope() {
+  case "${VIBECRAFTED_ZELLIJ_SESSION_SCOPE:-repo}" in
+    folder) printf 'folder\n' ;;
+    repo|*) printf 'repo\n' ;;
+  esac
+}
+
+_vetcoders_session_scope_root() {
+  case "$(_vetcoders_zellij_session_scope)" in
+    folder)
+      pwd -P
+      ;;
+    *)
+      _vetcoders_repo_root
+      ;;
+  esac
+}
+
+_vetcoders_zellij_session_max_length() {
+  printf '24\n'
+}
+
+_vetcoders_short_hash() {
+  local value="$1"
+  local hash=""
+  hash="$(printf '%s' "$value" | shasum -a 256 2>/dev/null || printf '%s' "$value" | sha256sum 2>/dev/null)" || return 1
+  hash="${hash%% *}"
+  printf '%.4s\n' "$hash"
+}
+
+_vetcoders_compact_session_name() {
+  local full_name="$1"
+  local preserved_tail="${2:-}"
+  local max_len hash prefix_len prefix compact
+
+  max_len="$(_vetcoders_zellij_session_max_length)"
+  if (( ${#full_name} <= max_len )); then
+    printf '%s\n' "$full_name"
+    return 0
+  fi
+
+  hash="$(_vetcoders_short_hash "$full_name" 2>/dev/null || true)"
+  [[ -n "$hash" ]] || hash="sess"
+
+  if [[ -n "$preserved_tail" ]]; then
+    prefix_len=$(( max_len - ${#preserved_tail} - ${#hash} - 2 ))
+    if (( prefix_len > 0 )); then
+      prefix="${full_name:0:prefix_len}"
+      prefix="${prefix%-}"
+      [[ -n "$prefix" ]] || prefix="${hash:0:1}"
+      compact="${prefix}-${hash}-${preserved_tail}"
+      if (( ${#compact} <= max_len )); then
+        printf '%s\n' "$compact"
+        return 0
+      fi
+    fi
+  fi
+
+  prefix_len=$(( max_len - ${#hash} - 1 ))
+  (( prefix_len > 0 )) || prefix_len=1
+  prefix="${full_name:0:prefix_len}"
+  prefix="${prefix%-}"
+  [[ -n "$prefix" ]] || prefix="${hash:0:1}"
+  compact="${prefix}-${hash}"
+  printf '%.24s\n' "$compact"
 }
 
 _vetcoders_operator_session_name_for_run_id() {
@@ -173,9 +240,9 @@ _vetcoders_operator_session_name_for_run_id() {
   local base
   base="$(_vetcoders_session_base_name)"
   if [[ -n "$run_id" ]]; then
-    printf '%s-%s\n' "$base" "$run_id"
+    _vetcoders_compact_session_name "${base}-${run_id}" "$run_id"
   else
-    printf '%s\n' "$base"
+    _vetcoders_compact_session_name "$base"
   fi
 }
 
@@ -538,7 +605,7 @@ EOF_APPLE
 }
 
 _vetcoders_operator_layout_file() {
-  _vetcoders_frontier_file "zellij/layouts/vibecrafted.kdl"
+  _vetcoders_frontier_file "zellij/layouts/operator.kdl"
 }
 
 _vetcoders_operator_session_name() {
@@ -963,16 +1030,16 @@ _vetcoders_wrap_atuin() {
 
 _vetcoders_wrap_atuin
 
-_vetcoders_known_dashboard_layouts=(vc-dashboard vc-marbles vc-workflow vc-research vibecrafted)
+_vetcoders_known_dashboard_layouts=(dashboard marbles workflow research operator)
 
 _vetcoders_dashboard_layout_name() {
-  local requested="${1:-vc-dashboard}"
+  local requested="${1:-dashboard}"
   case "$requested" in
-    ""|dashboard|mc|mission-control|vc-dashboard) printf 'vc-dashboard\n' ;;
-    marbles|vc-marbles) printf 'vc-marbles\n' ;;
-    workflow|vc-workflow) printf 'vc-workflow\n' ;;
-    research|vc-research) printf 'vc-research\n' ;;
-    vibecrafted) printf 'vibecrafted\n' ;;
+    ""|dashboard|mc|mission-control|vc-dashboard) printf 'dashboard\n' ;;
+    marbles|vc-marbles) printf 'marbles\n' ;;
+    workflow|vc-workflow) printf 'workflow\n' ;;
+    research|vc-research) printf 'research\n' ;;
+    operator|vibecrafted) printf 'operator\n' ;;
     *)
       echo "Unknown dashboard layout: $requested" >&2
       echo "Available layouts: ${_vetcoders_known_dashboard_layouts[*]}" >&2
@@ -988,18 +1055,11 @@ _vetcoders_dashboard_layout_file() {
 }
 
 _vetcoders_dashboard_session_name() {
-  local layout_name slug base_session run_id
+  local layout_name base_session
   _vetcoders_normalize_ambient_context
   layout_name="$(_vetcoders_dashboard_layout_name "${1:-}")" || return 1
   base_session="${VIBECRAFTED_OPERATOR_SESSION:-$(_vetcoders_operator_session_name)}"
-  run_id="$(_vetcoders_effective_run_id 2>/dev/null || true)"
-  # Default and vibecrafted layouts use the canonical operator session directly.
-  if [[ -n "$run_id" || "$layout_name" == "vibecrafted" || "$layout_name" == "vc-dashboard" ]]; then
-    printf '%s\n' "$base_session"
-    return 0
-  fi
-  slug="${layout_name#vc-}"
-  printf '%s-%s\n' "$base_session" "$slug"
+  printf '%s\n' "$base_session"
 }
 
 _vetcoders_launch_dashboard() {
@@ -1059,7 +1119,7 @@ _vetcoders_launch_dashboard() {
       ;;
   esac
 
-  local layout_name layout_file session_name repo_source repo_zellij_dir
+  local layout_name layout_file session_name repo_source repo_zellij_dir state inside_zellij current_session
   _vetcoders_normalize_ambient_context
   _vetcoders_auto_gc_dead_zellij_sessions
   layout_name="$(_vetcoders_dashboard_layout_name "${first_arg}")" || return 1
@@ -1092,6 +1152,24 @@ _vetcoders_launch_dashboard() {
   fi
 
   session_name="$(_vetcoders_dashboard_session_name "$layout_name")"
+  state="$(_vetcoders_zellij_session_state "$session_name")"
+  [[ -n "${ZELLIJ_PANE_ID:-}" || -n "${ZELLIJ+set}" ]] && inside_zellij=1 || inside_zellij=0
+  current_session="${ZELLIJ_SESSION_NAME:-}"
+
+  if [[ "$layout_name" != "operator" && "$layout_name" != "dashboard" && "$state" == "live" ]]; then
+    if (( inside_zellij )) && [[ "$current_session" == "$session_name" ]]; then
+      zellij action new-tab --layout "$layout_file"
+    else
+      zellij --session "$session_name" action new-tab --layout "$layout_file"
+      if (( inside_zellij )); then
+        zellij action switch-session "$session_name"
+      else
+        zellij attach "$session_name"
+      fi
+    fi
+    return 0
+  fi
+
   _vetcoders_ensure_zellij_session "$session_name" "$layout_file" "$@"
 }
 
@@ -1372,18 +1450,14 @@ _vetcoders_spawn_plan() {
   local mode="$2"
   local plan_file="$3"
   shift 3
-  local script root
+  local script root arg prev_arg=""
   local runtime="$(_vetcoders_default_runtime)"
-  local idx=1
-  while (( idx <= $# )); do
-    if [[ "${!idx}" == "--runtime" ]]; then
-      ((idx+=1))
-      if (( idx <= $# )); then
-        runtime="${!idx}"
-      fi
+  for arg in "$@"; do
+    if [[ "$prev_arg" == "--runtime" ]]; then
+      runtime="$arg"
       break
     fi
-    ((idx+=1))
+    prev_arg="$arg"
   done
   root="$(_vetcoders_spawn_root_arg "$@" 2>/dev/null || true)"
   [[ -n "$root" ]] || root="$(_vetcoders_repo_root)"
@@ -2102,6 +2176,11 @@ _vetcoders_skill_wrapper_usage() {
   esac
 }
 
+_vetcoders_has_agent() {
+  local candidate="${1:-}"
+  [[ "$candidate" == "claude" || "$candidate" == "codex" || "$candidate" == "gemini" ]]
+}
+
 _vetcoders_skill_wrapper() {
   local skill="$1"
   shift || true
@@ -2111,7 +2190,7 @@ _vetcoders_skill_wrapper() {
     _vetcoders_skill_wrapper_usage "$skill"
     return 1
   }
-  _has_agent "$tool" || {
+  _vetcoders_has_agent "$tool" || {
     printf 'vc-%s expects <claude|codex|gemini> as the first argument.\n' "$skill" >&2
     _vetcoders_skill_wrapper_usage "$skill"
     return 1
@@ -2386,10 +2465,10 @@ vc-start() {
     _vetcoders_resume_operator_session "$@"
     return
   fi
-  if [[ "${1:-}" == "vibecrafted" ]]; then
+  if [[ "${1:-}" == "operator" || "${1:-}" == "vibecrafted" ]]; then
     shift || true
   fi
-  _vetcoders_launch_dashboard vibecrafted "$@"
+  _vetcoders_launch_dashboard operator "$@"
 }
 
 vc-frontier-paths() {
