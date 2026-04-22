@@ -728,7 +728,7 @@ def test_spawn_prepare_paths_generates_real_run_context_when_missing(
     payload = dict(
         line.split("=", 1) for line in result.stdout.strip().splitlines() if "=" in line
     )
-    assert re.fullmatch(r"fwup-\d{6}", payload["RUN_ID"])
+    assert re.fullmatch(r"fwup-\d{6}-\d+", payload["RUN_ID"])
     assert payload["SKILL_CODE"] == "fwup"
     lock_path = Path(payload["RUN_LOCK"])
     expected_lock = (
