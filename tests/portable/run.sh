@@ -308,9 +308,9 @@ assert_matches "$gemini_transcript" '\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] session: fak
 assert_matches "$gemini_transcript" '\[[0-9]{2}:[0-9]{2}:[0-9]{2} Read\]'
 
 jq -e '.prompt_id != null and (.prompt_id | startswith("test_"))' "$codex_meta" >/dev/null || die "codex meta missing prompt_id"
-jq -e '.run_id | test("^plan-[0-9]{6}$")' "$codex_meta" >/dev/null || die "codex meta missing plan run_id"
-jq -e '.run_id | test("^rvew-[0-9]{6}$")' "$claude_meta" >/dev/null || die "claude meta missing review run_id"
-jq -e '.run_id | test("^impl-[0-9]{6}$")' "$gemini_meta" >/dev/null || die "gemini meta missing implement run_id"
+jq -e '.run_id | test("^plan-[0-9]{6}-[0-9]+$")' "$codex_meta" >/dev/null || die "codex meta missing plan run_id"
+jq -e '.run_id | test("^rvew-[0-9]{6}-[0-9]+$")' "$claude_meta" >/dev/null || die "claude meta missing review run_id"
+jq -e '.run_id | test("^impl-[0-9]{6}-[0-9]+$")' "$gemini_meta" >/dev/null || die "gemini meta missing implement run_id"
 jq -e '.loop_nr == 0' "$codex_meta" >/dev/null || die "codex meta missing loop_nr"
 jq -e '.framework_version != null and .framework_version != ""' "$codex_meta" >/dev/null || die "codex meta missing framework_version"
 jq -e '.completed_at != null and .duration_s != null' "$codex_meta" >/dev/null || die "codex meta missing completion telemetry"
