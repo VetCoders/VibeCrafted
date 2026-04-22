@@ -1957,12 +1957,16 @@ _vetcoders_marbles() {
     operator_session="$(_vetcoders_operator_session_name)"
   fi
 
-  # Inside zellij: marbles gets its own tab — operator's workspace stays clean.
+  # Inside zellij: each marbles run_id gets its own tab named
+  # "marbles-<run_id>". Subsequent loops (L2, L3, ...) inherit
+  # VIBECRAFTED_MARBLES_TAB_NAME via env and stay in the same tab — one
+  # run_id = one tab, no crossover. The "marbles-" prefix distinguishes
+  # the tab from workflow/research tabs which also carry run_ids.
   # Temp script keeps zellij args ASCII-safe (no inline UTF-8 prompt bytes).
   if [[ "$runtime" =~ ^(terminal|visible)$ ]] && _vetcoders_in_zellij && command -v zellij >/dev/null 2>&1; then
     local cmd_script marbles_tab_name
     export VIBECRAFTED_OPERATOR_SESSION="$(_vetcoders_current_zellij_session_name)"
-    marbles_tab_name="marbles"
+    marbles_tab_name="marbles-${marbles_run_id}"
     export VIBECRAFTED_MARBLES_TAB_NAME="$marbles_tab_name"
     marbles_env+=(VIBECRAFTED_MARBLES_TAB_NAME="$marbles_tab_name")
     quoted_env="$(_vetcoders_shell_quote_join "${marbles_env[@]}")"

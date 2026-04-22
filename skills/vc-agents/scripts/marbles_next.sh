@@ -474,7 +474,11 @@ _write_spawn_failure_artifacts() {
   local prompt_id="marbles-ancestor_L${loop_nr}_$(date +%Y%m%d)"
 
   stamp="$(spawn_timestamp)"
-  base="$store/reports/${stamp}_marbles-${ancestor_slug}_L${loop_nr}_${loop_agent}"
+  # Include loop_run_id (unique per dispatch+loop, has PID suffix) so parallel
+  # marbles runs of the same ancestor+agent at the same timestamp do not
+  # collide on the same meta/report/transcript file. Observed 2026-04-22:
+  # two codex dispatches on vc-board T1 and T2 wrote to the same filename.
+  base="$store/reports/${stamp}_${loop_run_id}_marbles-${ancestor_slug}_L${loop_nr}_${loop_agent}"
   report_path="${base}.md"
   transcript_path="${base}.transcript.log"
   meta_path="${base}.meta.json"

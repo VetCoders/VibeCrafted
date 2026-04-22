@@ -30,8 +30,8 @@ if [[ -x "$SCRIPT_DIR/zellij-gc.sh" ]]; then
   bash "$SCRIPT_DIR/zellij-gc.sh" --apply --quiet || true
 fi
 
-if [[ "${VIBECRAFTED_RESTORE_ORPHANED:-0}" == "1" && -x "$SCRIPT_DIR/restore-orphaned.sh" ]]; then
-  bash "$SCRIPT_DIR/restore-orphaned.sh" &
-fi
+# restore-orphaned path retired 2026-04-22 — it reanimated zombie runs without
+# PID validation and burned the laptop. Dead runs stay dead. Spawn-time GC in
+# marbles_spawn.sh + watcher heartbeat keep the truth fresh without resurrection.
 
 exec "$shell_bin" -l

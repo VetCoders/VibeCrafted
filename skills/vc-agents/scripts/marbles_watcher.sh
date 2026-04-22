@@ -641,6 +641,22 @@ _wait_for_report_path() {
       if [[ "$meta_status" == "failed" ]]; then
         return 4
       fi
+
+      # Heartbeat — validate launcher_pid via kill -0. If the bash launcher
+      # died without running its exit handler (terminal close, SIGKILL, crash),
+      # meta would sit as "launching"/"running" forever and downstream tools
+      # would treat the corpse as live. Reap it now: flip status to "ghost",
+      # release the lock, return as failed so this loop terminates cleanly.
+      if [[ "$meta_status" =~ ^(launching|running|in-progress)$ ]]; then
+        local _launcher_pid=""
+        _launcher_pid="$(spawn_read_meta_field "$meta_path" "launcher_pid")"
+        if [[ -n "$_launcher_pid" && "$_launcher_pid" != "None" ]]; then
+          if ! spawn_pid_alive "$_launcher_pid"; then
+            spawn_reap_dead_run "$meta_path"
+            return 4
+          fi
+        fi
+      fi
     fi
 
     if [[ -n "$meta_path" && -z "$report_path" ]]; then

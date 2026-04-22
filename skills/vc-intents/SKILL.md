@@ -266,13 +266,11 @@ If it does not create leverage, it is too soft.
 Return the audit in this shape:
 
 1. **Intent source**
-
    - project
    - retrieval window or source file(s)
    - shortlist method
 
 2. **Checklist**
-
    - up to 20 items
    - each with:
      - `status`
@@ -281,7 +279,6 @@ Return the audit in this shape:
      - `evidence`
 
 3. **Highest truth**
-
    - one paragraph
 
 4. **Next leverage**
