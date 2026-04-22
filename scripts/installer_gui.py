@@ -24,6 +24,7 @@ try:
     from installer_brand import PRODUCT_LINE, TAGLINE, VAPOR_HEADER
     from installer_tui import (
         CATEGORY_LABELS,
+        bundled_bin_root,
         framework_store_dir,
         helper_layer_path,
         read_framework_version,
@@ -38,6 +39,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on entrypoint
     from scripts.installer_brand import PRODUCT_LINE, TAGLINE, VAPOR_HEADER
     from scripts.installer_tui import (
         CATEGORY_LABELS,
+        bundled_bin_root,
         framework_store_dir,
         helper_layer_path,
         read_framework_version,
@@ -181,13 +183,14 @@ class InstallController:
     def __init__(self, source_dir: str, *, bundle_dir: str | None = None) -> None:
         self.source_dir = str(Path(source_dir).resolve())
         self.version = read_framework_version(self.source_dir)
-        self.diagnostics = run_diagnostics()
+        self.diagnostics = run_diagnostics(self.source_dir)
         self.found_items, self.missing_items, self.needs_install = (
             summarize_diagnostics(self.diagnostics)
         )
         self._lock = threading.Lock()
         self._run = InstallRun()
         self.site_dist_dir = self._resolve_site_dist(bundle_dir)
+        self.bundled_bin_dir = bundled_bin_root(self.source_dir)
 
     def _resolve_site_dist(self, explicit: str | None) -> Path | None:
         """Locate the Svelte site bundle shipped with the source tree.
@@ -266,6 +269,9 @@ class InstallController:
             "guide_path_display": _trim_home(str(start_here_path())),
             "helper_path": str(helper_layer_path()),
             "helper_path_display": _trim_home(str(helper_layer_path())),
+            "bundled_bin_dir": str(self.bundled_bin_dir),
+            "bundled_bin_display": _trim_home(str(self.bundled_bin_dir)),
+            "bundled_bin_present": self.bundled_bin_dir.is_dir(),
             "found_count": len(self.found_items),
             "missing_count": len(self.missing_items),
             "found_items": self.found_items,
@@ -538,6 +544,20 @@ class InstallerRequestHandler(BaseHTTPRequestHandler):
             )
             return
         mime = STATIC_MIME_TYPES.get(path.suffix.lower(), "application/octet-stream")
+        # Mark Astro-built install pages as live when served by us. The
+        # Svelte InstallerShell reads window.__VIBECRAFTED_LIVE__ to decide
+        # between preview (static manifest) and live (this API) mode; without
+        # the flag, hostname-only detection false-positives on Astro dev.
+        if path.suffix.lower() == ".html":
+            try:
+                html = data.decode("utf-8")
+            except UnicodeDecodeError:
+                html = None
+            if html is not None and "__VIBECRAFTED_LIVE__" not in html:
+                injection = "<script>window.__VIBECRAFTED_LIVE__=true;</script></head>"
+                if "</head>" in html:
+                    html = html.replace("</head>", injection, 1)
+                    data = html.encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(data)))

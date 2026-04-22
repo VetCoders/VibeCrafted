@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import contextlib
+import os
+import platform
 import queue
 import select
 import shutil
@@ -66,6 +68,7 @@ STEP_LABELS = {
 
 CATEGORY_LABELS = {
     "frameworks": "Frameworks",
+    "bundled": "Bundled toolchain",
     "foundations": "Foundations",
     "toolchains": "Toolchains",
     "agents": "Agents",
@@ -74,6 +77,7 @@ CATEGORY_LABELS = {
 
 CATEGORY_ORDER = tuple(CATEGORY_LABELS)
 FOUNDATION_COMMANDS = ("loctree-mcp", "aicx-mcp", "prview", "screenscribe")
+BUNDLED_BIN_NAMES = ("aicx-mcp", "aicx", "loctree-mcp", "loctree", "loct", "prview")
 TOOLCHAIN_COMMANDS = ("python3", "node", "git", "rsync")
 AGENT_COMMANDS = ("claude", "codex", "gemini")
 ADDITIONAL_TOOL_COMMANDS = ("mise", "starship", "atuin", "zoxide")
@@ -212,10 +216,77 @@ def _framework_checks() -> dict[str, dict[str, Any]]:
     }
 
 
-def run_diagnostics() -> dict[str, dict[str, dict[str, Any]]]:
-    """Check: frameworks, foundations, toolchains, agents, tools."""
+def _bundled_os() -> str:
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    if sys.platform.startswith(("win", "cygwin")):
+        return "windows"
+    return sys.platform
+
+
+def _bundled_arch() -> str:
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "x86_64"
+    if machine in ("aarch64", "arm64"):
+        return "aarch64"
+    if machine == "armv7l":
+        return "armv7"
+    return machine or "unknown"
+
+
+def bundled_bin_root(source_dir: str) -> Path:
+    """Resolve the per-arch directory where release tarballs drop notarized
+    foundation binaries. Order of precedence:
+      1. $VIBECRAFTED_BUNDLED_BIN (explicit override)
+      2. <source>/tools/bin/<os>-<arch>
+      3. <source>/tools/bin (flat fallback)
+    """
+    override = os.environ.get("VIBECRAFTED_BUNDLED_BIN")
+    if override:
+        return Path(override).expanduser()
+    per_arch = Path(source_dir) / "tools" / "bin" / f"{_bundled_os()}-{_bundled_arch()}"
+    if per_arch.is_dir():
+        return per_arch
+    return Path(source_dir) / "tools" / "bin"
+
+
+def _bundled_check(name: str, source_dir: str) -> dict[str, Any]:
+    root = bundled_bin_root(source_dir)
+    path = root / name
+    if path.is_file() and os.access(path, os.X_OK):
+        return {
+            "label": name,
+            "found": True,
+            "detail": str(path),
+            "kind": "bundled",
+        }
+    missing_detail = (
+        f"{name} missing from bundled drop-in ({root})"
+        if root.is_dir()
+        else f"{name} — bundled drop-in directory not present ({root})"
+    )
+    return {
+        "label": name,
+        "found": False,
+        "detail": missing_detail,
+        "kind": "bundled",
+    }
+
+
+def run_diagnostics(
+    source_dir: str | None = None,
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Check: frameworks, bundled toolchain, foundations, toolchains, agents, tools."""
+    if source_dir is None:
+        source_dir = default_source_dir()
     diagnostics: dict[str, dict[str, dict[str, Any]]] = {}
     diagnostics["frameworks"] = _framework_checks()
+    diagnostics["bundled"] = {
+        name: _bundled_check(name, source_dir) for name in BUNDLED_BIN_NAMES
+    }
     diagnostics["foundations"] = {
         name: _command_check(name) for name in FOUNDATION_COMMANDS
     }

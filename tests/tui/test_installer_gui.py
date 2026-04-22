@@ -70,7 +70,7 @@ def test_preflight_payload_summarizes_diagnostics(monkeypatch, tmp_path: Path) -
     )
 
     monkeypatch.setattr(installer_gui, "read_framework_version", lambda _: "1.2.1")
-    monkeypatch.setattr(installer_gui, "run_diagnostics", lambda: diagnostics)
+    monkeypatch.setattr(installer_gui, "run_diagnostics", lambda _src=None: diagnostics)
     monkeypatch.setattr(
         installer_gui,
         "sync_state",
@@ -237,7 +237,7 @@ def test_launch_workflow_returns_control_plane_payload(
 
 def _stub_controller_deps(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(installer_gui, "read_framework_version", lambda _: "0.0.0")
-    monkeypatch.setattr(installer_gui, "run_diagnostics", lambda: {})
+    monkeypatch.setattr(installer_gui, "run_diagnostics", lambda _src=None: {})
     monkeypatch.setattr(
         installer_gui,
         "summarize_diagnostics",
