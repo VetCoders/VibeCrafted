@@ -156,8 +156,13 @@ while IFS=$'\t' read -r name state attachment hours stale_flag; do
   fi
 done <<<"$inventory"
 
-targets=("${dead_sessions[@]}")
-if (( include_live )); then
+# Empty-array expansion under `set -u` is fatal on bash 3.2 (macOS system
+# bash, which CI macOS runners use). Guard each append on array length.
+targets=()
+if (( ${#dead_sessions[@]} )); then
+  targets+=("${dead_sessions[@]}")
+fi
+if (( include_live )) && (( ${#stale_live_sessions[@]} )); then
   targets+=("${stale_live_sessions[@]}")
 fi
 
