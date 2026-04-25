@@ -75,6 +75,54 @@ def test_write_bundle_uses_current_metadata_and_skill_inventory(tmp_path: Path) 
     assert "docs/SUBMISSION_FORMS.md" in members
 
 
+def test_write_bundle_includes_bundled_tool_drop_in_slot(
+    monkeypatch, tmp_path: Path
+) -> None:
+    repo_root = tmp_path / "repo"
+    bin_root = repo_root / "tools" / "bin"
+    per_arch = bin_root / "linux-x86_64"
+    per_arch.mkdir(parents=True)
+    (repo_root / "docs").mkdir()
+    (repo_root / "VERSION").write_text("9.9.9\n", encoding="utf-8")
+    (repo_root / "LICENSE").write_text("license\n", encoding="utf-8")
+    (repo_root / "docs" / "MARKETPLACE_LISTING.md").write_text(
+        "listing\n", encoding="utf-8"
+    )
+    (per_arch / "loctree-mcp").write_text("binary\n", encoding="utf-8")
+    (bin_root / "prview").write_text("binary\n", encoding="utf-8")
+    (bin_root / ".gitkeep").write_text("", encoding="utf-8")
+    (bin_root / ".DS_Store").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(bundle, "SUPPORT_DOC_PATHS", ())
+    monkeypatch.setattr(bundle, "discover_bundle_skills", lambda _repo: [])
+    monkeypatch.setattr(bundle, "discover_foundation_skills", lambda _repo: [])
+    monkeypatch.setattr(
+        bundle,
+        "load_listing_metadata",
+        lambda _repo: bundle.ListingMetadata(
+            description="desc",
+            keywords=("codex",),
+            homepage="https://vibecrafted.io/",
+            repository="https://github.com/VetCoders/vibecrafted",
+            documentation="https://vibecrafted.io/en/quickstart/",
+            faq="https://vibecrafted.io/en/faq/",
+            license="Business Source License 1.1",
+        ),
+    )
+
+    archive_bytes = bundle.build_bundle_bytes(repo_root)
+
+    archive_path = tmp_path / "bundle.plugin"
+    archive_path.write_bytes(archive_bytes)
+    with zipfile.ZipFile(archive_path) as archive:
+        members = set(archive.namelist())
+
+    assert "tools/bin/linux-x86_64/loctree-mcp" in members
+    assert "tools/bin/prview" in members
+    assert "tools/bin/.gitkeep" not in members
+    assert "tools/bin/.DS_Store" not in members
+
+
 def test_framework_playground_uses_vibecrafted_command_deck() -> None:
     text = (bundle.REPO_ROOT / "docs" / "presence" / "framework.js").read_text(
         encoding="utf-8"

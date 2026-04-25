@@ -4,10 +4,10 @@ You have an AI-built repo. You want to ship it without the vibe hangover.
 
 ## 1. Install
 
-Terminal-native path for the human kickoff:
+Browser-guided path for the human kickoff:
 
 ```bash
-curl -fsSL https://vibecrafted.io/install.sh | bash
+curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --gui
 ```
 
 The bootstrap explains what it will do and asks before proceeding on an
@@ -17,10 +17,10 @@ prompt.
 This path stages the control plane, bootstraps the foundation layer, and runs
 the compact installer truth used by automation as well.
 
-Optional browser-guided path for operators who prefer a GUI:
+Compact path for scripting or terminal-only installs:
 
 ```bash
-curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --gui
+curl -fsSL https://vibecrafted.io/install.sh | bash
 ```
 
 Non-destructive. Interactive. Tells you what it does before it does it.
@@ -71,7 +71,8 @@ vibecrafted implement codex --prompt "Add user authentication with JWT"
 # legacy alias still works: vibecrafted justdo codex --prompt "..."
 ```
 
-`vibecrafted implement` (alias: `justdo`) runs the autonomous delivery contract in `vc-implement`:
+`vibecrafted implement` runs the autonomous delivery contract in `vc-implement`
+(`justdo` remains a legacy alias for existing prompts and shell environments):
 
 - **Orient** — map the repo, load prior intent, and choose the smallest shape that works
 - **Implement** — make the change, add tests, and integrate with the live runtime

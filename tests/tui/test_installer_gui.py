@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 from scripts import installer_gui
@@ -116,6 +117,18 @@ def test_preflight_payload_summarizes_diagnostics(monkeypatch, tmp_path: Path) -
     ]
     assert payload["control_plane"]["skills_ready"] == 1
     assert payload["status"]["completed"] is False
+    assert payload["bundled_bin_dir"] == str(tmp_path / "tools" / "bin")
+    assert payload["bundled_bin_present"] is False
+
+
+def test_gui_keeps_tui_diagnostic_api_contract() -> None:
+    """The browser installer relies on source-aware TUI diagnostics."""
+
+    signature = inspect.signature(installer_gui.run_diagnostics)
+
+    assert "source_dir" in signature.parameters
+    assert signature.parameters["source_dir"].default is None
+    assert callable(installer_gui.bundled_bin_root)
 
 
 def test_install_runtime_env_prepends_repo_owned_bins(
@@ -182,6 +195,9 @@ def test_build_html_renders_wizard_shell() -> None:
     assert "Launch guided install" in html
     assert "Finish state" in html
     assert "make wizard" in html
+    assert "make vibecrafted" in html
+    assert "Local checkout GUI" in html
+    assert "Terminal-native fallback" not in html
     assert "height: calc(100dvh - 36px);" in html
     assert "overflow: hidden;" in html
     assert "-webkit-overflow-scrolling: touch;" in html

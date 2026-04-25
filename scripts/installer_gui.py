@@ -1505,7 +1505,7 @@ def build_html(preflight: dict[str, Any]) -> str:
                   <p class="slide-note">%%PRODUCT_LINE%%</p>
                   <code class="fallback-code">make wizard</code>
                   <p class="slide-note">
-                    Terminal-native fallback stays available for operators who prefer the TUI rhythm. The browser path is the effortless public front door.
+                    Local checkout GUI stays available for operators who want this browser-guided rhythm. For terminal-native flow, use <code>make vibecrafted</code>.
                   </p>
                 </section>
               </aside>
@@ -1692,9 +1692,9 @@ def build_html(preflight: dict[str, Any]) -> str:
                               </p>
                             </section>
                             <section class="summary-card">
-                              <h3>Terminal fallback</h3>
+                              <h3>Local checkout GUI</h3>
                               <p class="summary-copy">
-                                `make wizard` stays available as the expert path. Useful when you want the same cadence directly inside the terminal.
+                                `make wizard` opens this same browser-guided surface from a local checkout. `make vibecrafted` stays the shell-first default.
                               </p>
                             </section>
                           </div>

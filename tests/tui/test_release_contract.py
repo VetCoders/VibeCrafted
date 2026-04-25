@@ -20,6 +20,17 @@ EXPECTED_COPY = {
 }
 
 
+def test_quick_start_keeps_public_gui_cta_before_compact_path() -> None:
+    text = (REPO_ROOT / "docs/QUICK_START.md").read_text(encoding="utf-8")
+
+    primary_heading = text.index("Browser-guided path for the human kickoff")
+    primary_index = text.index(PRIMARY_CTA, primary_heading)
+    compact_heading = text.index("Compact path for scripting or terminal-only installs")
+    compact_index = text.index(SECONDARY_CTA, compact_heading)
+
+    assert primary_index < compact_index
+
+
 def test_release_contract_stays_polarized_across_public_surfaces() -> None:
     errors: list[str] = []
 
@@ -52,6 +63,7 @@ def test_installer_reference_keeps_public_gui_and_local_shell_contract() -> None
         assert "Local terminal-native entrypoint: `make vibecrafted`" in text
         assert "Local browser GUI entrypoint: `make wizard`" in text
 
+    assert f"Public compact path: `{SECONDARY_CTA}`" in reference
     assert (
         "`make vibecrafted`\n  Runs the terminal-native installer wizard from a local checkout."
         in reference
@@ -60,3 +72,16 @@ def test_installer_reference_keeps_public_gui_and_local_shell_contract() -> None
         "`make wizard` / `make gui-install`\n  Open the browser-guided installer from a local checkout when you want the GUI surface."
         in reference
     )
+
+
+def test_release_archive_preserves_bundled_tool_slot() -> None:
+    release_workflow = (
+        REPO_ROOT / ".github" / "workflows" / "release.yml"
+    ).read_text(encoding="utf-8")
+    tools_readme = (REPO_ROOT / "tools" / "bin" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "tar -czf" in release_workflow
+    assert "--exclude='./tools/bin'" not in release_workflow
+    assert "$SOURCE/tools/bin/<os>-<arch>" in tools_readme
