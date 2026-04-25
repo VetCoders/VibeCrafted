@@ -25,8 +25,8 @@ provides all the necessary tools to follow this pattern.
 
 1. **Foundations:**
    - [loctree](https://loct.io) — Codebase mapping and architectural perception.
-   - [aicx](https://github.com/VetCoders/aicx) — Context boundaries and intentions retrieval.
-   - [prview](https://github.com/VetCoders/prview) — Continuous review pipelines.
+   - [aicx](https://github.com/Loctree/aicx) — Context boundaries and intentions retrieval.
+   - [prview](https://github.com/Loctree/prview) — Continuous review pipelines.
    - [ScreenScribe](https://github.com/VetCoders/ScreenScribe) — Voice-to-text context ingestion.
 
    The main VetCoders native framework drivers, designed to make non-programmers

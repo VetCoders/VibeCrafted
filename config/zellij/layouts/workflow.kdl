@@ -1,5 +1,5 @@
-// vc-workflow — ERi implementation workspace
-// Launch: vibecrafted dashboard vc-workflow
+// workflow — ERi implementation workspace
+// Launch: vibecrafted dashboard workflow
 //
 // Design: operator-first. Main pane gets 75% width for focused implementation.
 // Agent sidebar is compact — enough to see output, not enough to distract.

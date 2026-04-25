@@ -5,6 +5,160 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+## 1.4.1 — 2026-04-22
+
+### Added
+
+- `tools/bin/` bundled toolchain drop-in for pre-notarized binaries: installer
+  resolves local bundle first, then falls back to remote fetch. Enables
+  fully-offline first-install UX for cold users.
+  - `scripts/build_marketplace_bundle.py` now collects `tools/bin/**` into the
+    plugin bundle artifact
+  - `scripts/install-foundations.sh` gains `bundled_bin_root()` and
+    `install_from_bundled()` with explicit fallback order
+  - `installer_tui.py` / `installer_gui.py` surface bundled diagnostics as a
+    new category in the pre-flight doctor
+  - Documented resolution order and notarization expectations in
+    `tools/bin/README.md`
+- `skills/vc-agents/scripts/marbles_verify_watch.sh` — standalone detached
+  verification poller that waits for `*_verified.md`, updates `state.json` under
+  lock, and marks verification as `completed` or `timed_out`. Decouples
+  verification from the main watcher process and eliminates watcher holding
+  PIDs for long periods.
+- `vc-research` swarm launcher + worker charter for research passes that need
+  multiple parallel agents converging on one plan.
+- `vc-intents` skill for retrieval of past decisions from AI Chronicles /
+  session history (complements `vc-init`).
+- `await` helper for synchronous wait-on-agent flows in orchestration scripts.
+- Help overlay in operator-tui launch flow.
+- `--echo-stdout` flag in codex stream bridge for visibility into headless
+  runs without losing machine-readable frames.
+- Agent telemetry captured into loop `state.json` (dispatch time, completion
+  time, exit code, session_id) so marbles state is the single source of truth
+  for multi-loop runs.
+- New skill **`vc-implement`** becomes the canonical end-to-end implementation
+  skill. The `vc-justdo` name stays in-tree as a **backward-compatible legacy
+  alias** (frontmatter: `canonical: vc-implement`) so agents already wired to
+  the old name keep working. Every public surface (START_HERE `Simplest path`,
+  install banner, skill registry in `vetcoders_install.py`) now shows
+  `vibecrafted implement ...`; the `justdo` command still executes but is no
+  longer advertised. Full trigger-phrase inventory — including Polish triggers
+  ("zrób to", "dowiez to", "od pomyslu do realizacji") — migrated to
+  `vc-implement`.
+
+### Changed
+
+- Operator TUI refactored into a tabbed console — three tabs: **Monitor**
+  (live runs + recent events), **Dispatch** (mission kind / agent / runtime /
+  prompt), **Controls** (attach / resume / report / transcript for selected
+  run). Tab navigation contracts stabilized (`Tab` / `Shift+Tab`, arrow keys
+  scoped to active tab), direct tab switches normalized.
+- Operator TUI split into dedicated **`vc-operator`** crate at the
+  `vc-runtime` workspace root. The crate owns its versioning (`vibecrafted-
+operator v0.1.1`) and release cycle. `scripts/vibecrafted` launcher gracefully
+  falls back between in-source operator-tui and the installed `vc-operator`
+  binary, with a clear error if neither is available.
+- Marbles spawn now **honors `VIBECRAFTED_MARBLES_RUN_ID` only when it doesn't
+  conflict with existing state** (unless `VIBECRAFTED_MARBLES_RESUME=1` is set
+  explicitly). Otherwise it mints a **PID-suffixed** run id (`$$` appended to
+  the timestamp) so parallel spawns cannot collide on the same second.
+- Marbles watcher decoupled from verification polling — instead of holding PIDs
+  and polling inline, it marks loops as `pending` and hands off to
+  `marbles_verify_watch.sh` via `nohup`. Summary logic simplified; configurable
+  verification grace period added.
+- Zellij spawn uses **tab/pane IDs** (not just names) for targeting marbles
+  panes — non-disruptive spawn that doesn't steal focus from operator's
+  active pane; tab index noise suppressed in marbles spawn output.
+- Zellij layouts renamed (`operator` / `vc-marbles` / `vc-workflow` / `vc-
+research` / `vc-dashboard`) with matching launcher and test updates.
+- Uninstall now removes **only manifest-tracked entries** + framework
+  artifacts — no broad filesystem sweeps that could clobber user files.
+- Operator TUI launches **Ghostty** natively (via `zellij`) as the terminal
+  surface when running in `terminal` / `visible` runtime.
+- Marbles active-only run filter in operator-tui so Monitor tab stops showing
+  cold runs from previous sessions.
+- System-wide docs refresh: README, FAQ, FAQ-ANSWERED, QUICK_START, SKILLS,
+  WORKFLOWS, installer/DESIGN, workflows/MARBLES — copy brought in line with
+  the canonical command set (`vibecrafted implement`) and the current 1.4.1
+  surface.
+- FLOW + SKILL polish across `vc-delegate`, `vc-init`, `vc-justdo` (marked
+  legacy), `vc-partner`, `vc-research`, `vc-scaffold`, `vc-workflow`.
+
+### Fixed
+
+- Marbles wrapper publication drift: wrappers are now force-republished on
+  every dispatch so stale files can't point at removed scripts.
+- Launcher drift repair in place — `doctor` now fixes broken launcher
+  configurations without requiring a clean install.
+- `doctor` rc repair path for launcher rc files.
+- Operator TUI control-plane wiring — pane names + control-plane state
+  aligned, polish pass on tab surfaces.
+- Operator TUI terminal agnosticism — no longer hard-codes Zellij or any
+  single terminal assumption.
+- Operator TUI Zellij env isolation in tests (previously leaked
+  `ZELLIJ_CONFIG_DIR` between parallel test runs).
+- Flaky CI expectations for marbles statuses and Makefile dry-run output.
+- `uv` bootstrap assertion messages now align with export `PATH` checks.
+
+### Removed
+
+- `operator-tui/` directory from vibecrafted (moved to dedicated `vc-
+operator` crate — see **Changed** above).
+- Stale research docs (`docs/MODULARIZATION_PLAN_2026_04_16.md`,
+  `docs/REPO_GROUND_TRUTH_2026_04_13.md`, multiple `docs/research/*.md`
+  artifacts, `docs/FAQ-ANSWERED.md` noise).
+- `scripts/mission-control/restore-orphaned.sh` (superseded by
+  `marbles_verify_watch.sh` + ghost reaping path in the watcher).
+
+## 1.4.0 — 2026-04-18
+
+### Added
+
+- Marbles `delete` subcommand for cleaning up finished / abandoned runs.
+- Installer TUI textual wizard flow with real keybindings, sticky layout,
+  dynamic interpolation, and manifest-driven step rendering — implements the
+  `docs/installer/` mockups 1-for-1.
+- Worker contract in generated child plans so sub-agents know the exact
+  constraints of their slice (scope, artifacts, gates).
+- Shell syntax checks for spawn scripts in the pre-commit path.
+- Attended bootstrap confirmation + `--yes` flag in `install.sh` — humans get
+  a "what's about to happen" pause by default; CI / automation pipelines get
+  a clean non-interactive path.
+- Regression tests for installer manifest / branding + codex_stream_bridge.
+- `zellij` panes for marbles dispatch (in place of bare new-tab).
+
+### Changed
+
+- **Installer TUI-first swap**: terminal front-door defaults to the guided
+  TUI wizard; the GUI stays available via `--gui`. Sticky-bottom streaming
+  log, unified `make install` entrypoint.
+- Zellij orchestration hardened: tab isolation, spawn probe before every
+  dispatch, session GC for stale zellij daemons.
+- Framework bumped **1.3.0 → 1.4.0**; VERSION truth propagated across all
+  installer surfaces (no more "1.3.0 in README, 1.4.0 in bundle"
+  disagreements).
+- Installer GUI converted to single-page no-scroll layout; branding + docs
+  polished; FRAMEWORK tag squared-block unicode restored (reverted accidental
+  normalization).
+
+### Fixed
+
+- `uv` bootstrap shell boundary: installer now correctly propagates the
+  ephemeral uv install into the downstream shell instead of losing it to
+  subshell isolation.
+- Marbles spawn failures no longer masked by codex stream: pipeline status is
+  read from pipefail, not inferred from "did we get some stdout?".
+- Marbles next-hook contract: child loops only advance after the real
+  handoff, not after tmp prompt file arrives.
+- Arrow keys in installer TUI now scroll within a step instead of switching
+  steps.
+- Truthful landing page: no fake URLs, no fake commands, copy matches actual
+  install flow.
+- Marbles ancestor steering: mtime race fixed, spawn fallback hardened, run-
+  id / spawn prefs respected under concurrent dispatches.
+- Watcher state race, doctor dashboard smoke, session semantics, update
+  path, commit labels — a marble convergence sweep closed these as one loop.
+
 ## 1.3.0 — 2026-04-11
 
 ### Added

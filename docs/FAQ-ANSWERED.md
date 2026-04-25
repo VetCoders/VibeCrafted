@@ -15,11 +15,12 @@ Answers from the trenches. This is the truth as of April 2026.
   non-VetCoders skills there, it leaves them alone. 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. skills are symlinked into `$HOME/.agents/skills/` (and
   others) so your agents "see" them, but the source of truth remains in `$VIBECRAFTED_ROOT/.vibecrafted/`.
 
-- **Why does `make vibecrafted` open a guided installer instead of just installing silently?**
-  Because the default human front door should show the machine shape before it mutates it. `make vibecrafted` now opens
-  the browser-based guided installer, which checks foundations, streams the repo-owned compact installer, and leaves a
-  plain-language `START_HERE.md` behind. For a direct non-interactive install path, use `make install` or call
-  `python3 scripts/vetcoders_install.py install --source "$PWD" --non-interactive`.
+- **Why does `make vibecrafted` run an interactive installer wizard instead of just installing silently?**
+  Because the default human front door should show the machine shape before it mutates it. `make vibecrafted` runs the
+  terminal-native installer wizard — the shell-first default front door. It checks foundations, streams the repo-owned
+  compact installer truth, and leaves a plain-language `START_HERE.md` behind. If you prefer the browser surface,
+  run `make wizard` (or its alias `make gui-install`). For a direct non-interactive install path, use `make install` or
+  call `python3 scripts/vetcoders_install.py install --source "$PWD" --non-interactive`.
 
 - **Can I install 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. without giving it write access to my shell rc files?**
   Yes. You can opt-out of the shell-helper layer during the interactive install. You'll just need to manually source the
@@ -95,8 +96,8 @@ Answers from the trenches. This is the truth as of April 2026.
   you through the process.
 
 - **Why is there no `vc-test` skill?**
-  Testing isn't a "skill"—it's a requirement of _every_ skill. `vc-workflow`, `vc-justdo`, and `vc-marbles` all have
-  testing and validation baked into their "Execution" and "Validate" phases.
+  Testing isn't a "skill"—it's a requirement of _every_ skill. `vc-workflow`, `vc-implement` (legacy alias `vc-justdo`),
+  and `vc-marbles` all have testing and validation baked into their "Execution" and "Validate" phases.
 
 - **What is the Definition of Undone and why is it not the Definition of Done?**
   Definition of Done (DoD) is about checking boxes. **Definition of Undone (DoU)** is about exposing the gaps you
@@ -175,10 +176,10 @@ Answers from the trenches. This is the truth as of April 2026.
   A single iteration (followup + fix) takes 2-5 minutes. A task typically converges in 2-4 loops. Massive refactors
   might take 10+.
 
-- **When should I use `vc-justdo` vs running individual skills manually?**
-  Use `vc-justdo` when the task is clear and you want the agent to take full ownership from research to final
+- **When should I use `vc-implement` (legacy alias `vc-justdo`) vs running individual skills manually?**
+  Use `vc-implement` when the task is clear and you want the agent to take full ownership from research to final
   convergence. Use individual skills (init → workflow → followup) when you want to supervise the architectural "cuts" at
-  each step.
+  each step. The legacy `vc-justdo` name still resolves to the same skill, so already-trained agents keep working.
 
 - **How do I know when convergence is "done"?**
   When P0=0, P1=0, and P2=0 in the `vc-followup` report, and the Build/Lint/Test gates are all green. That's the signal

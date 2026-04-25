@@ -1,5 +1,5 @@
-// vc-dashboard — mission control overview
-// Launch: vibecrafted dashboard
+// dashboard — mission control overview
+// Launch: vibecrafted dashboard | vibecrafted dashboard dashboard
 //
 // Design: pure monitoring surface — no work pane. Four quadrants showing
 // live system state. Agent tabs spawned during monitoring sessions get

@@ -1,5 +1,26 @@
 #!/usr/bin/env bash
 
+spawn_control_plane_script() {
+  local candidate
+  for candidate in \
+    "${VIBECRAFTED_ROOT:-}/scripts/control_plane_state.py" \
+    "${HOME}/.vibecrafted/tools/vibecrafted-current/scripts/control_plane_state.py" \
+    "$(spawn_repo_root 2>/dev/null)/scripts/control_plane_state.py"
+  do
+    [[ -n "$candidate" && -f "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+spawn_sync_control_plane() {
+  local script_path
+  script_path="$(spawn_control_plane_script 2>/dev/null || true)"
+  [[ -n "$script_path" ]] || return 0
+  python3 "$script_path" sync >/dev/null 2>&1 || true
+}
+
 spawn_find_meta_for_run_id() {
   local reports_dir="$1"
   local target_run_id="$2"
@@ -93,6 +114,9 @@ payload = {
     "skill_code": skill_code,
     "framework_version": framework_version,
     "exit_code": None,
+    # launcher_pid is set by the launcher itself once it starts (see
+    # spawn_update_meta_pid). Dead launcher_pid → ghost state, out.
+    "launcher_pid": None,
 }
 if model != "__NONE__":
     payload["model"] = model
@@ -100,6 +124,115 @@ with open(meta_path, "w", encoding="utf-8") as fh:
     json.dump(payload, fh, indent=2, ensure_ascii=False)
     fh.write("\n")
 PY
+  spawn_sync_control_plane
+}
+
+spawn_update_meta_pid() {
+  # Called by the generated launcher as soon as it starts. Writes the
+  # launcher's own PID into the meta.json so the watcher and the
+  # spawn-time GC can validate liveness via `kill -0`. Dead PID = ghost.
+  local meta_path="$1"
+  local pid="$2"
+
+  [[ -f "$meta_path" ]] || return 0
+  [[ -n "$pid" ]] || return 0
+
+  python3 - "$meta_path" "$pid" <<'PY'
+import json
+import sys
+
+meta_path, pid = sys.argv[1:3]
+try:
+    with open(meta_path, "r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+except (OSError, json.JSONDecodeError):
+    sys.exit(0)
+
+try:
+    payload["launcher_pid"] = int(pid)
+except (TypeError, ValueError):
+    payload["launcher_pid"] = None
+
+with open(meta_path, "w", encoding="utf-8") as fh:
+    json.dump(payload, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+PY
+}
+
+spawn_pid_alive() {
+  # Returns 0 if pid is alive, 1 if dead or invalid. Uses kill -0 semantics;
+  # treats permission denied as alive (kernel says: exists, not yours).
+  local pid="$1"
+  [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+spawn_reap_dead_run() {
+  # Given a meta.json whose launcher_pid is dead, flip status to "ghost",
+  # release any lock file referenced in the meta, and sync control plane.
+  # Idempotent — callable from spawn-time GC and from watcher heartbeat.
+  local meta_path="$1"
+  [[ -f "$meta_path" ]] || return 0
+
+  python3 - "$meta_path" <<'PY'
+import datetime as dt
+import json
+import os
+import sys
+
+meta_path = sys.argv[1]
+try:
+    with open(meta_path, "r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+except (OSError, json.JSONDecodeError):
+    sys.exit(0)
+
+status = payload.get("status")
+if status not in ("launching", "running", "in-progress"):
+    sys.exit(0)
+
+now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+payload["status"] = "ghost"
+payload["updated_at"] = now_iso
+payload.setdefault("completed_at", now_iso)
+payload.setdefault("exit_code", 137)  # canonical kill-killed code, for parity
+payload["ghost_reason"] = "launcher_pid dead at reap"
+
+with open(meta_path, "w", encoding="utf-8") as fh:
+    json.dump(payload, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+
+# Best-effort lock cleanup — meta may reference a lock path.
+lock_path = payload.get("run_lock") or payload.get("lock")
+if lock_path and os.path.isfile(lock_path):
+    try:
+        os.unlink(lock_path)
+    except OSError:
+        pass
+PY
+  spawn_sync_control_plane
+}
+
+spawn_gc_dead_runs() {
+  # Scan a reports directory for meta.json files whose status is live
+  # (launching/running/in-progress) but whose launcher_pid is dead.
+  # Flip those to ghost. Safe to call at spawn-time before taking locks.
+  local reports_dir="$1"
+  [[ -d "$reports_dir" ]] || return 0
+
+  local meta_path pid_value
+  while IFS= read -r -d '' meta_path; do
+    pid_value="$(spawn_read_meta_field "$meta_path" "launcher_pid")"
+    # Safe reap contract: only reap when we can VERIFY the PID is dead.
+    # Missing launcher_pid = pre-GC-era meta or legacy launcher that never
+    # wrote it — we cannot prove death, so we leave it alone. This avoids
+    # false-positive reaping of still-running agents whose meta was written
+    # by an older launcher template. TTL-based cleanup is a separate path.
+    [[ -n "$pid_value" && "$pid_value" != "None" ]] || continue
+    if ! spawn_pid_alive "$pid_value"; then
+      spawn_reap_dead_run "$meta_path"
+    fi
+  done < <(find "$reports_dir" -type f -name '*.meta.json' -print0 2>/dev/null)
 }
 
 spawn_finish_meta() {
@@ -149,4 +282,5 @@ with open(meta_path, "w", encoding="utf-8") as fh:
     json.dump(payload, fh, indent=2, ensure_ascii=False)
     fh.write("\n")
 PY
+  spawn_sync_control_plane
 }

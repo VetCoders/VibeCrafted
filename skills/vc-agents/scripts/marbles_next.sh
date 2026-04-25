@@ -298,6 +298,50 @@ pathlib.Path(plan).write_text(f"---\n{fm}---\n{text[m.end():]}", encoding="utf-8
 PY
 }
 
+_record_planned_loop() {
+  local loop_nr="$1"
+  local loop_agent="$2"
+  local loop_model="$3"
+  local loop_focus="$4"
+  local agent_source="$5"
+
+  [[ -f "$state_file" ]] || return 0
+
+  _state_json_edit "$(cat <<'PY'
+loop_nr = int(args[0])
+agent_name, model, focus, agent_source = args[1:5]
+now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+payload["updated_at"] = now
+loops = payload.get("loops", [])
+target = None
+for loop in loops:
+    if loop.get("loop") == loop_nr:
+        target = loop
+        break
+
+if target is None:
+    target = {"loop": loop_nr, "started_at": now}
+    loops.append(target)
+
+if agent_name:
+    target["agent"] = agent_name
+if focus:
+    target["focus"] = focus
+if model:
+    target["model"] = model
+else:
+    target.pop("model", None)
+if agent_source:
+    target["agent_source"] = agent_source
+if "status" not in target:
+    target["status"] = "promise"
+
+payload["loops"] = loops
+PY
+)" "$loop_nr" "$loop_agent" "$loop_model" "$loop_focus" "$agent_source" >/dev/null || true
+}
+
 _write_missing_report_failure() {
   local loop_nr="$1"
   local reason="$2"
@@ -424,6 +468,12 @@ This is the final loop. Your verified report MUST include:
 - **Convergence verdict**: Has the codebase converged? (yes/no/partial)
 - **Remaining issues**: Any P0/P1 still open after all loops
 - **Next workflow recommendation**: What should the team do next (e.g., ship, another marbles run with different focus, manual review of specific area)
+
+## State-Delta Summary (Reverse Prompt)
+Generate a multidimensional 'Reverse Prompt' or 'State-Delta Summary' capturing your true synthesized understanding of the codebase after this execution cycle.
+- Explain how you got from the initial prompt (point A) to the current ground truth (point B).
+- What architectural decisions or edge cases were forced by reality?
+- Provide a precise, reproducible path to the current state that future agents can consume via the AICX intents engine to prevent context loss.
 "
   fi
 
@@ -468,7 +518,11 @@ _write_spawn_failure_artifacts() {
   local prompt_id="marbles-ancestor_L${loop_nr}_$(date +%Y%m%d)"
 
   stamp="$(spawn_timestamp)"
-  base="$store/reports/${stamp}_marbles-${ancestor_slug}_L${loop_nr}_${loop_agent}"
+  # Include loop_run_id (unique per dispatch+loop, has PID suffix) so parallel
+  # marbles runs of the same ancestor+agent at the same timestamp do not
+  # collide on the same meta/report/transcript file. Observed 2026-04-22:
+  # two codex dispatches on vc-board T1 and T2 wrote to the same filename.
+  base="$store/reports/${stamp}_${loop_run_id}_marbles-${ancestor_slug}_L${loop_nr}_${loop_agent}"
   report_path="${base}.md"
   transcript_path="${base}.transcript.log"
   meta_path="${base}.meta.json"
@@ -566,7 +620,7 @@ _launch_next_loop() {
   VIBECRAFTED_SKILL_CODE="marb" \
   VIBECRAFTED_SKILL_NAME="marbles" \
   VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right \
-  VIBECRAFTED_MARBLES_TAB_NAME="${VIBECRAFTED_MARBLES_TAB_NAME:-}" \
+  VIBECRAFTED_MARBLES_TAB_NAME="${VIBECRAFTED_MARBLES_TAB_NAME:-marbles}" \
   VIBECRAFTED_STORE_DIR="$store" \
   VIBECRAFTED_STORE_ROOT="$root_dir" \
   bash "$scripts_dir/${loop_agent}_spawn.sh" "${spawn_args[@]}" "$loop_plan"
@@ -723,19 +777,23 @@ fi
 next_agent=""
 next_model=""
 _steering_source=""
+_next_agent_source=""
 
 if (( _ancestor_steered )); then
   next_agent="$_ancestor_agent"
   next_model="$_ancestor_model"
   _steering_source="ancestor-override ($next_agent via child steering)"
+  _next_agent_source="user"
 elif [[ "$_rotation_mode" != "single" && -n "$_rotation_mode" ]]; then
   _rotation_base="${_seed_agent:-${_ancestor_agent:-$current_agent}}"
   next_agent="$(spawn_rotation_schedule_agent "$_rotation_mode" "$_rotation_base" "$next")"
   next_model="$_ancestor_model"
   _steering_source="rotation-${_rotation_mode} (base=$_rotation_base, loop=$next → $next_agent)"
+  _next_agent_source="rotation"
 else
   next_model="$_ancestor_model"
   _steering_source="seed-fallback"
+  _next_agent_source="seed"
 fi
 
 # Fallbacks: ancestor raw agent, then current agent
@@ -757,6 +815,12 @@ if [[ ! "$next_agent" =~ ^(claude|codex|gemini)$ ]]; then
 fi
 
 _rewrite_loop_plan_frontmatter "$next_plan_tmp" "$next_agent" "$next_model"
+_record_planned_loop \
+  "$next" \
+  "$next_agent" \
+  "$next_model" \
+  "$(spawn_frontmatter_field "$next_plan_tmp" "focus")" \
+  "$_next_agent_source"
 mv "$next_plan_tmp" "$next_plan"
 
 launch_rc=0

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 export VIBECRAFTED_OPERATOR_MODE=1
-export VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=down
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 shell_bin="${SHELL:-}"
 if [[ -z "$shell_bin" || ! -x "$shell_bin" ]]; then
@@ -24,5 +25,13 @@ printf 'Spawn policy:\n'
 printf '  normal workflows -> launcher opens below this pane\n'
 printf '  marbles -> state launcher opens below, loop panes grow to the right\n'
 printf '\n'
+
+if [[ -x "$SCRIPT_DIR/zellij-gc.sh" ]]; then
+  bash "$SCRIPT_DIR/zellij-gc.sh" --apply --quiet || true
+fi
+
+# restore-orphaned path retired 2026-04-22 — it reanimated zombie runs without
+# PID validation and burned the laptop. Dead runs stay dead. Spawn-time GC in
+# marbles_spawn.sh + watcher heartbeat keep the truth fresh without resurrection.
 
 exec "$shell_bin" -l

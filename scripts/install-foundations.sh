@@ -35,6 +35,12 @@ AGENT_PACKAGES=(
   "gemini:@google/gemini-cli"
 )
 
+# Script/source resolution (used by the bundled-toolchain attempt).
+# Respects VIBECRAFTED_SOURCE when set; otherwise resolves the parent of
+# scripts/install-foundations.sh.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="${VIBECRAFTED_SOURCE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
 default_vibecrafted_home() {
   if [[ -n "${VIBECRAFTED_HOME:-}" ]]; then
     printf '%s\n' "$VIBECRAFTED_HOME"
@@ -92,6 +98,57 @@ binary_runs() {
 }
 
 # ---------------------------------------------------------------------------
+# Bundled-toolchain drop-in
+# ---------------------------------------------------------------------------
+# Resolves the per-arch directory where release tarballs ship notarized
+# binaries. Order of precedence:
+#   1. $VIBECRAFTED_BUNDLED_BIN (explicit override — absolute path)
+#   2. $SOURCE_DIR/tools/bin/<os>-<arch>
+#   3. $SOURCE_DIR/tools/bin  (flat fallback for dev / single-arch drops)
+bundled_bin_root() {
+  local os arch
+  if [[ -n "${VIBECRAFTED_BUNDLED_BIN:-}" ]]; then
+    printf '%s\n' "$VIBECRAFTED_BUNDLED_BIN"
+    return
+  fi
+  os="$(detect_os)"
+  arch="$(detect_arch)"
+  if [[ -d "$SOURCE_DIR/tools/bin/${os}-${arch}" ]]; then
+    printf '%s\n' "$SOURCE_DIR/tools/bin/${os}-${arch}"
+    return
+  fi
+  printf '%s\n' "$SOURCE_DIR/tools/bin"
+}
+
+# Attempt 0 for every install_*: copy a drop-in binary from the bundled
+# tarball directory before reaching out to GitHub / cargo / npm.
+# Returns 0 only when the binary copied, chmod+x'd, and actually runs.
+install_from_bundled() {
+  local name="$1"
+  local root
+  root="$(bundled_bin_root)"
+  local src="$root/$name"
+
+  [[ -f "$src" ]] || return 1
+
+  if (( CHECK_ONLY )); then
+    info "Would install $name from bundled tarball ($src)"
+    return 0
+  fi
+
+  ensure_prefix
+  cp "$src" "$PREFIX/$name" || return 1
+  chmod +x "$PREFIX/$name"
+  if ! binary_runs "$name"; then
+    warn "Bundled $name failed to run — falling back to remote sources."
+    rm -f "$PREFIX/$name"
+    return 1
+  fi
+  ok "Installed $name from bundled tarball (notarized): $PREFIX/$name"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Toolchain bootstrap — brew → node → npm (macOS only)
 # ---------------------------------------------------------------------------
 
@@ -121,6 +178,15 @@ ensure_rustup() {
   # Source cargo env for this session
   # shellcheck disable=SC1091
   [[ -f "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env"
+
+  # Ensure a default toolchain is set. On some non-interactive installs (notably
+  # CI macOS runners with pre-existing rustup but no default), `cargo install`
+  # emits `warning: no default toolchain set` and downstream commands can
+  # silently use the wrong channel. Idempotent: no-op when already pinned.
+  if has_cmd rustup && ! rustup default 2>/dev/null | grep -q '.'; then
+    rustup default stable 2>&1 | tail -3 || true
+  fi
+
   has_cmd cargo
 }
 
@@ -305,6 +371,13 @@ install_loctree() {
   has_cmd curl || die "curl is required to download loctree"
   ensure_prefix
 
+  # --- Attempt 0: bundled tarball (notarized drop-in) ---
+  if install_from_bundled "loctree-mcp"; then
+    install_from_bundled "loctree" || true
+    install_from_bundled "loct" || true
+    return 0
+  fi
+
   # --- Attempt 1: prebuilt binary from GH releases ---
   local binary_ok=0
   url="$(github_release_asset_url "$LOCTREE_REPO" "tags/v${LOCTREE_VERSION}" "${patterns[@]}")" && {
@@ -441,6 +514,13 @@ install_from_cargo() {
 install_aicx() {
   if has_cmd aicx-mcp; then
     ok "aicx-mcp already installed: $(command -v aicx-mcp)"
+    return 0
+  fi
+
+  # --- Attempt 0: bundled tarball (notarized drop-in) ---
+  if install_from_bundled "aicx-mcp"; then
+    install_from_bundled "aicx" || true
+    install_from_bundled "aicx-extract" || true
     return 0
   fi
 
@@ -652,6 +732,14 @@ install_agents() {
 # ---------------------------------------------------------------------------
 
 install_prview() {
+  if has_cmd prview; then
+    ok "prview already installed: $(command -v prview)"
+    return 0
+  fi
+
+  # --- Attempt 0: bundled tarball (notarized drop-in) ---
+  install_from_bundled "prview" && return 0
+
   install_from_cargo "$PRVIEW_CRATE" "prview"
 }
 

@@ -80,7 +80,60 @@ root_dir="${root:-$(spawn_repo_root)}"
 store="$(spawn_marbles_store_dir "$root_dir")"
 mkdir -p "$store/plans" "$store/reports"
 
-marbles_run_id="${VIBECRAFTED_MARBLES_RUN_ID:-marb-$(date +%H%M%S)}"
+# Spawn-time GC — before this dispatch touches any lock, reap every meta.json
+# in this repo's store whose launcher_pid is dead. Keeps control plane honest
+# and prevents "laptop exploding" from zombie accumulation. Paired with the
+# retirement of restore-orphaned.sh: dead runs end at the gate, not reanimate.
+spawn_gc_dead_runs "$(dirname "$store")" 2>/dev/null || true
+
+# Honour inherited run_id ONLY when a parent spawn placed it deliberately.
+# A leaked env var from a previous zellij window/session must not clobber a
+# fresh spawn with a recycled id.
+#
+# Four refusal reasons invalidate the inherited run_id and force fresh mint:
+#   1. state_dir exists and RESUME flag absent   (original gate)
+#   2. stop marker present                       (user killed prior watcher)
+#   3. god.md is read-only (chmod 0444)          (prior seed finalized)
+#   4. state.json status is terminal             (done/stopped/failed/ghost)
+# Even VIBECRAFTED_MARBLES_RESUME=1 cannot recycle a terminal/immutable slot —
+# RESUME means "continue a paused run," not "overwrite a finished one."
+marbles_run_id="${VIBECRAFTED_MARBLES_RUN_ID:-}"
+if [[ -n "$marbles_run_id" ]]; then
+  candidate_state_dir="$(spawn_marbles_state_dir "$marbles_run_id")"
+  refuse_reason=""
+  if [[ -e "$candidate_state_dir" ]]; then
+    if [[ -z "${VIBECRAFTED_MARBLES_RESUME:-}" ]]; then
+      refuse_reason="no VIBECRAFTED_MARBLES_RESUME flag"
+    elif [[ -f "$candidate_state_dir/stop" ]]; then
+      refuse_reason="stop marker present (prior watcher was killed)"
+    elif [[ -f "$candidate_state_dir/god.md" && ! -w "$candidate_state_dir/god.md" ]]; then
+      refuse_reason="god.md is read-only (prior dispatch finalized the seed)"
+    elif [[ -f "$candidate_state_dir/state.json" ]]; then
+      terminal_status="$(python3 -c 'import json,sys
+try:
+  with open(sys.argv[1]) as fh:
+    print(json.load(fh).get("status",""))
+except Exception:
+  pass' "$candidate_state_dir/state.json" 2>/dev/null || true)"
+      case "$terminal_status" in
+        done|stopped|failed|ghost|completed)
+          refuse_reason="state.json status is terminal ($terminal_status)"
+          ;;
+      esac
+    fi
+  fi
+  if [[ -n "$refuse_reason" ]]; then
+    printf 'warn: VIBECRAFTED_MARBLES_RUN_ID=%s unusable: %s — minting fresh id\n' \
+      "$marbles_run_id" "$refuse_reason" >&2
+    marbles_run_id=""
+    unset VIBECRAFTED_MARBLES_RUN_ID
+    unset VIBECRAFTED_MARBLES_RESUME
+  fi
+fi
+if [[ -z "$marbles_run_id" ]]; then
+  # Same PID-suffixed format as _vetcoders_generate_run_id; keep shapes identical across entry points.
+  marbles_run_id="marb-$(date +%H%M%S)-$$"
+fi
 state_dir="$(spawn_marbles_state_dir "$marbles_run_id")"
 state_file="$state_dir/state.json"
 god_plan="$state_dir/god.md"
@@ -231,6 +284,13 @@ export VIBECRAFTED_LOOP_NR=1
 export VIBECRAFTED_RUN_ID="${marbles_run_id}-001"
 export VIBECRAFTED_SKILL_CODE="marb"
 export VIBECRAFTED_SKILL_NAME="marbles"
+# One run_id = one tab, name "marbles-<run_id>". Subsequent loops
+# (marbles_next.sh) inherit this via env and stay in the same tab, so the
+# dispatch history of a single run never spills across tabs and distinct
+# runs never merge into one. The "marbles-" prefix distinguishes these tabs
+# from workflow/research tabs which also carry run_ids.
+# Canonical since 2026-04-12 marbles tab isolation spec; regressed 2026-04-14
+# to shared "marbles" tab; restored 2026-04-22.
 export VIBECRAFTED_MARBLES_TAB_NAME="marbles-${marbles_run_id}"
 
 spawn_args=(
@@ -245,7 +305,14 @@ if [[ -n "$ancestor_model" && "$agent" != "codex" ]]; then
 fi
 
 if (( use_watcher )); then
-  VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right VIBECRAFTED_STORE_DIR="$store" VIBECRAFTED_STORE_ROOT="$root_dir" bash "$SCRIPT_DIR/${agent}_spawn.sh" "${spawn_args[@]}" "$l1_plan" &
+  # The watcher redraws the last three status lines in place. Suppress the
+  # extra report-path hint from the child spawn so long paths do not get
+  # interleaved into that redraw surface.
+  VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right \
+    VIBECRAFTED_STORE_DIR="$store" \
+    VIBECRAFTED_STORE_ROOT="$root_dir" \
+    VIBECRAFTED_SUPPRESS_REPORT_HINT=1 \
+    bash "$SCRIPT_DIR/${agent}_spawn.sh" "${spawn_args[@]}" "$l1_plan" &
 
   exec bash "$SCRIPT_DIR/marbles_watcher.sh" \
     "$marbles_run_id" "$state_dir" "$count" \

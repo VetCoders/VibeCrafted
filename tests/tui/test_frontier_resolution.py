@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HELPER_SCRIPT = REPO_ROOT / "skills" / "vc-agents" / "shell" / "vetcoders.sh"
@@ -52,7 +55,7 @@ def test_dashboard_layouts_resolve_helpers_from_home_store_first() -> None:
     )
     expected_repo_root = "${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/skills/vc-agents}"
 
-    for layout_name in ("vc-dashboard.kdl", "vc-marbles.kdl", "vibecrafted.kdl"):
+    for layout_name in ("dashboard.kdl", "marbles.kdl", "operator.kdl"):
         payload = (REPO_ROOT / "config" / "zellij" / "layouts" / layout_name).read_text(
             encoding="utf-8"
         )
@@ -62,9 +65,9 @@ def test_dashboard_layouts_resolve_helpers_from_home_store_first() -> None:
 
 
 def test_operator_layout_does_not_append_nested_vibecrafted_store() -> None:
-    payload = (
-        REPO_ROOT / "config" / "zellij" / "layouts" / "vibecrafted.kdl"
-    ).read_text(encoding="utf-8")
+    payload = (REPO_ROOT / "config" / "zellij" / "layouts" / "operator.kdl").read_text(
+        encoding="utf-8"
+    )
     assert (
         "${VIBECRAFTED_HOME:-$VIBECRAFTED_ROOT}/.vibecrafted/skills/vc-agents"
         not in payload
@@ -172,11 +175,10 @@ def test_vc_dashboard_mixes_companion_zellij_config_with_repo_layout(
 
     payload = capture_file.read_text(encoding="utf-8").splitlines()
     assert "--session" in payload
-    assert f"{_expected_operator_session()}-marbles" in payload
+    assert _expected_operator_session() in payload
+    assert f"{_expected_operator_session()}-marbles" not in payload
     assert "--new-session-with-layout" in payload
-    assert (
-        str(REPO_ROOT / "config" / "zellij" / "layouts" / "vc-marbles.kdl") in payload
-    )
+    assert str(REPO_ROOT / "config" / "zellij" / "layouts" / "marbles.kdl") in payload
     assert f"ZELLIJ_CONFIG_DIR={zellij_config.parent}" in payload
 
 
@@ -222,6 +224,137 @@ def test_vc_dashboard_uses_base_run_id_session_without_layout_suffix(
         f"{_expected_operator_session(env['VIBECRAFTED_RUN_ID'])}-marbles"
         not in payload
     )
+
+
+def test_zsh_skill_wrappers_do_not_depend_on_external_has_agent(
+    tmp_path: Path,
+) -> None:
+    if shutil.which("zsh") is None:
+        pytest.skip("zsh required")
+
+    home = tmp_path / "home"
+    capture_file = tmp_path / "wrapper-args.txt"
+    home.mkdir()
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["CAPTURE_FILE"] = str(capture_file)
+
+    subprocess.run(
+        [
+            "zsh",
+            "-lc",
+            (
+                f'source "{HELPER_SCRIPT}"; '
+                "unfunction _has_agent >/dev/null 2>&1 || true; "
+                '_vetcoders_skill_entry() { printf "%s\\n" "$@" > "$CAPTURE_FILE"; }; '
+                'vc-intents codex --prompt "hello"'
+            ),
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+    assert capture_file.read_text(encoding="utf-8").splitlines() == [
+        "codex",
+        "intents",
+        "--prompt",
+        "hello",
+    ]
+
+
+def test_operator_session_name_compacts_long_repo_scope_for_zellij_limit(
+    tmp_path: Path,
+) -> None:
+    long_repo = tmp_path / "mcp-server-semgrep"
+    long_repo.mkdir()
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f'cd "{long_repo}" && '
+                f'source "{HELPER_SCRIPT}"; '
+                'export VIBECRAFTED_RUN_ID="inte-091338"; '
+                "_vetcoders_operator_session_name"
+            ),
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    session_name = result.stdout.strip()
+    assert len(session_name) <= 24
+    assert session_name.endswith("-inte-091338")
+
+
+def test_operator_session_name_supports_folder_scope(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "mcp-server-semgrep"
+    folder = repo_root / "feature-lab"
+    folder.mkdir(parents=True)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f'cd "{folder}" && '
+                f'source "{HELPER_SCRIPT}"; '
+                'export VIBECRAFTED_ZELLIJ_SESSION_SCOPE="folder"; '
+                "_vetcoders_operator_session_name"
+            ),
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip() == "feature-lab"
+
+
+def test_zsh_vc_intents_accepts_runtime_without_bad_substitution(
+    tmp_path: Path,
+) -> None:
+    if shutil.which("zsh") is None:
+        pytest.skip("zsh required")
+
+    home = tmp_path / "home"
+    capture_file = tmp_path / "spawn-plan.txt"
+    fake_spawn = tmp_path / "fake_spawn.sh"
+    home.mkdir()
+    fake_spawn.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    fake_spawn.chmod(0o755)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["FAKE_SPAWN"] = str(fake_spawn)
+
+    subprocess.run(
+        [
+            "zsh",
+            "-lc",
+            (
+                f'source "{HELPER_SCRIPT}"; '
+                "_vetcoders_ensure_run_context() { :; }; "
+                '_vetcoders_prepare_operator_runtime() { printf "%s\\n" "$1" > "$CAPTURE_FILE"; }; '
+                '_vetcoders_spawn_script() { printf "%s" "$FAKE_SPAWN"; }; '
+                'vc-intents codex --runtime visible --prompt "hello"'
+            ),
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+    assert capture_file.read_text(encoding="utf-8").splitlines() == ["visible"]
 
 
 def test_sourcing_helper_exports_frontier_sidecars_per_asset(
@@ -325,11 +458,11 @@ def test_frontier_install_uses_sidecar_root_without_touching_global_layout(
     )
 
     sidecar_root = xdg_config_home / "vetcoders" / "frontier"
-    installed_layout = sidecar_root / "zellij" / "layouts" / "vc-dashboard.kdl"
+    installed_layout = sidecar_root / "zellij" / "layouts" / "dashboard.kdl"
     assert installed_layout.is_symlink()
     assert (
         installed_layout.resolve()
-        == REPO_ROOT / "config" / "zellij" / "layouts" / "vc-dashboard.kdl"
+        == REPO_ROOT / "config" / "zellij" / "layouts" / "dashboard.kdl"
     )
     assert (sidecar_root / "starship.toml").is_symlink()
     assert not (xdg_config_home / "zellij" / "config.kdl").exists()

@@ -7,9 +7,9 @@ import re
 import shutil
 import subprocess
 import textwrap
+import time
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HELPER_SCRIPT = REPO_ROOT / "skills" / "vc-agents" / "shell" / "vetcoders.sh"
@@ -70,6 +70,7 @@ def _prepare_fake_marbles_bundle(tmp_path: Path) -> tuple[Path, Path]:
         "common.sh",
         "marbles_spawn.sh",
         "marbles_watcher.sh",
+        "marbles_verify_watch.sh",
         "marbles_next.sh",
     ):
         source = REPO_ROOT / "skills" / "vc-agents" / "scripts" / name
@@ -121,6 +122,7 @@ def _prepare_fake_marbles_bundle(tmp_path: Path) -> tuple[Path, Path]:
 
         python3 - "$MARBLES_SPAWN_CAPTURE" "$SPAWN_PLAN" "$SPAWN_REPORT" "$success_hook" "$failure_hook" "$agent" "$model" "$SPAWN_RUN_ID" "$SPAWN_LOOP_NR" <<'PY'
         import json
+        import os
         import pathlib
         import sys
 
@@ -134,6 +136,7 @@ def _prepare_fake_marbles_bundle(tmp_path: Path) -> tuple[Path, Path]:
             "model": model,
             "run_id": run_id,
             "loop": int(loop_nr or "0"),
+            "suppress_report_hint": os.environ.get("VIBECRAFTED_SUPPRESS_REPORT_HINT", ""),
         }
         capture_path = pathlib.Path(capture)
         capture_path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,7 +155,7 @@ def _prepare_fake_marbles_bundle(tmp_path: Path) -> tuple[Path, Path]:
         status: transcript
         ---
 
-        session: fake-${agent}-${SPAWN_LOOP_NR}
+        session: 019dad3e-8f9c-000${SPAWN_LOOP_NR}
         working...
         EOF
 
@@ -186,7 +189,7 @@ def _prepare_fake_marbles_bundle(tmp_path: Path) -> tuple[Path, Path]:
         P2: 0
         EOF
 
-        if [[ "$report_status" == "completed" ]]; then
+        if [[ "$report_status" == "completed" && "${MARBLES_TEST_SKIP_VERIFIED_REPORT_LOOP:-}" != "${SPAWN_LOOP_NR:-0}" ]]; then
           cp "$SPAWN_REPORT" "${SPAWN_REPORT%.md}_verified.md"
         fi
 
@@ -386,7 +389,7 @@ def test_vc_marbles_preserves_prompt_as_single_argument_inside_zellij(
     assert "1" in payload
     assert "--prompt" in payload
     assert "weź i vc-justdo wszystko co marbles znajdzie" in payload
-    assert "new-tab" in zellij_payload
+    assert "new-pane" in zellij_payload
     assert any("vibecrafted-marbles." in line for line in zellij_payload)
     assert any(str(expected_tmp_root) in line for line in zellij_payload)
     assert not any("//vibecrafted-marbles." in line for line in zellij_payload)
@@ -662,9 +665,6 @@ def test_marbles_runtime_steers_next_loop_from_ancestor_frontmatter(
     assert str(events[0]["plan"]) not in str(events[0]["success_hook"])
 
 
-@pytest.mark.skip(
-    reason="stash artifact — agent_source propagation needs wiring in delay path"
-)
 def test_marbles_runtime_keeps_ancestor_focus_when_next_plan_write_lags(
     tmp_path: Path,
 ) -> None:
@@ -913,6 +913,32 @@ def test_marbles_runtime_consumes_ancestor_override_sequence_across_children(
     assert f"- ANCESTOR: {state_dir / 'ancestor.md'}" in convergence
 
 
+def test_marbles_contract_docs_forbid_worker_worktree_escape() -> None:
+    checked_files = [
+        REPO_ROOT / "skills" / "vc-marbles" / "SKILL.md",
+        REPO_ROOT / "skills" / "vc-marbles" / "RECEPTION.md",
+        REPO_ROOT / "workflows" / "MARBLES.md",
+    ]
+    forbidden = [
+        "create or use a `git worktree`",
+        "creates a `git worktree`",
+        "worktree escape hatch",
+        "current repo/worktree path",
+        "Work only inside your assigned tree, worktree, or lane.",
+    ]
+
+    offenders = []
+    for path in checked_files:
+        text = path.read_text(encoding="utf-8")
+        offenders.extend(
+            f"{path.relative_to(REPO_ROOT)} contains {phrase!r}"
+            for phrase in forbidden
+            if phrase in text
+        )
+
+    assert not offenders, "\n".join(offenders)
+
+
 def test_marbles_no_watch_still_creates_god_and_ancestor_contract(
     tmp_path: Path,
 ) -> None:
@@ -1016,13 +1042,18 @@ def test_marbles_materializes_failed_loop_when_child_spawn_dies_before_meta(
     assert state["status"] == "failed"
     assert [loop["status"] for loop in state["loops"]] == ["done", "failed"]
     failed_loop = state["loops"][1]
-    assert failed_loop["failure_reason"] == "spawn-failed"
     assert failed_loop["loop"] == 2
-    assert failed_loop["report"]
-    assert Path(failed_loop["report"]).exists()
-    assert "failed before loop 2 could launch" in Path(failed_loop["report"]).read_text(
-        encoding="utf-8"
+    assert failed_loop["report"].endswith("_L2_codex.md")
+    assert failed_loop["failure_reason"] == "spawn-failed"
+    assert failed_loop["exit_code"] == 42
+    assert Path(failed_loop["transcript"]).exists()
+    assert (
+        "failure surfaced from launch metadata" in result.stdout
+        or "failure surfaced as:" in result.stdout
     )
+    assert "Exit code: 42" in result.stdout
+    assert "Traceback" not in result.stderr
+    assert "NameError" not in result.stderr
 
     meta_records = subprocess.run(
         [
@@ -1142,6 +1173,50 @@ def test_marbles_watcher_waits_for_meta_completion_before_advancing(
 
     events = _load_spawn_events(capture_file)
     assert len(events) == 2
+    assert all(event["suppress_report_hint"] == "1" for event in events)
+
+
+def test_marbles_no_watch_keeps_report_hint_enabled(
+    tmp_path: Path,
+) -> None:
+    scripts_dir, capture_file = _prepare_fake_marbles_bundle(tmp_path)
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    home.mkdir()
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["VIBECRAFTED_HOME"] = str(crafted_home)
+    env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_PANE_ID", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+    env.pop("VIBECRAFTED_OPERATOR_SESSION", None)
+
+    subprocess.run(
+        [
+            "bash",
+            str(scripts_dir / "marbles_spawn.sh"),
+            "--agent",
+            "gemini",
+            "--count",
+            "1",
+            "--runtime",
+            "headless",
+            "--no-watch",
+            "--prompt",
+            "Keep the extra report hint outside watcher mode",
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    events = _load_spawn_events(capture_file)
+    assert len(events) == 1
+    assert events[0]["suppress_report_hint"] == ""
 
 
 def test_marbles_watcher_does_not_consume_failed_fallback_report(
@@ -1191,10 +1266,71 @@ def test_marbles_watcher_does_not_consume_failed_fallback_report(
     assert state["status"] == "failed"
     assert [loop["status"] for loop in state["loops"]] == ["failed"]
     failed_loop = state["loops"][0]
+    assert failed_loop["report"].endswith("_L1_codex.md")
     assert failed_loop["failure_reason"] == "spawn-failed"
-    assert failed_loop["report"]
+    assert failed_loop["exit_code"] == 17
+    assert Path(failed_loop["transcript"]).exists()
     assert "report ✓" not in result.stdout
     assert "failed" in result.stdout
 
     events = _load_spawn_events(capture_file)
     assert len(events) == 1
+
+
+def test_marbles_verification_poll_survives_watcher_exit_without_job_noise(
+    tmp_path: Path,
+) -> None:
+    scripts_dir, capture_file = _prepare_fake_marbles_bundle(tmp_path)
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    home.mkdir()
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["VIBECRAFTED_HOME"] = str(crafted_home)
+    env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["MARBLES_TEST_SKIP_VERIFIED_REPORT_LOOP"] = "1"
+    env["VIBECRAFTED_MARBLES_VERIFICATION_TIMEOUT_S"] = "1"
+    env["VIBECRAFTED_MARBLES_VERIFICATION_POLL_S"] = "1"
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "1"
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_PANE_ID", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+    env.pop("VIBECRAFTED_OPERATOR_SESSION", None)
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(scripts_dir / "marbles_spawn.sh"),
+            "--agent",
+            "gemini",
+            "--count",
+            "1",
+            "--runtime",
+            "headless",
+            "--prompt",
+            "Leave verification to the detached watcher",
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    state_dirs = list((crafted_home / "marbles").iterdir())
+    assert len(state_dirs) == 1
+    state_path = state_dirs[0] / "state.json"
+
+    deadline = time.monotonic() + 5
+    verification_status = ""
+    while time.monotonic() < deadline:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        verification_status = state["loops"][0].get("verification_status", "")
+        if verification_status == "timed_out":
+            break
+        time.sleep(0.2)
+
+    assert verification_status == "timed_out"
+    assert "Terminated: 15" not in result.stdout
+    assert "Terminated: 15" not in result.stderr

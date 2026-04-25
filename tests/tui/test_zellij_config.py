@@ -76,7 +76,7 @@ def test_all_layouts_have_vibecrafted_branding() -> None:
 def test_marbles_layout_is_operator_centric() -> None:
     """Marbles layout must give operator the majority of screen space and
     keep monitoring in a compact section."""
-    payload = (LAYOUTS_DIR / "vc-marbles.kdl").read_text(encoding="utf-8")
+    payload = (LAYOUTS_DIR / "marbles.kdl").read_text(encoding="utf-8")
     assert 'name="operator"' in payload
     assert 'size="75%"' in payload
     assert "focus=true" in payload
@@ -84,13 +84,13 @@ def test_marbles_layout_is_operator_centric() -> None:
 
 def test_operator_layout_has_swap_layouts() -> None:
     """Operator layout should have swap layouts for toggling monitoring."""
-    payload = (LAYOUTS_DIR / "vibecrafted.kdl").read_text(encoding="utf-8")
+    payload = (LAYOUTS_DIR / "operator.kdl").read_text(encoding="utf-8")
     assert "swap_tiled_layout" in payload
 
 
 def test_workflow_layout_has_swap_layouts() -> None:
     """Workflow layout should support solo/dual swap modes."""
-    payload = (LAYOUTS_DIR / "vc-workflow.kdl").read_text(encoding="utf-8")
+    payload = (LAYOUTS_DIR / "workflow.kdl").read_text(encoding="utf-8")
     assert "swap_tiled_layout" in payload
     assert '"solo"' in payload
     assert '"dual"' in payload
@@ -98,6 +98,6 @@ def test_workflow_layout_has_swap_layouts() -> None:
 
 def test_research_layout_synthesis_focused() -> None:
     """Research layout should give synthesis pane the focus and majority."""
-    payload = (LAYOUTS_DIR / "vc-research.kdl").read_text(encoding="utf-8")
+    payload = (LAYOUTS_DIR / "research.kdl").read_text(encoding="utf-8")
     assert 'name="synthesis"' in payload
     assert 'size="55%"' in payload

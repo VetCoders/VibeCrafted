@@ -7,6 +7,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HELPER_SCRIPT = REPO_ROOT / "skills" / "vc-agents" / "shell" / "vetcoders.sh"
 
@@ -155,9 +156,42 @@ def test_vc_start_launches_operator_entrypoint_layout(tmp_path: Path) -> None:
     assert "--session" in payload
     assert _expected_operator_session() in payload
     assert "--new-session-with-layout" in payload
-    assert (
-        str(REPO_ROOT / "config" / "zellij" / "layouts" / "vibecrafted.kdl") in payload
+    assert str(REPO_ROOT / "config" / "zellij" / "layouts" / "operator.kdl") in payload
+
+
+def test_helper_exports_vc_skill_wrappers() -> None:
+    expected_wrappers = [
+        "vc-agents",
+        "vc-decorate",
+        "vc-delegate",
+        "vc-dou",
+        "vc-followup",
+        "vc-hydrate",
+        "vc-init",
+        "vc-intents",
+        "vc-justdo",
+        "vc-marbles",
+        "vc-ownership",
+        "vc-partner",
+        "vc-prune",
+        "vc-release",
+        "vc-review",
+        "vc-scaffold",
+        "vc-workflow",
+    ]
+    command = f'source "{HELPER_SCRIPT}"; ' + " ".join(
+        f"command -v {wrapper} >/dev/null || {{ echo missing:{wrapper} >&2; exit 1; }};"
+        for wrapper in expected_wrappers
     )
+
+    result = subprocess.run(
+        ["bash", "-lc", command],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_marbles_from_operator_mode_spawns_launcher_in_fresh_tab_and_loops_right(
@@ -178,8 +212,8 @@ def test_marbles_from_operator_mode_spawns_launcher_in_fresh_tab_and_loops_right
     env["CAPTURE_FILE"] = str(capture_file)
     env["ZELLIJ"] = "operator"
     env["VIBECRAFTED_RUN_ID"] = "marb-014520"
+    env["VIBECRAFTED_MARBLES_RUN_ID"] = "marb-014520"
     env["ZELLIJ_SESSION_NAME"] = _expected_operator_session(env["VIBECRAFTED_RUN_ID"])
-
     subprocess.run(
         [
             "bash",
@@ -192,8 +226,9 @@ def test_marbles_from_operator_mode_spawns_launcher_in_fresh_tab_and_loops_right
     )
 
     payload = capture_file.read_text(encoding="utf-8").splitlines()
-    assert "new-tab" in payload
-    assert "--direction" not in payload
+    assert "new-pane" in payload
+    assert "--name" in payload
+    assert "marb-014520" in payload
     assert any("vibecrafted-marbles." in line for line in payload)
 
 
@@ -419,7 +454,7 @@ def test_skill_bootstraps_operator_session_before_spawning(tmp_path: Path) -> No
     payload = capture_file.read_text(encoding="utf-8")
     assert "OSA " in payload
     assert "new-session-with-layout" in payload
-    assert re.search(rf"{re.escape(REPO_ROOT.name.lower())}-fwup-\d{{6}}", payload)
+    assert re.search(r"\bv-[0-9a-f]{4}-fwup-\d{6}-\d+\b", payload)
 
 
 def test_skill_bootstraps_fresh_operator_session_when_existing_one_is_dead(
@@ -470,7 +505,48 @@ def test_skill_bootstraps_fresh_operator_session_when_existing_one_is_dead(
     assert result.returncode == 0
     assert result.stdout.strip().endswith(expected_session)
     payload = capture_file.read_text(encoding="utf-8")
-    assert "attach --force-run-commands" in payload and expected_session in payload
+    assert f"kill-session {expected_session}" in payload
+    assert "--new-session-with-layout" in payload and expected_session in payload
     assert "OSA " in payload
     # Session name appears in the osascript zellij command (possibly escaped)
     assert expected_session in payload
+
+
+def test_dashboard_alt_layout_reuses_live_repo_session_instead_of_layout_session(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    capture_file = tmp_path / "capture.log"
+    session_state_file = tmp_path / "session-state.txt"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    session_state_file.write_text("live", encoding="utf-8")
+    _write_stateful_zellij(fake_bin, capture_file, session_state_file)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "xdg")
+    env["VIBECRAFTED_ROOT"] = str(REPO_ROOT)
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["SESSION_STATE_FILE"] = str(session_state_file)
+    env["FAKE_ZELLIJ_SESSION"] = _expected_operator_session()
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_PANE_ID", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+
+    subprocess.run(
+        ["bash", "-lc", f'source "{HELPER_SCRIPT}"; vc-dashboard vc-marbles'],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+    payload = capture_file.read_text(encoding="utf-8")
+    expected_session = _expected_operator_session()
+    assert f"--session {expected_session} action new-tab --layout" in payload
+    assert f"attach {expected_session}" in payload
+    assert "--new-session-with-layout" not in payload
+    assert f"{expected_session}-marbles" not in payload

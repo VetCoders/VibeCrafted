@@ -52,7 +52,11 @@ spawn_timestamp() {
   if [[ -n "${VIBECRAFTED_SPAWN_TS:-}" ]]; then
     printf '%s\n' "${VIBECRAFTED_SPAWN_TS}"
   else
-    date +%Y%m%d_%H%M
+    # Seconds resolution — without them parallel spawns in the same minute
+    # collide on SPAWN_LAUNCHER path and concurrent `cat >>` calls interleave
+    # blocks into a single broken script (observed 2026-04-22 with 3× gemini
+    # spawns at 16:56 producing one launcher with duplicated if/else bodies).
+    date +%Y%m%d_%H%M%S
   fi
 }
 

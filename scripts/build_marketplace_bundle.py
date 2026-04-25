@@ -145,6 +145,33 @@ def iter_skill_files(skill_dir: Path) -> list[Path]:
     )
 
 
+def iter_bundled_tool_files(repo_root: Path) -> list[Path]:
+    """Yield notarized drop-in binaries staged under tools/bin/.
+
+    Layout expected by install-foundations.sh / installer_gui.py:
+      tools/bin/<os>-<arch>/<binary>   — per-arch (preferred for multi-target releases)
+      tools/bin/<binary>               — flat fallback for single-arch dev drops
+      tools/bin/README.md              — drop-in convention docs (always shipped)
+
+    Missing or empty directory returns []. Subdirectories other than the
+    recognized <os>-<arch> shape (e.g. .DS_Store) still ship but should be
+    avoided by convention.
+    """
+    bin_dir = repo_root / "tools" / "bin"
+    if not bin_dir.is_dir():
+        return []
+    return sorted(
+        (
+            path
+            for path in bin_dir.rglob("*")
+            if path.is_file()
+            and not should_skip_path(path.relative_to(bin_dir))
+            and path.name != ".gitkeep"
+        ),
+        key=lambda path: path.relative_to(bin_dir).as_posix(),
+    )
+
+
 def plugin_manifest(version: str, metadata: ListingMetadata) -> dict[str, object]:
     return {
         "name": PLUGIN_NAME,
@@ -234,6 +261,17 @@ def build_bundle_bytes(repo_root: Path) -> bytes:
                     source_file.read_bytes(),
                     source_file.stat().st_mode,
                 )
+
+        bundled_bin_root = repo_root / "tools" / "bin"
+        for source_file in iter_bundled_tool_files(repo_root):
+            relative = source_file.relative_to(bundled_bin_root).as_posix()
+            arcname = f"tools/bin/{relative}"
+            write_zip_entry(
+                bundle,
+                arcname,
+                source_file.read_bytes(),
+                source_file.stat().st_mode,
+            )
 
     return buffer.getvalue()
 

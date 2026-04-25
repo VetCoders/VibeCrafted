@@ -26,8 +26,8 @@ _red='\033[31m'
 _reset='\033[0m'
 
 _agents=(claude codex gemini)
-_modes=(implement research review plan prompt observe)
-_skills=(decorate delegate dou followup hydrate justdo marbles partner prune release research review scaffold workflow)
+_modes=(implement research review plan prompt observe await)
+_skills=(decorate delegate dou followup hydrate intents justdo marbles ownership partner prune release research review scaffold workflow)
 
 _script_repo_root() {
   local script_dir
@@ -196,6 +196,55 @@ _run_helper() {
   return 1
 }
 
+_installer_gui_script() {
+  local repo_source candidate
+  repo_source="$(_repo_source_root 2>/dev/null || true)"
+  for candidate in \
+    "${repo_source:+$repo_source/scripts/installer_gui.py}" \
+    "$crafted_tools/scripts/installer_gui.py" \
+    "$(_script_repo_root)/scripts/installer_gui.py"; do
+    [[ -f "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+_control_plane_script() {
+  local repo_source candidate
+  repo_source="$(_repo_source_root 2>/dev/null || true)"
+  for candidate in \
+    "${repo_source:+$repo_source/scripts/control_plane_state.py}" \
+    "$crafted_tools/scripts/control_plane_state.py" \
+    "$(_script_repo_root)/scripts/control_plane_state.py"; do
+    [[ -f "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+_sync_control_plane_best_effort() {
+  local script_path
+  script_path="$(_control_plane_script 2>/dev/null || true)"
+  [[ -n "$script_path" ]] || return 0
+  python3 "$script_path" sync >/dev/null 2>&1 || true
+}
+
+_operator_tui_dir() {
+  local repo_source candidate
+  repo_source="$(_repo_source_root 2>/dev/null || true)"
+  for candidate in \
+    "${repo_source:+$repo_source/operator-tui}" \
+    "$crafted_tools/operator-tui" \
+    "$(_script_repo_root)/operator-tui"; do
+    [[ -d "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
 _is_help_flag() {
   local candidate="${1:-}"
   [[ "$candidate" == "--help" || "$candidate" == "-h" || "$candidate" == "help" ]]
@@ -208,9 +257,11 @@ _skill_summary() {
     dou) printf 'Definition of Undone audit across the product surface.\n' ;;
     followup) printf 'Post-implementation audit for gaps, regressions, and next moves.\n' ;;
     hydrate) printf 'Packaging and go-to-market hydration.\n' ;;
+    intents) printf 'Plan-to-runtime truth audit across prior intent and present repo state.\n' ;;
     justdo) printf 'Autonomous end-to-end implementation when the thing simply needs to ship.\n' ;;
     marbles) printf 'Counterexample loop that keeps fixing what is still wrong until the surface is clean.\n' ;;
-    partner) printf 'Collaborative debugging, architecture triage, or full ownership mode.\n' ;;
+    ownership) printf 'Full-spectrum ownership mode for end-to-end delivery.\n' ;;
+    partner) printf 'Collaborative debugging, architecture triage, and shared executive reasoning.\n' ;;
     prune) printf 'Runtime and publish-cone cleanup with hard cuts and proof.\n' ;;
     release) printf 'Release mechanics, deployment reality, and ship-readiness work.\n' ;;
     research) printf 'Triple-agent research pass for ground truth before implementation.\n' ;;
@@ -255,14 +306,23 @@ cmd_skill_help() {
   local agent="${2:-<claude|codex|gemini>}"
   local wrapper="vc-$skill"
 
+  if [[ "$skill" == "research" ]]; then
+    agent=""
+  fi
+
   printf '\n'
   printf '%b⚒%b  %b%s%b\n' "$_copper" "$_reset" "$_bold" "$skill" "$_reset"
   printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
   printf '  %s' "$(_skill_summary "$skill")"
   printf '\n'
   printf '%bUsage:%b\n' "$_bold" "$_reset"
-  printf '  vibecrafted %s %s [flags]\n' "$skill" "$agent"
-  printf '  %s %s [flags]\n' "$wrapper" "$agent"
+  if [[ -n "$agent" ]]; then
+    printf '  vibecrafted %s %s [flags]\n' "$skill" "$agent"
+    printf '  %s %s [flags]\n' "$wrapper" "$agent"
+  else
+    printf '  vibecrafted %s [flags]\n' "$skill"
+    printf '  %s [flags]\n' "$wrapper"
+  fi
   if [[ "$skill" == "marbles" ]]; then
     printf '  vibecrafted marbles <pause|stop|resume|session|inspect|delete> [args]\n'
     printf '  vc-marbles <pause|stop|resume|session|inspect|delete> [args]\n'
@@ -295,8 +355,9 @@ cmd_skill_help() {
       printf '  vc-review claude --file /path/to/pr-brief.md\n'
       ;;
     research)
-      printf '  vibecrafted research gemini --prompt "Research the API surface"\n'
-      printf '  vc-research codex --file /path/to/question-set.md\n'
+      printf '  vibecrafted research --prompt "Research the API surface"\n'
+      printf '  vc-research --file /path/to/question-set.md\n'
+      printf '  vc-research-await --last\n'
       ;;
     *)
       printf '  vibecrafted %s codex --prompt "Run %s on this repository"\n' "$skill" "$skill"
@@ -317,7 +378,7 @@ cmd_agent_help() {
   printf '  Plan-based helper modes for %s.\n' "$agent"
   printf '\n'
   printf '%bUsage:%b\n' "$_bold" "$_reset"
-  printf '  vibecrafted %s <implement|research|review|plan|prompt|observe> [args]\n' "$agent"
+  printf '  vibecrafted %s <implement|research|review|plan|prompt|observe|await> [args]\n' "$agent"
   printf '\n'
   printf '%bModes:%b\n' "$_bold" "$_reset"
   printf '  implement <plan.md>            Execute a plan file\n'
@@ -326,11 +387,13 @@ cmd_agent_help() {
   printf '  plan      <plan.md>            Generate an implementation plan\n'
   printf '  prompt    <plan.md>            Free-form prompt with plan context\n'
   printf '  observe   --last               Check the last report or transcript\n'
+  printf '  await     --last               Wait for metadata completion + summary\n'
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted %s implement .vibecrafted/plans/my-plan.md\n' "$agent"
   printf '  vibecrafted %s research .vibecrafted/plans/my-plan.md\n' "$agent"
   printf '  vibecrafted %s observe --last\n' "$agent"
+  printf '  vibecrafted %s await --last\n' "$agent"
   printf '\n'
 }
 
@@ -338,18 +401,18 @@ cmd_start_help() {
   printf '\n'
   printf '%b⚒%b  %bstart%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
   printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
-  printf '  Start the operator Zellij session (default board: vibecrafted).\n'
+  printf '  Start the operator Zellij session (default board: operator).\n'
   printf '\n'
   printf '%bUsage:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted start\n'
-  printf '  vibecrafted start vibecrafted\n'
+  printf '  vibecrafted start operator\n'
   printf '  vc-start\n'
-  printf '  vc-start vibecrafted\n'
+  printf '  vc-start operator\n'
   printf '  vc-start resume\n'
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted start\n'
-  printf '  vc-start vibecrafted\n'
+  printf '  vc-start operator\n'
   printf '  vc-start resume\n'
   printf '\n'
   printf '  Direct %bvc-<workflow> <agent>%b calls outside Zellij auto-enter the\n' "$_cyan" "$_reset"
@@ -369,14 +432,47 @@ cmd_dashboard_help() {
   printf '  vibecrafted dashboard switch <name>     Switch session (inside Zellij) or attach (outside)\n'
   printf '  vibecrafted dashboard attach <name>     Attach to a session from outside Zellij\n'
   printf '  vibecrafted dashboard kill <name>       Kill a Zellij session\n'
+  printf '  vibecrafted dashboard gc [flags]        Prune dead sessions and optionally stale detached ones\n'
   printf '\n'
-  printf '%bLayouts:%b  vc-dashboard (default), vc-marbles, vc-workflow, vc-research, vibecrafted\n' "$_bold" "$_reset"
+  printf '%bLayouts:%b  dashboard (default), marbles, workflow, research, operator\n' "$_bold" "$_reset"
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted dashboard                   # default dashboard\n'
   printf '  vibecrafted dashboard ls                # list sessions\n'
-  printf '  vibecrafted dashboard vc-marbles        # marbles layout\n'
+  printf '  vibecrafted dashboard gc --apply        # prune dead EXITED sessions\n'
+  printf '  vibecrafted dashboard marbles           # marbles layout\n'
   printf '  vibecrafted dashboard switch my-session  # switch/attach\n'
+  printf '\n'
+}
+
+cmd_gui_help() {
+  printf '\n'
+  printf '%b⚒%b  %bgui%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
+  printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
+  printf '  Launch the localhost-only Python control plane.\n'
+  printf '\n'
+  printf '%bUsage:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted gui [--source <path>] [--host <host>] [--port <port>] [--no-open]\n'
+  printf '\n'
+  printf '%bExamples:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted gui\n'
+  printf '  vibecrafted gui --no-open --port 4173\n'
+  printf '\n'
+}
+
+cmd_tui_help() {
+  printf '\n'
+  printf '%b⚒%b  %btui%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
+  printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
+  printf '  Launch the Rust operator console over the shared control-plane state.\n'
+  printf '\n'
+  printf '%bUsage:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted tui [--state-root <dir>] [--deck <path>] [--root <path>] [--runtime <headless|terminal|visible>] [--tick-ms <ms>]\n'
+  printf '\n'
+  printf '%bExamples:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted tui\n'
+  printf '  vibecrafted tui --runtime headless\n'
+  printf '  vibecrafted tui --tick-ms 500\n'
   printf '\n'
 }
 
@@ -566,6 +662,67 @@ cmd_telemetry() {
   esac
 }
 
+cmd_gui() {
+  local gui_script repo_source
+  if _is_help_flag "${1:-}"; then
+    cmd_gui_help
+    return 0
+  fi
+  gui_script="$(_installer_gui_script 2>/dev/null || true)"
+  [[ -n "$gui_script" ]] || {
+    printf '%b[error]%b installer_gui.py not found.\n' "$_red" "$_reset" >&2
+    return 1
+  }
+  repo_source="$(_repo_source_root 2>/dev/null || true)"
+  [[ -n "$repo_source" ]] || repo_source="$(cd "$(dirname "$gui_script")/.." && pwd)"
+  _sync_control_plane_best_effort
+  python3 "$gui_script" --source "$repo_source" "$@"
+}
+
+cmd_tui() {
+  local tui_dir manifest_path binary_path external_binary deck_path state_root
+  if _is_help_flag "${1:-}"; then
+    cmd_tui_help
+    return 0
+  fi
+  tui_dir="$(_operator_tui_dir 2>/dev/null || true)"
+  [[ -n "$tui_dir" ]] && manifest_path="$tui_dir/Cargo.toml"
+  [[ -n "$tui_dir" ]] && binary_path="$tui_dir/target/debug/vibecrafted-operator"
+  external_binary="$(command -v vc-operator 2>/dev/null || true)"
+  deck_path="$(_repo_source_root 2>/dev/null || true)"
+  if [[ -z "$deck_path" && -n "$tui_dir" ]]; then
+    deck_path="$(cd "$tui_dir/.." && pwd)"
+  fi
+  [[ -n "$deck_path" ]] || deck_path="$(_script_repo_root)"
+  deck_path="$deck_path/scripts/vibecrafted"
+  state_root="$crafted_home/control_plane"
+
+  _sync_control_plane_best_effort
+
+  if [[ -n "${binary_path:-}" && -x "$binary_path" ]]; then
+    "$binary_path" --state-root "$state_root" --deck "$deck_path" "$@"
+    return $?
+  fi
+
+  if [[ -n "$external_binary" ]]; then
+    "$external_binary" --state-root "$state_root" --deck "$deck_path" "$@"
+    return $?
+  fi
+
+  [[ -n "$tui_dir" ]] || {
+    printf '%b[error]%b operator-tui crate not found in the current source tree and vc-operator is not installed.\n' "$_red" "$_reset" >&2
+    return 1
+  }
+
+  command -v cargo >/dev/null 2>&1 || {
+    printf '%b[error]%b cargo is required to build the Rust operator console.\n' "$_red" "$_reset" >&2
+    printf '  Expected manifest: %s\n' "$manifest_path" >&2
+    return 1
+  }
+
+  cargo run --manifest-path "$manifest_path" -- --state-root "$state_root" --deck "$deck_path" "$@"
+}
+
 cmd_help() {
   local topic="${1:-}"
   case "$topic" in
@@ -581,6 +738,14 @@ cmd_help() {
       cmd_dashboard_help
       return
       ;;
+    gui)
+      cmd_gui_help
+      return
+      ;;
+    tui)
+      cmd_tui_help
+      return
+      ;;
     telemetry)
       cmd_telemetry_help
       return
@@ -589,11 +754,15 @@ cmd_help() {
       cmd_resume_help
       return
       ;;
+    agents)
+      cmd_agents
+      return
+      ;;
     implement)
       cmd_skill_help "justdo"
       return
       ;;
-    decorate|delegate|dou|followup|hydrate|justdo|marbles|partner|prune|release|research|review|scaffold|workflow)
+    decorate|delegate|dou|followup|hydrate|intents|justdo|marbles|ownership|partner|prune|release|research|review|scaffold|workflow)
       cmd_skill_help "$topic"
       return
       ;;
@@ -615,14 +784,22 @@ cmd_help() {
   printf '  %bvibecrafted help --full%b               Full reference (all skills, modes, aliases)\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted help%b <topic>              Help for a skill, agent, or command\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted init%b [agent]              Start an interactive init session\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted gui%b                       Launch the localhost control plane\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted tui%b                       Launch the Rust operator console\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted dashboard%b [layout]        Launch an optional repo-owned Zellij dashboard\n' "$_cyan" "$_reset"
   printf '  %btelemetry smoke%b [flags]              Smoke the marbles telemetry path\n' "$_cyan" "$_reset"
-  printf '  %bvibecrafted%b <skill> <agent> [flags]   Run a framework skill\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted%b <skill> <agent> [flags]   Run an agent-scoped framework skill\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted%b research [--prompt <text>|--file <path>]   Triple-agent research launcher\n' "$_cyan" "$_reset"
+  printf '  %bvc-research%b [--prompt <text>|--file <path>]     Triple-agent research launcher\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted resume%b <agent> [flags]    Resume an existing agent session\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted%b <agent> <mode> [args]     implement/research/review/plan/prompt/observe\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted status%b                    Today'"'"'s agent activity\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted doctor%b                    Verify installation health\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted uninstall%b                 Reverse the install\n' "$_cyan" "$_reset"
+  printf '\n'
+  printf '%bSkill inventory (18 live skills):%b\n' "$_bold" "$_reset"
+  printf '  Core: init · scaffold · workflow · followup · marbles · dou · decorate · hydrate · release\n'
+  printf '  Support: agents · delegate · intents · justdo · ownership · partner · prune · research · review\n'
   printf '\n'
   printf '%bStart here:%b\n' "$_bold" "$_reset"
   printf '  If you want the simplest path, skip the dashboard and use plain commands:\n'
@@ -635,7 +812,9 @@ cmd_help() {
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted init claude\n'
-  printf '  vibecrafted dashboard vc-marbles\n'
+  printf '  vibecrafted gui --no-open\n'
+  printf '  vibecrafted tui\n'
+  printf '  vibecrafted dashboard marbles\n'
   printf '  telemetry smoke --count 1 --no-watch\n'
   printf '  vibecrafted workflow claude --prompt "Plan and implement auth"\n'
   printf '  vibecrafted justdo codex --prompt "Ship the feature"\n'
@@ -681,6 +860,8 @@ cmd_help_full() {
   printf '%b=== FIRST 5 MINUTES ===%b\n' "$_bold" "$_reset"
   printf '\n'
   printf '  %bvibecrafted init claude%b\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted gui%b\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted tui%b\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted workflow claude --prompt "Plan and implement <task>"%b\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted justdo codex --prompt "Ship <task>"%b\n' "$_cyan" "$_reset"
   _print_ship_path
@@ -689,11 +870,18 @@ cmd_help_full() {
   printf '%b=== MODES (per agent) ===%b\n' "$_bold" "$_reset"
   printf '\n'
   printf '  %bvibecrafted <agent> implement%b <plan.md>   Execute a plan file\n' "$_cyan" "$_reset"
-  printf '  %bvibecrafted <agent> research%b  <plan.md>   Research a topic\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted <agent> research%b  <plan.md>   Single-agent research mode\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted <agent> review%b    <plan.md>   Review code or architecture\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted <agent> plan%b      <plan.md>   Generate an implementation plan\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted <agent> prompt%b    <plan.md>   Free-form prompt with context\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted <agent> observe%b   --last      Check last agent report/transcript\n' "$_cyan" "$_reset"
+  printf '\n'
+  printf '%b=== RESEARCH (launcher) ===%b\n' "$_bold" "$_reset"
+  printf '\n'
+  printf '  %bvibecrafted research%b --prompt "text"%b   Launch Claude + codex + gemini swarm\n' "$_cyan" "$_reset" "$_reset"
+  printf '  %bvc-research%b --prompt "text"%b         Launch Claude + codex + gemini swarm\n' "$_cyan" "$_reset" "$_reset"
+  printf '  %bvibecrafted research%b --file plan.md%b    Launch swarm from plan file\n' "$_cyan" "$_reset" "$_reset"
+  printf '  %bvc-research%b --file plan.md%b          Launch swarm from plan file\n' "$_cyan" "$_reset" "$_reset"
   printf '\n'
   printf '%b=== TELEMETRY ===%b\n' "$_bold" "$_reset"
   printf '\n'
@@ -704,15 +892,21 @@ cmd_help_full() {
   printf '\n'
   printf '  %bvibecrafted dashboard%b [layout]        Open/switch to a Zellij dashboard\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted dashboard ls%b              List active Zellij sessions\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted dashboard gc%b [flags]      Prune dead/stale Zellij sessions\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted dashboard switch%b <name>   Switch to session (Zellij-native)\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted start%b [layout]            Alias for %bvibecrafted dashboard%b\n' "$_cyan" "$_reset" "$_cyan" "$_reset"
+  printf '  %bvibecrafted gui%b                       Public/local-web launch + observe surface\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted tui%b                       Rust operator console over shared state\n' "$_cyan" "$_reset"
   printf '\n'
   printf '  Agents: %bclaude%b · %bcodex%b · %bgemini%b\n' "$_bold" "$_reset" "$_bold" "$_reset" "$_bold" "$_reset"
   printf '\n'
   printf '%b=== ADDITIONAL SKILLS ===%b\n' "$_bold" "$_reset"
   printf '\n'
+  printf '  %bagents%b     External fleet delegation contract via agent modes\n' "$_copper" "$_reset"
+  printf '  %bintents%b    Plan-to-runtime truth audit\n' "$_copper" "$_reset"
   printf '  %bpartner%b    Collaborative debugging and architecture triage\n' "$_copper" "$_reset"
   printf '  %bjustdo%b     Autonomous end-to-end implementation\n' "$_copper" "$_reset"
+  printf '  %bownership%b  Full-spectrum take-the-wheel delivery\n' "$_copper" "$_reset"
   printf '  %bdelegate%b   In-session native subagent delegation\n' "$_copper" "$_reset"
   printf '  %bresearch%b   Triple-agent research (claude + codex + gemini)\n' "$_copper" "$_reset"
   printf '  %breview%b     Full PR review pipeline\n' "$_copper" "$_reset"
@@ -723,6 +917,8 @@ cmd_help_full() {
   printf '  %bvibecrafted help%b                      Compact command deck\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted help --full%b               This full reference\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted init%b [agent]              Interactive init session\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted gui%b                       Launch the localhost control plane\n' "$_cyan" "$_reset"
+  printf '  %bvibecrafted tui%b                       Launch the Rust operator console\n' "$_cyan" "$_reset"
   printf '  %btelemetry smoke%b [flags]              Smoke the marbles telemetry path\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted resume%b <agent> [flags]    Resume an existing agent session\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted status%b                    Today'"'"'s agent activity\n' "$_cyan" "$_reset"
@@ -758,12 +954,16 @@ cmd_help_full() {
   printf '%b=== EXAMPLES ===%b\n' "$_bold" "$_reset"
   printf '\n'
   printf '  vibecrafted init claude\n'
-  printf '  vibecrafted dashboard vc-workflow\n'
+  printf '  vibecrafted gui\n'
+  printf '  vibecrafted tui\n'
+  printf '  vibecrafted dashboard workflow\n'
   printf '  telemetry smoke --count 1 --no-watch\n'
   printf '  vibecrafted workflow claude --prompt "Plan and implement auth"\n'
   printf '  vibecrafted workflow claude --file /path/to/brief.md\n'
+  printf '  vibecrafted intents codex --prompt "Audit what from the plan really landed"\n'
   printf '  vibecrafted marbles codex --count 3 --depth 3\n'
   printf '  vibecrafted justdo codex --prompt "Ship the feature"\n'
+  printf '  vibecrafted ownership codex --prompt "Take the repo from diagnosis to finished surface"\n'
   printf '  vibecrafted dou claude\n'
   printf '  vibecrafted decorate codex\n'
   printf '  vibecrafted hydrate codex\n'
@@ -877,6 +1077,12 @@ cmd_dashboard() {
       zellij kill-session "$1"
       return
       ;;
+    gc)
+      shift || true
+      _ensure_helpers_loaded || return 1
+      _run_helper vc-dashboard gc "$@"
+      return
+      ;;
   esac
 
   local previous_repo_zellij_pref="${VIBECRAFTED_PREFER_REPO_ZELLIJ-}"
@@ -938,6 +1144,88 @@ _fetch_channel_version() {
   local payload=""
   payload="$(curl -fsSL "$channel_url" 2>/dev/null)" || return 1
   python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version',''),d.get('archive_url',''))" <<< "$payload" 2>/dev/null || return 1
+}
+
+_sha256_file() {
+  local file="$1"
+  local actual=""
+  actual="$(shasum -a 256 "$file" 2>/dev/null || sha256sum "$file" 2>/dev/null)" || return 1
+  printf '%s\n' "${actual%% *}"
+}
+
+_expected_sha_from_sums() {
+  local sums_file="$1"
+  local target_name="$2"
+  awk -v target="$target_name" '
+    NF >= 2 {
+      name=$2
+      sub(/^\*/, "", name)
+      if (name == target) {
+        print $1
+        exit
+      }
+    }
+  ' "$sums_file"
+}
+
+_fetch_checked_release_file() {
+  local file_url="$1"
+  local output_file="$2"
+  local label="${3:-$(basename "$output_file")}"
+  local base_url="${file_url%/*}"
+  local sums_file expected actual
+
+  sums_file="$(dirname "$output_file")/SHA256SUMS"
+
+  if ! curl -fsSL "$file_url" -o "$output_file"; then
+    printf '%b[error]%b Could not fetch %s from %s.\n' "$_red" "$_reset" "$label" "$file_url" >&2
+    return 1
+  fi
+
+  printf '  Verifying %s via SHA256SUMS\n' "$label"
+  if ! curl -fsSL "${base_url}/SHA256SUMS" -o "$sums_file"; then
+    printf '%b[error]%b Could not fetch SHA256SUMS from %s.\n' "$_red" "$_reset" "${base_url}/SHA256SUMS" >&2
+    return 1
+  fi
+
+  expected="$(_expected_sha_from_sums "$sums_file" "$(basename "$output_file")")"
+  [[ -n "$expected" ]] || {
+    printf '%b[error]%b SHA256SUMS does not contain an entry for %s.\n' "$_red" "$_reset" "$(basename "$output_file")" >&2
+    return 1
+  }
+
+  actual="$(_sha256_file "$output_file")" || {
+    printf '%b[error]%b Could not compute SHA256 for %s.\n' "$_red" "$_reset" "$label" >&2
+    return 1
+  }
+
+  if [[ "$actual" != "$expected" ]]; then
+    printf '%b[error]%b SHA256 mismatch for %s: expected %s, got %s.\n' "$_red" "$_reset" "$label" "$expected" "$actual" >&2
+    return 1
+  fi
+
+  printf '  %bSHA256 ✓%b\n' "$_green" "$_reset"
+}
+
+_run_remote_install_fallback() {
+  local install_url="$1"
+  local channel_ref="$2"
+  local tmpdir install_file status=0
+
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/vibecrafted-update.XXXXXX")" || {
+    printf '%b[error]%b Could not create a temporary directory for install.sh.\n' "$_red" "$_reset" >&2
+    return 1
+  }
+  install_file="$tmpdir/install.sh"
+
+  if ! _fetch_checked_release_file "$install_url" "$install_file" "install.sh"; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  bash "$install_file" --ref "$channel_ref" || status=$?
+  rm -rf "$tmpdir"
+  return "$status"
 }
 
 _post_update_cleanup() {
@@ -1033,9 +1321,16 @@ cmd_update() {
   fi
 
   # Last resort: fetch install.sh from the web.
-  printf '  No local install surface found — fetching install.sh from vibecrafted.io\n\n' >&2
-  curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --ref "$channel_ref"
-  update_status=$?
+  local remote_install_url="https://vibecrafted.io/install.sh"
+  if [[ -n "$available_url" ]]; then
+    remote_install_url="${available_url%/*}/install.sh"
+  fi
+
+  printf '  No local install surface found — fetching install.sh from %s\n\n' "$remote_install_url" >&2
+  if ! _run_remote_install_fallback "$remote_install_url" "$channel_ref"; then
+    return 1
+  fi
+  update_status=0
   _post_update_banner "$installed_ver"
   return "$update_status"
 }
@@ -1080,6 +1375,7 @@ run_mode() {
       plan)      printf '  Generate an implementation plan.\n  Usage: vibecrafted %s plan <plan.md>\n' "$agent" ;;
       prompt)    printf '  Free-form prompt with plan context.\n  Usage: vibecrafted %s prompt <plan.md>\n' "$agent" ;;
       observe)   printf '  Check the last agent report or transcript.\n  Usage: vibecrafted %s observe --last\n' "$agent" ;;
+      await)     printf '  Wait for the last agent run to finish via metadata.\n  Usage: vibecrafted %s await --last\n' "$agent" ;;
     esac
     printf '\n'
     return 0
@@ -1100,6 +1396,16 @@ run_skill() {
 
   if [[ "$skill" == "init" ]]; then
     cmd_init "$agent" "$@"
+    return
+  fi
+
+  if [[ "$skill" == "research" ]]; then
+    _ensure_helpers_loaded || return 1
+    if [[ "$agent" == "await" ]]; then
+      _run_helper "vc-research-await" "$@"
+      return
+    fi
+    _run_helper "vc-research" "${agent:+$agent}" "$@"
     return
   fi
 
@@ -1136,8 +1442,18 @@ run_skill() {
     return 1
   }
 
+  local helper_name="${agent}-skill-${skill}"
   _ensure_helpers_loaded || return 1
-  _run_helper "${agent}-skill-${skill}" "$@"
+  if command -v "$helper_name" >/dev/null 2>&1; then
+    _run_helper "$helper_name" "$@"
+    return
+  fi
+  if command -v _vetcoders_skill_entry >/dev/null 2>&1; then
+    _vetcoders_skill_entry "$agent" "$skill" "$@"
+    return
+  fi
+  printf '%b[error]%b Missing helper %s and no generic skill entry is available.\n' "$_red" "$_reset" "$helper_name" >&2
+  return 1
 }
 
 run_wrapper() {
@@ -1165,6 +1481,14 @@ run_wrapper() {
   fi
   if [[ "$wrapper" == "vc-dashboard" ]]; then
     cmd_dashboard "$@"
+    return
+  fi
+  if [[ "$wrapper" == "vc-gui" ]]; then
+    cmd_gui "$@"
+    return
+  fi
+  if [[ "$wrapper" == "vc-tui" ]]; then
+    cmd_tui "$@"
     return
   fi
   if [[ "$wrapper" == "telemetry" ]]; then
@@ -1215,6 +1539,8 @@ main() {
     start) cmd_start "$@" ;;
     init) cmd_init "$@" ;;
     resume) cmd_resume "$@" ;;
+    gui) cmd_gui "$@" ;;
+    tui) cmd_tui "$@" ;;
     doctor|check) cmd_doctor ;;
     dashboard|mc|mission-control|sessions) cmd_dashboard "$@" ;;
     telemetry) cmd_telemetry "$@" ;;
@@ -1241,7 +1567,7 @@ main() {
       run_mode "$cmd" "$mode" "$@"
       ;;
     implement) run_skill "justdo" "$@" ;;
-    decorate|delegate|dou|followup|hydrate|justdo|marbles|partner|prune|release|research|review|scaffold|workflow)
+    decorate|delegate|dou|followup|hydrate|intents|justdo|marbles|ownership|partner|prune|release|research|review|scaffold|workflow)
       run_skill "$cmd" "$@"
       ;;
     *)

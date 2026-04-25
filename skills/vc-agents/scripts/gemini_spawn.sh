@@ -111,7 +111,11 @@ qfilter="$(spawn_shell_quote "$SCRIPT_DIR/gemini_stream_filter.jq")"
 # grep '^{' strips non-JSON lines so jq doesn't choke.
 vibecrafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
 qvhome="$(spawn_shell_quote "$vibecrafted_home")"
-launch_cmd="set -o pipefail && cd $qroot && { GEMINI_FORCE_FILE_STORAGE=true gemini -p '' -y $model_flag --include-directories $qvhome -o stream-json < $qruntime 2>&1 | grep --line-buffered '^{' | jq --unbuffered -rj -f $qfilter | tee -a $qtranscript; pipeline_status=\$?; exit \$pipeline_status; }"
+# --approval-mode yolo supersedes -y: latter is legacy boolean that does not
+# cover run_shell_command in current gemini-cli. Observed 2026-04-22: gemini
+# reached run_shell_command and got "requires user confirmation, not supported
+# in non-interactive mode" — the explicit approval mode cures it.
+launch_cmd="set -o pipefail && cd $qroot && { GEMINI_FORCE_FILE_STORAGE=true gemini -p '' --approval-mode yolo $model_flag --include-directories $qvhome -o stream-json < $qruntime 2>&1 | grep --line-buffered '^{' | jq --unbuffered -rj -f $qfilter | tee -a $qtranscript; pipeline_status=\$?; exit \$pipeline_status; }"
 
 # Combine built-in hooks with caller-provided hooks (marbles chain, etc.)
 combined_success="${gemini_success_hook}${success_hook_extra:+
@@ -134,5 +138,8 @@ spawn_print_launch gemini "$mode" "$runtime"
 [[ -n "$model" ]] && printf '  model:  %s\n' "$model" || printf '  model:  (CLI default)\n'
 spawn_launch "$SPAWN_LAUNCHER" "$runtime" "$dry_run" "gemini-${VIBECRAFTED_SKILL_NAME:-$mode}"
 if [[ "${VIBECRAFTED_SUPPRESS_REPORT_HINT:-0}" != "1" ]]; then
-  printf 'Agent launched. Report will land at: %s\n' "$SPAWN_REPORT"
+  printf 'Agent launched.\n'
+  bash "$SCRIPT_DIR/await.sh" gemini --describe "$SPAWN_LAUNCHER" 2>/dev/null || true
+  printf '\nAwait:\n\n'
+  printf 'vibecrafted gemini await --run-id %s\n' "$SPAWN_RUN_ID"
 fi

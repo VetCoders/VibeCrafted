@@ -62,6 +62,10 @@ export VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=\${VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION:
 export VIBECRAFTED_MARBLES_TAB_NAME=\${VIBECRAFTED_MARBLES_TAB_NAME:-$q_marbles_tab}
 startup_watch_pid=""
 
+# Write this launcher's PID into meta.json so the watcher heartbeat and the
+# spawn-time GC can validate liveness via kill -0. Dead launcher_pid = ghost.
+spawn_update_meta_pid "\$meta" \$\$
+
 rm -f "\$transcript" "\$report"
 spawn_write_frontmatter "\$transcript" "\$SPAWN_AGENT" "unknown" "transcript"
 if [[ -n "\${SPAWN_ROOT:-}" ]]; then

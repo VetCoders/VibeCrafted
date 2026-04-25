@@ -60,7 +60,11 @@ try:
     except (OSError, json.JSONDecodeError):
         payload = {}
 
-    exec(mutator, {"datetime": datetime}, {"payload": payload, "args": args})
+    exec(
+        mutator,
+        {"datetime": datetime, "json": json, "os": os},
+        {"payload": payload, "args": args},
+    )
 
     dir_path = os.path.dirname(state_path) or "."
     fd, tmp_path = tempfile.mkstemp(
@@ -165,11 +169,12 @@ _record_loop_start() {
   local focus="$4"
   local ancestor_slug="$5"
   local model="${6:-}"
+  local agent_source="${7:-}"
 
   if command -v python3 >/dev/null 2>&1; then
     _state_json_edit "$(cat <<'PY'
 loop_nr = int(args[0])
-transcript, agent_name, focus, ancestor_slug, model = args[1:6]
+transcript, agent_name, focus, ancestor_slug, model, agent_source = args[1:7]
 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 payload["current_loop"] = loop_nr
@@ -196,10 +201,12 @@ if model:
     target["model"] = model
 else:
     target.pop("model", None)
+if agent_source and "agent_source" not in target:
+    target["agent_source"] = agent_source
 
 payload["loops"] = loops
 PY
-)" "$loop_nr" "$transcript" "$agent_name" "$focus" "$ancestor_slug" "$model" >/dev/null || true
+)" "$loop_nr" "$transcript" "$agent_name" "$focus" "$ancestor_slug" "$model" "$agent_source" >/dev/null || true
   fi
 }
 
@@ -228,6 +235,7 @@ _record_loop_done() {
   local p1="${5:-}"
   local p2="${6:-}"
   local score="${7:-}"
+  local meta_path="${8:-}"
   if command -v python3 >/dev/null 2>&1; then
     _state_json_edit "$(cat <<'PY'
 loop_nr = int(args[0])
@@ -237,7 +245,19 @@ p0 = int(args[3]) if args[3] else None
 p1 = int(args[4]) if args[4] else None
 p2 = int(args[5]) if args[5] else None
 score = int(args[6]) if args[6] else None
+meta_path = args[7] if len(args) > 7 else ""
 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+telemetry = {}
+if meta_path and os.path.isfile(meta_path):
+    try:
+        with open(meta_path, "r", encoding="utf-8") as fh:
+            m = json.load(fh)
+            if "usage" in m: telemetry["usage"] = m["usage"]
+            if "tools" in m: telemetry["tools"] = m["tools"]
+            if "model" in m: telemetry["model"] = m["model"]
+    except Exception:
+        pass
 
 payload["updated_at"] = now
 for loop in payload.get("loops", []):
@@ -247,10 +267,12 @@ for loop in payload.get("loops", []):
         loop["duration_s"] = duration
         loop["completed_at"] = now
         loop["metrics"] = {"p0": p0, "p1": p1, "p2": p2, "score": score}
+        if telemetry:
+            loop["telemetry"] = telemetry
 
 payload.setdefault("trajectory", []).append(score)
 PY
-)" "$loop_nr" "$report" "$duration" "$p0" "$p1" "$p2" "$score" >/dev/null || true
+)" "$loop_nr" "$report" "$duration" "$p0" "$p1" "$p2" "$score" "$meta_path" >/dev/null || true
   fi
 }
 
@@ -284,6 +306,7 @@ _record_loop_failed() {
   local duration="$3"
   local report_path="${4:-}"
   local exit_code="${5:-}"
+  local meta_path="${6:-}"
   if command -v python3 >/dev/null 2>&1; then
     _state_json_edit "$(cat <<'PY'
 loop_nr = int(args[0])
@@ -291,7 +314,19 @@ reason = args[1]
 duration = int(args[2])
 report_path = args[3]
 exit_code = int(args[4]) if args[4] else None
+meta_path = args[5] if len(args) > 5 else ""
 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+telemetry = {}
+if meta_path and os.path.isfile(meta_path):
+    try:
+        with open(meta_path, "r", encoding="utf-8") as fh:
+            m = json.load(fh)
+            if "usage" in m: telemetry["usage"] = m["usage"]
+            if "tools" in m: telemetry["tools"] = m["tools"]
+            if "model" in m: telemetry["model"] = m["model"]
+    except Exception:
+        pass
 
 payload["status"] = "failed"
 payload["updated_at"] = now
@@ -305,59 +340,38 @@ for loop in payload.get("loops", []):
             loop["report"] = report_path
         if exit_code is not None:
             loop["exit_code"] = exit_code
+        if telemetry:
+            loop["telemetry"] = telemetry
 PY
-)" "$loop_nr" "$reason" "$duration" "$report_path" "$exit_code" >/dev/null || true
+)" "$loop_nr" "$reason" "$duration" "$report_path" "$exit_code" "$meta_path" >/dev/null || true
   fi
 }
 
-_record_verification_done() {
+_record_verification_pending() {
   local loop_nr="$1"
-  local verified_report="$2"
+
   if command -v python3 >/dev/null 2>&1; then
     _state_json_edit "$(cat <<'PY'
 payload["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 for loop in payload.get("loops", []):
-    if loop.get("loop") == int(args[0]):
-        loop["verification_status"] = "completed"
-        loop["verified_report"] = args[1]
-PY
-)" "$loop_nr" "$verified_report" >/dev/null || true
-  fi
-}
-
-_bg_poll_verification() {
-  local loop_nr="$1"
-  local report_path="$2"
-  local verified_path=""
-  local max_wait=600
-  local elapsed=0
-
-  [[ -n "$report_path" ]] || return 0
-  verified_path="${report_path%.md}_verified.md"
-
-  while (( elapsed < max_wait )); do
-    if [[ -s "$verified_path" ]]; then
-      _record_verification_done "$loop_nr" "$verified_path"
-      printf '    %b✓ verified%b  L%s → %s\n' "$_green" "$_reset" "$loop_nr" "$(basename "$verified_path")"
-      return 0
-    fi
-    sleep 10
-    (( elapsed += 10 ))
-  done
-
-  if command -v python3 >/dev/null 2>&1 && [[ -f "$state_file" ]]; then
-    _state_json_edit "$(cat <<'PY'
-payload["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-for loop in payload.get("loops", []):
-    if loop.get("loop") == int(args[0]) and loop.get("verification_status") == "pending":
-        loop["verification_status"] = "timed_out"
+    if loop.get("loop") == int(args[0]) and loop.get("verification_status") != "completed":
+        loop["verification_status"] = "pending"
 PY
 )" "$loop_nr" >/dev/null || true
   fi
-  printf '    %b⚠ verification timed out%b  L%s\n' "$_yellow" "$_reset" "$loop_nr"
 }
 
-_verification_pids=()
+_start_verification_watch() {
+  local loop_nr="$1"
+  local report_path="$2"
+
+  [[ -n "$report_path" ]] || return 0
+  [[ -f "$SCRIPT_DIR/marbles_verify_watch.sh" ]] || return 0
+
+  _record_verification_pending "$loop_nr"
+  nohup bash "$SCRIPT_DIR/marbles_verify_watch.sh" \
+    "$state_file" "$loop_nr" "$report_path" >/dev/null 2>&1 &
+}
 
 _render_chain() {
   local current="$1"
@@ -454,6 +468,129 @@ _report_frontmatter_status() {
   spawn_frontmatter_field "$report" "status"
 }
 
+_marbles_failure_hint() {
+  local report_path="$1"
+  local transcript_path="$2"
+  local meta_path="$3"
+  local hint=""
+
+  hint="$(
+    python3 - "$report_path" "$transcript_path" "$meta_path" <<'PY'
+import json
+import os
+import re
+import sys
+
+report_path, transcript_path, meta_path = sys.argv[1:4]
+
+keyword_re = re.compile(
+    r"\b(error|failed|failure|exception|traceback|reason|exit code|not found|permission denied|killed|timed out|denied|cannot)\b",
+    re.IGNORECASE,
+)
+
+
+def strip_ansi(line: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", line)
+
+
+def normalize(line: str) -> str:
+    return strip_ansi(line).strip()
+
+
+def pick_from_text(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return ""
+
+    # Skip YAML frontmatter if present.
+    frontmatter = 0
+    if lines and lines[0].strip() == "---":
+        frontmatter = 1
+
+    last = ""
+    signal = ""
+    for line in lines:
+        l = line.strip()
+        if frontmatter == 1:
+            if l == "---":
+                frontmatter = 2
+            continue
+        if l == "---":
+            continue
+
+        cleaned = normalize(line)
+        if not cleaned:
+            continue
+        if cleaned.startswith("#"):
+            continue
+        if cleaned.startswith("---"):
+            continue
+
+        last = cleaned
+        if keyword_re.search(cleaned):
+            signal = cleaned
+
+    if signal:
+        return signal
+    return last
+
+
+def pick_from_meta(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            meta = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+    if not isinstance(meta, dict):
+        return ""
+
+    if meta.get("error"):
+        return f"reason: {meta['error']}"
+
+    candidate_fields = []
+    for key in ("reason", "message"):
+        value = meta.get(key, "")
+        if value == "" or value is None:
+            continue
+        candidate_fields.append(f"{key}: {value}")
+
+    if candidate_fields:
+        return " | ".join(candidate_fields[:3])
+    return ""
+
+
+hint = pick_from_text(report_path)
+if not hint:
+    hint = pick_from_text(transcript_path)
+if not hint:
+    hint = pick_from_meta(meta_path)
+
+if hint:
+    print(hint)
+PY
+  )"
+
+  hint="${hint//$'\n'/ }"
+  hint="$(printf '%s' "$hint" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  printf '%s' "$hint"
+}
+
+_marbles_truncate_hint() {
+  local hint="$1"
+  local max_len="${2:-200}"
+  local fallback=""
+
+  if [[ ${#hint} -gt $max_len ]]; then
+    fallback="${hint:0:$max_len-3}..."
+    printf '%s' "$fallback"
+  else
+    printf '%s' "$hint"
+  fi
+}
+
 _wait_for_loop_meta() {
   local loop_nr="$1"
   local timeout_s="$2"
@@ -506,6 +643,22 @@ _wait_for_report_path() {
       meta_status="$(spawn_read_meta_field "$meta_path" "status")"
       if [[ "$meta_status" == "failed" ]]; then
         return 4
+      fi
+
+      # Heartbeat — validate launcher_pid via kill -0. If the bash launcher
+      # died without running its exit handler (terminal close, SIGKILL, crash),
+      # meta would sit as "launching"/"running" forever and downstream tools
+      # would treat the corpse as live. Reap it now: flip status to "ghost",
+      # release the lock, return as failed so this loop terminates cleanly.
+      if [[ "$meta_status" =~ ^(launching|running|in-progress)$ ]]; then
+        local _launcher_pid=""
+        _launcher_pid="$(spawn_read_meta_field "$meta_path" "launcher_pid")"
+        if [[ -n "$_launcher_pid" && "$_launcher_pid" != "None" ]]; then
+          if ! spawn_pid_alive "$_launcher_pid"; then
+            spawn_reap_dead_run "$meta_path"
+            return 4
+          fi
+        fi
       fi
     fi
 
@@ -641,7 +794,7 @@ PY
   fi
   [[ -n "$loop_agent" ]] || loop_agent="unknown"
 
-  _record_loop_start "$loop_nr" "" "$loop_agent" "$loop_focus" "$ancestor_slug" "$loop_model"
+  _record_loop_start "$loop_nr" "" "$loop_agent" "$loop_focus" "$ancestor_slug" "$loop_model" "rotation"
 
   promise_detail="$loop_agent"
   if [[ -n "$loop_focus" ]]; then
@@ -652,7 +805,9 @@ PY
   loop_start=$(date +%s)
 
   meta_path=""
-  if ! meta_path="$(_wait_for_loop_meta "$loop_nr" "$meta_timeout_s")"; then
+  if meta_path="$(_wait_for_loop_meta "$loop_nr" "$meta_timeout_s")"; then
+    :
+  else
     meta_status=$?
     loop_end=$(date +%s)
     duration=$((loop_end - loop_start))
@@ -673,6 +828,7 @@ PY
   actual_report_hint="$(spawn_read_meta_field "$meta_path" "report")"
   actual_meta_status="$(spawn_read_meta_field "$meta_path" "status")"
   actual_exit_code="$(spawn_read_meta_field "$meta_path" "exit_code")"
+  failure_hint="$(_marbles_failure_hint "$actual_report_hint" "$actual_transcript" "$meta_path")"
   # Trust the meta's agent over the pre-resolved child plan agent — the plan
   # may not exist yet when the watcher enters this loop (race with marbles_next).
   actual_meta_agent="$(spawn_read_meta_field "$meta_path" "agent")"
@@ -685,8 +841,11 @@ PY
     loop_end=$(date +%s)
     duration=$((loop_end - loop_start))
     duration_fmt="$(printf '%dm %02ds' $((duration/60)) $((duration%60)))"
-    _record_loop_failed "$loop_nr" "spawn-failed" "$duration" "$actual_report_hint" "$actual_exit_code"
+    _record_loop_failed "$loop_nr" "spawn-failed" "$duration" "$actual_report_hint" "$actual_exit_code" "$meta_path"
     detail="$duration_fmt  failed before report"
+    if [[ -n "$failure_hint" ]]; then
+      detail="$detail  - $(_marbles_truncate_hint "$failure_hint" 220)"
+    fi
     if [[ -n "$actual_exit_code" ]]; then
       detail="$detail  exit ${actual_exit_code}"
     fi
@@ -715,7 +874,9 @@ PY
 
   wait_status=0
   if [[ -z "$actual_report" ]]; then
-    if ! actual_report="$(_wait_for_report_path "$actual_report_hint" "$report_timeout_s" "$actual_transcript" "$meta_path")"; then
+    if actual_report="$(_wait_for_report_path "$actual_report_hint" "$report_timeout_s" "$actual_transcript" "$meta_path")"; then
+      :
+    else
       wait_status=$?
     fi
   fi
@@ -733,8 +894,14 @@ PY
 
     if (( wait_status == 4 )); then
       exit_code_hint="$(spawn_read_meta_field "$meta_path" "exit_code")"
-      _record_loop_failed "$loop_nr" "spawn-failed" "$duration" "$actual_report_hint" "$exit_code_hint"
+      if [[ -z "$failure_hint" ]]; then
+        failure_hint="$(_marbles_failure_hint "$actual_report_hint" "$actual_transcript" "$meta_path")"
+      fi
+      _record_loop_failed "$loop_nr" "spawn-failed" "$duration" "$actual_report_hint" "$exit_code_hint" "$meta_path"
       detail="$duration_fmt  failed before report"
+      if [[ -n "$failure_hint" ]]; then
+        detail="$detail  - $(_marbles_truncate_hint "$failure_hint" 220)"
+      fi
       if [[ -n "$exit_code_hint" ]]; then
         detail="$detail  exit ${exit_code_hint}"
       fi
@@ -770,6 +937,12 @@ PY
     fi
     _record_loop_failed "$loop_nr" "$failure_reason" "$duration" "$actual_report" "$exit_code_hint"
     detail="$duration_fmt  failed before convergence report"
+    if [[ -z "$failure_hint" ]]; then
+      failure_hint="$(_marbles_failure_hint "$actual_report" "$actual_transcript" "$meta_path")"
+    fi
+    if [[ -n "$failure_hint" ]]; then
+      detail="$detail  - $(_marbles_truncate_hint "$failure_hint" 220)"
+    fi
     if [[ -n "$exit_code_hint" ]]; then
       detail="$detail  exit ${exit_code_hint}"
     fi
@@ -780,7 +953,7 @@ PY
   fi
 
   read -r p0 p1 p2 score <<< "$(_extract_metrics "$actual_report")"
-  _record_loop_done "$loop_nr" "$actual_report" "$duration" "$p0" "$p1" "$p2" "$score"
+  _record_loop_done "$loop_nr" "$actual_report" "$duration" "$p0" "$p1" "$p2" "$score" "$meta_path"
 
   detail="$duration_fmt"
   if [[ -n "$p0" || -n "$p1" || -n "$p2" ]]; then
@@ -789,8 +962,7 @@ PY
   fi
   _render_loop_phase "$loop_nr" "done" "$detail"
 
-  _bg_poll_verification "$loop_nr" "$actual_report" &
-  _verification_pids+=($!)
+  _start_verification_watch "$loop_nr" "$actual_report"
 
   if [[ "${p0:-}" == "0" && "${p1:-}" == "0" && "${p2:-}" == "0" ]] \
      && [[ -n "$p0" && -n "$p1" && -n "$p2" ]]; then
@@ -840,7 +1012,12 @@ elif (( failed )); then
   printf '\n %b⚒  Failed · loop failure at L%s/%s · %s%b\n' "$_bold$_red" "$failed_loop" "$total_count" "$total_fmt" "$_reset"
   printf '%b──────────────────────────────────%b\n' "$_steel" "$_reset"
   printf '  %s\n' "$(_render_chain "$completed_loops" "$total_count")"
-  printf '  loop consumed truthfully; failure surfaced from launch metadata\n'
+  failed_summary_hint="$(_marbles_failure_hint "$actual_report_hint" "$actual_transcript" "$meta_path")"
+  if [[ -n "$failed_summary_hint" ]]; then
+    printf '  loop consumed truthfully; failure surfaced as: %s\n' "$failed_summary_hint"
+  else
+    printf '  loop consumed truthfully; failure surfaced from launch metadata\n'
+  fi
 elif (( stopped )); then
   _update_status "stopped"
   printf '\n %b⚒  Stopped · %s%b\n' "$_bold$_yellow" "$total_fmt" "$_reset"
@@ -854,20 +1031,19 @@ else
   [[ -n "$trajectory" ]] && printf '  %s\n' "$trajectory"
 fi
 
-if (( ${#_verification_pids[@]} > 0 )); then
-  printf '\n  %bverification:%b ' "$_dim" "$_reset"
-  for _vpid in "${_verification_pids[@]}"; do
-    if kill -0 "$_vpid" 2>/dev/null; then
-      _vwait=0
-      while kill -0 "$_vpid" 2>/dev/null && (( _vwait < 30 )); do
-        sleep 5
-        (( _vwait += 5 ))
-      done
-    fi
-  done
+verification_grace_s="${VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S:-30}"
+case "$verification_grace_s" in
+  ''|*[!0-9]*)
+    verification_grace_s=30
+    ;;
+esac
 
-  if command -v python3 >/dev/null 2>&1 && [[ -f "$state_file" ]]; then
-    python3 - "$state_file" <<'PY'
+if command -v python3 >/dev/null 2>&1 && [[ -f "$state_file" ]]; then
+  printf '\n  %bverification:%b ' "$_dim" "$_reset"
+  if (( verification_grace_s > 0 )); then
+    sleep "$verification_grace_s"
+  fi
+  python3 - "$state_file" <<'PY'
 import json
 import sys
 
@@ -893,14 +1069,9 @@ if timed:
     parts.append(f"{timed} timed out")
 print(", ".join(parts) if parts else "none tracked")
 PY
-  fi
 fi
 
 printf '\n  lock released: %s\n' "$run_id"
 printf '%b──────────────────────────────────%b\n\n' "$_steel" "$_reset"
-
-for _vpid in "${_verification_pids[@]:-}"; do
-  kill "$_vpid" 2>/dev/null || true
-done
 
 rm -f "$session_lock" 2>/dev/null || true
