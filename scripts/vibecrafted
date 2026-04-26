@@ -79,6 +79,20 @@ _repo_root() {
   git rev-parse --show-toplevel 2>/dev/null || pwd
 }
 
+_realpath_quiet() {
+  local target="${1:-}"
+  [[ -n "$target" ]] || return 1
+  python3 - "$target" <<'PY'
+import os
+import sys
+
+target = sys.argv[1]
+if not target:
+    raise SystemExit(1)
+print(os.path.realpath(target))
+PY
+}
+
 _has_agent() {
   local candidate="${1:-}"
   [[ "$candidate" == "claude" || "$candidate" == "codex" || "$candidate" == "gemini" ]]
@@ -188,10 +202,27 @@ _ensure_helpers_loaded() {
 _run_helper() {
   local helper="$1"
   shift
-  if command -v "$helper" >/dev/null 2>&1; then
+  local helper_type resolved helper_real self_real self_path
+  helper_type="$(type -t "$helper" 2>/dev/null || true)"
+  if [[ "$helper_type" == "function" || "$helper_type" == "builtin" || "$helper_type" == "keyword" || "$helper_type" == "alias" ]]; then
     "$helper" "$@"
     return 0
   fi
+
+  resolved="$(type -P "$helper" 2>/dev/null || true)"
+  if [[ -n "$resolved" ]]; then
+    self_path="${BASH_SOURCE[0]:-$0}"
+    helper_real="$(_realpath_quiet "$resolved" 2>/dev/null || true)"
+    self_real="$(_realpath_quiet "$self_path" 2>/dev/null || true)"
+    if [[ -n "$helper_real" && -n "$self_real" && "$helper_real" == "$self_real" ]]; then
+      printf '%b[error]%b Helper %s resolved back to vibecrafted itself.\n' "$_red" "$_reset" "$helper" >&2
+      printf '  Add the missing function definition to vetcoders.sh instead of relying on PATH fallback.\n' >&2
+      return 1
+    fi
+    "$resolved" "$@"
+    return 0
+  fi
+
   printf '%b[error]%b Missing helper %s.\n' "$_red" "$_reset" "$helper" >&2
   return 1
 }

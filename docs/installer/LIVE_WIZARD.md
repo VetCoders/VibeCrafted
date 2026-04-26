@@ -82,7 +82,7 @@ Both `/` and `/en/install/` should return 200 with the prebuilt HTML, and
 `/api/preflight` should return the controller payload (version, categories,
 install plan, status).
 
-## Release TODO
+## Release Integration
 
 Right now the distributed tarball (`vibecrafted-v*.tar.gz`) does **not**
 include the Svelte bundle, so production installers still fall back to

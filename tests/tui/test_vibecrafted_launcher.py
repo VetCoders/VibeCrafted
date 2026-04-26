@@ -29,6 +29,12 @@ def _write_fake_agent(bin_dir: Path, name: str, capture_file: Path) -> None:
     script.chmod(0o755)
 
 
+def _write_trimmed_launcher(script_path: Path) -> None:
+    source = LAUNCHER.read_text(encoding="utf-8").splitlines()
+    script_path.write_text("\n".join(source[:-1]) + "\n", encoding="utf-8")
+    script_path.chmod(0o755)
+
+
 def _write_fake_command(bin_dir: Path, name: str, capture_file: Path) -> None:
     script = bin_dir / name
     script.write_text(
@@ -1603,3 +1609,34 @@ def test_dashboard_gc_include_live_prunes_only_stale_detached_sessions(
     assert "kill-session stale-live" in payload
     assert "kill-session fresh-live" not in payload
     assert "kill-session active-one" not in payload
+
+
+def test_run_helper_blocks_self_looping_path_resolution(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    launcher_copy = tmp_path / "vibecrafted"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_trimmed_launcher(launcher_copy)
+    (fake_bin / "vc-loop").symlink_to(launcher_copy)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'source "{launcher_copy}"; _run_helper vc-loop --file /tmp/demo.md',
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "resolved back to vibecrafted itself" in result.stderr
+    assert "missing function definition to vetcoders.sh" in result.stderr
