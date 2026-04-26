@@ -57,7 +57,7 @@ vibecrafted init gemini --prompt 'Bootstrap context for the payments module'
 <summary>Foundation Dependencies (Loaded with framework)</summary>
 
 - [vc-loctree](../foundations/vc-loctree/SKILL.md) — primary map and structural awareness.
-- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary memory and steerability index.
+- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary intentions and steerability index.
 </details>
 
 > 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚜𝚖𝚊𝚗𝚜𝚑𝚒𝚙 is the answer for the failure of vibe coding

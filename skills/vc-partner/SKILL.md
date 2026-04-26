@@ -68,7 +68,7 @@ vibecrafted partner gemini --file /path/to/debug-findings.md
 <summary>Foundation Dependencies (Loaded with framework)</summary>
 
 - [vc-loctree](../foundations/vc-loctree/SKILL.md) — primary map and structural awareness.
-- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary memory and steerability index.
+- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary intentions and steerability index.
 </details>
 
 One skill, one stance: shared executive brain.

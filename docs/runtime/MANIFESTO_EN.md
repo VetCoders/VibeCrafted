@@ -31,15 +31,15 @@ Once this strict system of continual re-verification was paired with increasingl
 
 ## Tooling Ontology
 
-| Layer             | Tool                                | Mechanism                                                                                                                                        |
-| ----------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Senses**        | Loctree                             | Structural codebase analysis — dead weight, cyclical dependencies, blast radius tracking. Agents read the architecture, rather than guessing it. |
-| **Orientation**   | vc-init                             | Three foundational bases before action: memory (what happened previously), vision (current code state), and truth (operational sanity checks).   |
-| **Convergence**   | vc-marbles                          | The unyielding validation loop. Systematically eliminating counterexamples and tracing cascades until zero defects remain (single/multi-agent).  |
-| **Orchestration** | vc-agents                           | Spawning parallel specialized background agents (headless) while generating rigorous reports, transcripts, and rich `aicx` context metadata.     |
-| **Quality**       | vc-followup, vc-dou                 | Followup probes post-execution failures. DoU (Definition of Undone) strictly quantifies what is keeping the current branch from deployment.      |
-| **Shipment**      | vc-decorate, vc-hydrate, vc-release | Aesthetic alignment, internal packaging, release pipelining, and converting code directly into a distributable runtime state.                    |
-| **Safety**        | rust-ai-locker                      | Advisory resource locking — guaranteeing that simultaneous asynchronous agents never collide or fatally overlap on heavy compilation builds.     |
+| Layer             | Tool                                | Mechanism                                                                                                                                          |
+| ----------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Senses**        | Loctree                             | Structural codebase analysis — dead weight, cyclical dependencies, blast radius tracking. Agents read the architecture, rather than guessing it.   |
+| **Orientation**   | vc-init                             | Three foundational bases before action: intentions (what happened previously), vision (current code state), and truth (operational sanity checks). |
+| **Convergence**   | vc-marbles                          | The unyielding validation loop. Systematically eliminating counterexamples and tracing cascades until zero defects remain (single/multi-agent).    |
+| **Orchestration** | vc-agents                           | Spawning parallel specialized background agents (headless) while generating rigorous reports, transcripts, and rich `aicx` context metadata.       |
+| **Quality**       | vc-followup, vc-dou                 | Followup probes post-execution failures. DoU (Definition of Undone) strictly quantifies what is keeping the current branch from deployment.        |
+| **Shipment**      | vc-decorate, vc-hydrate, vc-release | Aesthetic alignment, internal packaging, release pipelining, and converting code directly into a distributable runtime state.                      |
+| **Safety**        | rust-ai-locker                      | Advisory resource locking — guaranteeing that simultaneous asynchronous agents never collide or fatally overlap on heavy compilation builds.       |
 
 ## The Proof of Concept
 

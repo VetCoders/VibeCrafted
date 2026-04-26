@@ -58,7 +58,7 @@ vibecrafted workflow gemini --file /path/to/research-plan.md
 <summary>Foundation Dependencies (Loaded with framework)</summary>
 
 - [vc-loctree](../foundations/vc-loctree/SKILL.md) — primary map and structural awareness.
-- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary memory and steerability index.
+- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary intentions and steerability index.
 </details>
 
 **Examine. Research. Implement.**
@@ -108,7 +108,7 @@ Map the codebase before touching anything. The **Foundation Skills** are the pri
    - **`slice(file)`** — for every file likely to change (dependencies + consumers).
    - **`impact(file)`** — for high-hub or deletion-candidate files.
    - **`find(name)`** — for any new types/functions before creating them.
-3. **AICX (Memory)**: Recovering prior session context.
+3. **AICX (Intentions)**: Recovering prior session context.
    - **`aicx extract`** — use if previous session output is too large to read or in raw JSONL format.
 4. **PRView (Review)**: Analyzing existing PR context.
    - **`prview`** — if the workflow is part of a PR review, generate artifacts first.

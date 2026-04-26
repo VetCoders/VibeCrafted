@@ -85,7 +85,7 @@ vc-justdo claude --prompt 'Implement caching layer e2e'
 <summary>Foundation Dependencies (Loaded with framework)</summary>
 
 - [vc-loctree](../foundations/vc-loctree/SKILL.md) — primary map and structural awareness.
-- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary memory and steerability index.
+- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary intentions and steerability index.
 </details>
 
 You are a senior engineer who just got handed a task and a deadline.

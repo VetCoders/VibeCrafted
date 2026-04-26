@@ -10,7 +10,7 @@ They are not skills — they are the senses and memory of the agent layer.
     |           |           |            |
     v           v           v            v
  Loctree     AICX      PRView     ScreenScribe
-  (eyes)    (memory)   (review)     (ears)
+  (eyes)    (intentions)   (review)     (ears)
     |           |           |            |
     +--------- Foundation Layer ---------+
 ```
@@ -32,7 +32,7 @@ With it, they see the dependency graph before touching anything.
 **Install**: `make foundations` (auto-downloads v0.8.16 binary) or
 [Loctree/Loctree releases](https://github.com/Loctree/Loctree/releases)
 
-## AICX — Memory
+## AICX — intentions
 
 **What it does**: Deterministic decision retrieval. Stores and indexes
 prior agent sessions, decisions, and context chunks by project and time.
@@ -84,7 +84,7 @@ converts narrated demos into actionable input for agent workflows.
 
 `make doctor` checks foundation binaries and reports their status.
 Foundation packages are optional — skills degrade gracefully without them,
-but lose structural awareness (loctree), session memory (aicx),
+but lose structural awareness (loctree), session intentions (aicx),
 persistent review artifacts (prview), or visual input (screenscribe).
 
 The recommended install order:

@@ -58,7 +58,7 @@ vibecrafted init claude
 This runs `vibecrafted init claude` — the command-deck front door for `vc-init`.
 Your agent gets three things before touching anything:
 
-- **Memory** — what was done before (indexed session history)
+- **Intentions** — what was done before (indexed session history)
 - **Sight** — what the code looks like now (structural map via loctree)
 - **Ground truth** — whether quality gates actually pass
 

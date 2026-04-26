@@ -124,7 +124,7 @@ Select runtimes for symlink views:
 
 Runtime Foundations:
   [ok] aicx-mcp -> ~/.cargo/bin/aicx-mcp
-       AICX MCP server for session history and memory recovery
+       AICX MCP server for session history and intentions recovery
   [ok] loctree-mcp -> ~/.cargo/bin/loctree-mcp
        Structural code mapping MCP server
   [ok] prview -> ~/.cargo/bin/prview
