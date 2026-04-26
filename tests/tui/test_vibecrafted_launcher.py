@@ -412,6 +412,23 @@ def test_vc_help_wrapper_symlink_renders_main_help(tmp_path: Path) -> None:
     assert "Dashboard is optional" in result.stdout
 
 
+def test_vc_help_wrapper_forwards_topic_help(tmp_path: Path) -> None:
+    wrapper = tmp_path / "vc-help"
+    wrapper.symlink_to(LAUNCHER)
+
+    result = subprocess.run(
+        ["bash", str(wrapper), "init"],
+        check=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Start an interactive repository orientation session" in result.stdout
+    assert "vc-init [claude|codex|gemini]" in result.stdout
+    assert "Front door:" not in result.stdout
+
+
 def test_telemetry_wrapper_smokes_headless_marbles_runtime(tmp_path: Path) -> None:
     home = tmp_path / "home"
     wrapper = tmp_path / "telemetry"
@@ -794,11 +811,13 @@ def test_installed_launcher_gui_uses_python_control_plane_surface(
     env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
     env["CAPTURE_FILE"] = str(capture_file)
 
-    subprocess.run(
+    result = subprocess.run(
         ["bash", str(launcher), "gui", "--no-open", "--port", "4173"],
         check=True,
         cwd=tmp_path,
         env=env,
+        capture_output=True,
+        text=True,
     )
 
     payload = capture_file.read_text(encoding="utf-8")
@@ -807,6 +826,8 @@ def test_installed_launcher_gui_uses_python_control_plane_surface(
         f"{current_root / 'scripts' / 'installer_gui.py'} --source {current_root} --no-open --port 4173"
         in payload
     )
+    assert "Listening URL: http://127.0.0.1:4173/" in result.stdout
+    assert "Press Ctrl-C to stop." in result.stdout
 
 
 def test_installed_launcher_tui_uses_shared_state_and_operator_binary(
@@ -916,6 +937,71 @@ def test_tui_uses_vc_operator_from_path_when_local_build_missing(
     tui_args = tui_capture.read_text(encoding="utf-8")
     assert "--runtime headless" in tui_args
     assert f"--deck {current_root / 'scripts' / 'vibecrafted'}" in tui_args
+
+
+def test_gui_help_exposes_local_server_flags() -> None:
+    result = subprocess.run(
+        [str(LAUNCHER), "gui", "--help"],
+        check=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "--host <host>" in result.stdout
+    assert "--port <port>" in result.stdout
+    assert "--no-open" in result.stdout
+    assert "--bundle-dir <path>" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("topic", "expected"),
+    [
+        ("init", "vc-init [claude|codex|gemini]"),
+        ("vc-init", "vc-init [claude|codex|gemini]"),
+        ("vc-review", 'vibecrafted review codex --prompt "Review PR #14"'),
+        ("status", "vibecrafted stats"),
+    ],
+)
+def test_help_topics_route_to_specific_command_or_skill_help(
+    topic: str, expected: str
+) -> None:
+    result = subprocess.run(
+        [str(LAUNCHER), "help", topic],
+        check=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert expected in result.stdout
+    assert "Front door:" not in result.stdout
+
+
+def test_status_empty_state_is_explicit_when_artifact_dirs_exist(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    home_artifacts = home / ".vibecrafted" / "artifacts"
+    local_reports = repo / ".vibecrafted" / "reports"
+
+    home_artifacts.mkdir(parents=True)
+    local_reports.mkdir(parents=True)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+
+    result = subprocess.run(
+        ["bash", str(LAUNCHER), "status"],
+        check=True,
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "No activity yet — run `vibecrafted init <agent>` to start." in result.stdout
 
 
 def test_implement_help_is_the_canonical_autonomous_delivery_surface() -> None:

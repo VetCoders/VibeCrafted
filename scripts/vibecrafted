@@ -500,6 +500,13 @@ cmd_gui_help() {
   printf '%bUsage:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted gui [--source <path>] [--host <host>] [--port <port>] [--no-open]\n'
   printf '\n'
+  printf '%bFlags:%b\n' "$_bold" "$_reset"
+  printf '  --source <path>                 Framework source directory to stage from\n'
+  printf '  --host <host>                   Host to bind (default: 127.0.0.1)\n'
+  printf '  --port <port>                   Port to bind (default: 0, ephemeral)\n'
+  printf '  --no-open                       Do not open a browser tab\n'
+  printf '  --bundle-dir <path>             Optional pre-built site bundle\n'
+  printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted gui\n'
   printf '  vibecrafted gui --no-open --port 4173\n'
@@ -536,6 +543,82 @@ cmd_resume_help() {
   printf '  vibecrafted resume codex --session abc123 --prompt "Continue from the failing test"\n'
   printf '\n'
   _print_skill_specific_flags "resume"
+  printf '\n'
+}
+
+cmd_init_help() {
+  printf '\n'
+  printf '%b⚒%b  %binit%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
+  printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
+  printf '  Start an interactive repository orientation session with an agent.\n'
+  printf '\n'
+  printf '%bUsage:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted init [claude|codex|gemini]\n'
+  printf '  vc-init [claude|codex|gemini]\n'
+  printf '\n'
+  printf '%bExamples:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted init claude\n'
+  printf '  vc-init codex\n'
+  printf '\n'
+}
+
+cmd_status_help() {
+  printf '\n'
+  printf '%b⚒%b  %bstatus%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
+  printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
+  printf '  Show recent agent activity from today.\n'
+  printf '\n'
+  printf '%bUsage:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted status\n'
+  printf '  vibecrafted stats\n'
+  printf '\n'
+}
+
+cmd_doctor_help() {
+  printf '\n'
+  printf '%b⚒%b  %bdoctor%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
+  printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
+  printf '  Verify installation health using the framework doctor gate.\n'
+  printf '\n'
+  printf '%bUsage:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted doctor\n'
+  printf '  vibecrafted check\n'
+  printf '\n'
+}
+
+cmd_update_help() {
+  printf '\n'
+  printf '%b⚒%b  %bupdate%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
+  printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
+  printf '  Pull the latest framework release and reinstall the local command deck.\n'
+  printf '\n'
+  printf '%bUsage:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted update [--force] [--ref <channel>]\n'
+  printf '  vibecrafted upgrade [--force] [--ref <channel>]\n'
+  printf '\n'
+}
+
+cmd_uninstall_help() {
+  printf '\n'
+  printf '%b⚒%b  %buninstall%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
+  printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
+  printf '  Reverse the local Vibecrafted install.\n'
+  printf '\n'
+  printf '%bUsage:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted uninstall\n'
+  printf '  vibecrafted remove\n'
+  printf '\n'
+}
+
+cmd_version_help() {
+  printf '\n'
+  printf '%b⚒%b  %bversion%b\n' "$_copper" "$_reset" "$_bold" "$_reset"
+  printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
+  printf '  Print the installed Vibecrafted version.\n'
+  printf '\n'
+  printf '%bUsage:%b\n' "$_bold" "$_reset"
+  printf '  vibecrafted version\n'
+  printf '  vibecrafted --version\n'
   printf '\n'
 }
 
@@ -708,6 +791,48 @@ cmd_telemetry() {
   esac
 }
 
+_gui_no_open_requested() {
+  local arg
+  for arg in "$@"; do
+    [[ "$arg" == "--no-open" ]] && return 0
+  done
+  return 1
+}
+
+_gui_launch_notice() {
+  local host="127.0.0.1"
+  local port="0"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --host)
+        shift
+        [[ $# -gt 0 ]] && host="$1"
+        ;;
+      --host=*)
+        host="${1#--host=}"
+        ;;
+      --port)
+        shift
+        [[ $# -gt 0 ]] && port="$1"
+        ;;
+      --port=*)
+        port="${1#--port=}"
+        ;;
+    esac
+    shift || true
+  done
+
+  if [[ "$port" == "0" ]]; then
+    printf '  Starting Vibecrafted control plane on %s:ephemeral.\n' "$host"
+    printf '  The server will print its exact URL after binding. Press Ctrl-C to stop.\n'
+    return 0
+  fi
+
+  printf '  Listening URL: http://%s:%s/\n' "$host" "$port"
+  printf '  Press Ctrl-C to stop.\n'
+}
+
 cmd_gui() {
   local gui_script repo_source
   if _is_help_flag "${1:-}"; then
@@ -722,6 +847,9 @@ cmd_gui() {
   repo_source="$(_repo_source_root 2>/dev/null || true)"
   [[ -n "$repo_source" ]] || repo_source="$(cd "$(dirname "$gui_script")/.." && pwd)"
   _sync_control_plane_best_effort
+  if _gui_no_open_requested "$@"; then
+    _gui_launch_notice "$@"
+  fi
   python3 "$gui_script" --source "$repo_source" "$@"
 }
 
@@ -773,11 +901,42 @@ cmd_tui() {
   cargo run --manifest-path "$manifest_path" -- --state-root "$state_root" --deck "$deck_path" "$@"
 }
 
-cmd_help() {
+_help_topic_alias() {
   local topic="${1:-}"
+
   case "$topic" in
+    vc-*) topic="${topic#vc-}" ;;
+  esac
+
+  case "$topic" in
+    help) topic="" ;;
+    check) topic="doctor" ;;
+    mc|mission-control|sessions) topic="dashboard" ;;
+    stats) topic="status" ;;
+    upgrade) topic="update" ;;
+    remove) topic="uninstall" ;;
+    --version|-v) topic="version" ;;
+  esac
+
+  printf '%s\n' "$topic"
+}
+
+cmd_help() {
+  local raw_topic="${1:-}"
+  local topic
+  if [[ "$raw_topic" == "-h" || "$raw_topic" == "--help" ]]; then
+    raw_topic=""
+  fi
+  topic="$(_help_topic_alias "$raw_topic")"
+  case "$topic" in
+    ""|-h|--help)
+      ;;
     claude|codex|gemini)
       cmd_agent_help "$topic"
+      return
+      ;;
+    init)
+      cmd_init_help
       return
       ;;
     start)
@@ -800,6 +959,26 @@ cmd_help() {
       cmd_telemetry_help
       return
       ;;
+    status)
+      cmd_status_help
+      return
+      ;;
+    doctor)
+      cmd_doctor_help
+      return
+      ;;
+    update)
+      cmd_update_help
+      return
+      ;;
+    uninstall)
+      cmd_uninstall_help
+      return
+      ;;
+    version)
+      cmd_version_help
+      return
+      ;;
     resume)
       cmd_resume_help
       return
@@ -817,9 +996,14 @@ cmd_help() {
       return
       ;;
   esac
-  if [[ "${1:-}" == "--full" ]] || (( VIBECRAFTED_VERBOSE )); then
+  if [[ "$raw_topic" == "--full" ]] || (( VIBECRAFTED_VERBOSE )); then
     cmd_help_full
     return
+  fi
+  if [[ -n "$raw_topic" ]]; then
+    printf '%b[error]%b Unknown help topic: %s\n' "$_red" "$_reset" "$raw_topic" >&2
+    printf '  Try %bvibecrafted help%b for the command deck.\n' "$_cyan" "$_reset" >&2
+    return 1
   fi
   local ver
   ver="$(_version)"
@@ -1152,7 +1336,7 @@ cmd_dashboard() {
 }
 
 cmd_stats() {
-  local today_dir ts_prefix artifacts_dir local_artifacts_dir
+  local today_dir ts_prefix artifacts_dir local_artifacts_dir matches
   local search_dirs=()
   
   today_dir="$(date +%Y_%m%d)"
@@ -1166,11 +1350,17 @@ cmd_stats() {
   printf '\n%b⚒  𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. Stats — %s%b\n' "$_bold$_copper" "$(date +%Y-%m-%d)" "$_reset"
   printf '%b─────────────────────────────────────────%b\n' "$_steel" "$_reset"
   if [[ ${#search_dirs[@]} -eq 0 ]]; then
-    printf '  No artifacts found yet.\n\n'
+    printf "  No activity yet — run \`vibecrafted init <agent>\` to start.\n\n"
     return 0
   fi
   
-  find "${search_dirs[@]}" \( -path "*${today_dir}*" -o -name "${ts_prefix}_*.meta.json" \) -name "*.meta.json" -type f 2>/dev/null | sort -r | sed -n '1,8p' | sed 's#^#  #'
+  matches="$(find "${search_dirs[@]}" \( -path "*${today_dir}*" -o -name "${ts_prefix}_*.meta.json" \) -name "*.meta.json" -type f 2>/dev/null | sort -r | sed -n '1,8p' || true)"
+  if [[ -z "$matches" ]]; then
+    printf "  No activity yet — run \`vibecrafted init <agent>\` to start.\n\n"
+    return 0
+  fi
+
+  printf '%s\n' "$matches" | sed 's#^#  #'
   printf '\n'
 }
 
@@ -1514,7 +1704,7 @@ run_wrapper() {
   local wrapper="$1"
   shift
   if [[ "$wrapper" == "vc-help" ]]; then
-    cmd_help
+    cmd_help "$@"
     return
   fi
   if [[ "$wrapper" == "vc-start" ]]; then

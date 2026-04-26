@@ -76,6 +76,41 @@ _vetcoders_default_runtime() {
   printf '%s\n' "${VETCODERS_SPAWN_RUNTIME:-terminal}"
 }
 
+_vetcoders_prepend_path_dir() {
+  local dir="${1:-}"
+  [[ -n "$dir" && -d "$dir" ]] || return 0
+  case ":${PATH:-}:" in
+    *":$dir:"*) ;;
+    *) export PATH="$dir${PATH:+:$PATH}" ;;
+  esac
+}
+
+_vetcoders_load_bundled_bin_path() {
+  local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
+  _vetcoders_prepend_path_dir "$crafted_home/bin"
+  if [[ "$crafted_home" != "$HOME/.vibecrafted" ]]; then
+    _vetcoders_prepend_path_dir "$HOME/.vibecrafted/bin"
+  fi
+}
+
+_vetcoders_zellij_missing_message() {
+  local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
+  echo "zellij is required for the Vibecrafted operator runtime." >&2
+  echo "If this is a fresh install, run:" >&2
+  echo "  export PATH=\"$crafted_home/bin:\$PATH\"" >&2
+  echo "Then retry the command. Expected bundled binary: $crafted_home/bin/zellij" >&2
+}
+
+_vetcoders_require_zellij() {
+  _vetcoders_load_bundled_bin_path
+  command -v zellij >/dev/null 2>&1 || {
+    _vetcoders_zellij_missing_message
+    return 1
+  }
+}
+
+_vetcoders_load_bundled_bin_path
+
 _vetcoders_in_zellij() {
   # ZELLIJ=0 is a valid pane index inside zellij — do NOT treat as false.
   # Only absent ZELLIJ means we're outside.
@@ -255,10 +290,7 @@ _vetcoders_ensure_zellij_session() {
   local layout_file="$2"
   shift 2
 
-  command -v zellij >/dev/null 2>&1 || {
-    echo "zellij is required." >&2
-    return 1
-  }
+  _vetcoders_require_zellij || return 1
 
   local inside_zellij=0
   # Align with spawn_in_zellij_context: ZELLIJ_PANE_ID or ZELLIJ being set
@@ -404,9 +436,18 @@ _vetcoders_spawn_into_operator_session() {
   local command_text="$2"
   local session_name="${VIBECRAFTED_OPERATOR_SESSION:-$(_vetcoders_operator_session_name)}"
   local root_dir="${_vetcoders_contract_root:-$(_vetcoders_repo_root)}"
+  local layout_file state
   local cmd_script
 
-  command -v zellij >/dev/null 2>&1 || return 1
+  _vetcoders_require_zellij || return 1
+  if ! _vetcoders_in_zellij && [[ -z "${VIBECRAFTED_OPERATOR_SESSION:-}" ]]; then
+    layout_file="$(_vetcoders_operator_layout_file 2>/dev/null || true)"
+    state="$(_vetcoders_zellij_session_state "$session_name")"
+    if [[ "$state" != "live" ]]; then
+      _vetcoders_ensure_zellij_session "$session_name" "$layout_file" || return 1
+      export VIBECRAFTED_OPERATOR_SESSION="$session_name"
+    fi
+  fi
   # zellij rejects inline command args carrying shell-quoted multibyte
   # prompt content (printf '%q' + Polish UTF-8). Store the wrapper under the
   # vibecrafted artifact tree so it survives resurrect/attach and leaves a
@@ -1549,10 +1590,7 @@ _vetcoders_skill_init() {
     return 1
   }
 
-  command -v zellij >/dev/null 2>&1 || {
-    echo "vc-init requires zellij so the operator session can be attached or created." >&2
-    return 1
-  }
+  _vetcoders_require_zellij || return 1
 
   runtime="$(_vetcoders_init_runtime "${_vetcoders_contract_runtime:-terminal}")" || return 1
   init_prompt="$(_vetcoders_compose_init_prompt "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1

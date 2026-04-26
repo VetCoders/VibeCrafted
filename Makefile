@@ -8,8 +8,9 @@ INSTALLER_DIR := scripts/installer
 SHELL_INSTALLER := skills/vc-agents/scripts/install-shell.sh
 SOURCE   := $(CURDIR)
 BRANCH   ?= main
+VERSION_FILE := VERSION
 
-.PHONY: help vibecrafted gui-install wizard wizard-dev check test install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major
 
 help:
 	@printf "\n"
@@ -35,6 +36,8 @@ help:
 	@printf "  \033[32m◇\033[0m  make bundle-check  \033[2mFail if the committed marketplace bundle drifted from repo truth\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test          \033[2mRun installer + marketplace pytest gates\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
+	@printf "  \033[32m◇\033[0m  make version-show  \033[2mShow VERSION and release tag state\033[0m\n"
+	@printf "  \033[32m↟\033[0m  make version-bump VERSION=X \033[2mBump VERSION; X={patch|minor|major|x.y.z}\033[0m\n"
 	@printf "\n"
 	@printf "  \033[33m◆\033[0m  make migrate       \033[2mMigrate .ai-agents/ to $$VIBECRAFTED_ROOT/.vibecrafted/artifacts/\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make migrate-dry   \033[2mPreview migration (dry run)\033[0m\n"
@@ -129,6 +132,33 @@ bundle-check:
 		echo "Bundle drift detected. Run 'make bundle'."; \
 		exit 1; \
 	fi
+
+version version-show:
+	@version="$$(sed -n '1p' "$(VERSION_FILE)" 2>/dev/null | tr -d '[:space:]')"; \
+	if [ -z "$$version" ]; then echo "VERSION file missing or empty: $(VERSION_FILE)" >&2; exit 1; fi; \
+	printf "version: %s\n" "$$version"; \
+	printf "tag: v%s\n" "$$version"; \
+	if git rev-parse --verify "refs/tags/v$$version" >/dev/null 2>&1; then \
+		echo "tag-state: exists"; \
+	else \
+		echo "tag-state: missing"; \
+	fi
+
+version-bump:
+ifeq ($(origin VERSION),command line)
+	@$(PYTHON) scripts/version_bump.py "$(VERSION)" --file "$(VERSION_FILE)"
+else
+	@echo "VERSION is required. Usage: make version-bump VERSION={patch|minor|major|x.y.z}" >&2 && exit 1
+endif
+
+bump-patch:
+	@$(MAKE) version-bump VERSION=patch
+
+bump-minor:
+	@$(MAKE) version-bump VERSION=minor
+
+bump-major:
+	@$(MAKE) version-bump VERSION=major
 
 semgrep:
 	@semgrep scan --config auto --error --quiet --exclude-rule html.security.audit.missing-integrity.missing-integrity .
