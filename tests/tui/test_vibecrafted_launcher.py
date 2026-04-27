@@ -1225,6 +1225,21 @@ def test_marbles_help_lists_delete_control_subcommand() -> None:
     )
 
 
+def test_marbles_flags_without_agent_get_actionable_error() -> None:
+    result = subprocess.run(
+        [str(LAUNCHER), "marbles", "--count", "8", "--depth", "10"],
+        check=False,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Missing marbles agent before flags." in result.stderr
+    assert "Try: vibecrafted marbles codex --count 8 --depth 10" in result.stderr
+    assert "Unknown agent: --count" not in result.stderr
+
+
 def test_marbles_delete_control_subcommand_routes_to_helper(tmp_path: Path) -> None:
     home = tmp_path / "home"
     wrapper = tmp_path / "vibecrafted"

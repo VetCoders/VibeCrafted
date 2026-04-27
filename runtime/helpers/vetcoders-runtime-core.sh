@@ -251,6 +251,15 @@ _vetcoders_short_hash() {
   printf '%.4s\n' "$hash"
 }
 
+_vetcoders_string_prefix() {
+  local value="$1"
+  local length="${2:-0}"
+  if (( length <= 0 )); then
+    return 0
+  fi
+  printf '%s' "$value" | cut -c "1-${length}"
+}
+
 _vetcoders_compact_session_name() {
   local full_name="$1"
   local preserved_tail="${2:-}"
@@ -268,9 +277,9 @@ _vetcoders_compact_session_name() {
   if [[ -n "$preserved_tail" ]]; then
     prefix_len=$(( max_len - ${#preserved_tail} - ${#hash} - 2 ))
     if (( prefix_len > 0 )); then
-      prefix="${full_name:0:prefix_len}"
+      prefix="$(_vetcoders_string_prefix "$full_name" "$prefix_len")"
       prefix="${prefix%-}"
-      [[ -n "$prefix" ]] || prefix="${hash:0:1}"
+      [[ -n "$prefix" ]] || prefix="$(_vetcoders_string_prefix "$hash" 1)"
       compact="${prefix}-${hash}-${preserved_tail}"
       if (( ${#compact} <= max_len )); then
         printf '%s\n' "$compact"
@@ -281,9 +290,9 @@ _vetcoders_compact_session_name() {
 
   prefix_len=$(( max_len - ${#hash} - 1 ))
   (( prefix_len > 0 )) || prefix_len=1
-  prefix="${full_name:0:prefix_len}"
+  prefix="$(_vetcoders_string_prefix "$full_name" "$prefix_len")"
   prefix="${prefix%-}"
-  [[ -n "$prefix" ]] || prefix="${hash:0:1}"
+  [[ -n "$prefix" ]] || prefix="$(_vetcoders_string_prefix "$hash" 1)"
   compact="${prefix}-${hash}"
   printf '%.24s\n' "$compact"
 }

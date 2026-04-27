@@ -114,6 +114,62 @@ def test_vetcoders_keeps_launcher_entrypoints_available() -> None:
     assert "command not found" not in result.stderr
 
 
+def test_compact_session_name_is_zsh_compatible() -> None:
+    if shutil.which("zsh") is None:
+        return
+
+    result = subprocess.run(
+        [
+            "zsh",
+            "-fc",
+            (
+                f'source "{HELPER_SCRIPT}"; '
+                "_vetcoders_compact_session_name "
+                '"lbrx-services-owne-135739-94539" "owne-135739-94539"'
+            ),
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "VIBECRAFTED_ROOT": str(REPO_ROOT)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip().endswith("owne-135739-94539")
+    assert "unrecognized modifier" not in result.stderr
+
+
+def test_vc_marbles_wrapper_routes_control_subcommands(tmp_path: Path) -> None:
+    capture_file = tmp_path / "inspect-args.txt"
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        (
+            'marbles-inspect() { printf "%s\\n" "$@" > "$CAPTURE_FILE"; }; '
+            "vc-marbles inspect marb-205740-3318"
+        ),
+        {"VIBECRAFTED_ROOT": str(REPO_ROOT), "CAPTURE_FILE": str(capture_file)},
+    )
+
+    assert result.returncode == 0
+    assert capture_file.read_text(encoding="utf-8").splitlines() == ["marb-205740-3318"]
+
+
+def test_vc_skill_wrapper_help_after_agent_does_not_launch_worker() -> None:
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        (
+            "_vetcoders_skill_entry() { printf 'launched\\n'; return 99; }; "
+            "vc-ownership codex --help"
+        ),
+        {"VIBECRAFTED_ROOT": str(REPO_ROOT)},
+    )
+
+    assert result.returncode == 0
+    assert "Usage: vc-ownership <claude|codex|gemini>" in result.stderr
+    assert "launched" not in result.stdout
+
+
 def test_runtime_core_preserves_origin_org_repo_resolution(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     subprocess.run(

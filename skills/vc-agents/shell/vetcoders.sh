@@ -1698,6 +1698,10 @@ _vetcoders_marbles() {
       --name "$marbles_run_id" \
       --cwd "$root_dir" \
       -- "$cmd_script" >/dev/null || return 1
+
+    printf 'Marbles run launched in zellij tab: %s\n' "$marbles_tab_name"
+    printf '  run_id:  %s\n' "$marbles_run_id"
+    printf '  inspect: vc-marbles inspect %s\n' "$marbles_run_id"
       
     if [[ -n "$original_tab" ]]; then
       zellij action go-to-tab-name "$original_tab" >/dev/null 2>&1 || true
@@ -1708,6 +1712,9 @@ _vetcoders_marbles() {
     _vetcoders_prepare_operator_runtime "$runtime" || return 1
     if [[ -n "${VIBECRAFTED_OPERATOR_SESSION:-}" ]]; then
       _vetcoders_spawn_into_operator_session "marbles" "$marbles_cmd" || return 1
+      printf 'Marbles run launched in operator session: %s\n' "$VIBECRAFTED_OPERATOR_SESSION"
+      printf '  run_id:  %s\n' "$marbles_run_id"
+      printf '  inspect: vc-marbles inspect %s\n' "$marbles_run_id"
       _vetcoders_tail_marbles_l1_transcript "$root_dir" "$marbles_run_id"
     else
       env "${marbles_env[@]}" bash "$script" "${marbles_args[@]}"
@@ -1898,6 +1905,7 @@ _vetcoders_skill_wrapper_usage() {
       ;;
     marbles)
       printf 'Usage: vc-marbles <claude|codex|gemini> [--prompt <text>|--file <path>|--depth <n>] [--count <n>]\n' >&2
+      printf '       vc-marbles <pause|stop|resume|session|inspect|delete|gc> [args]\n' >&2
       ;;
     *)
       printf 'Usage: vc-%s <claude|codex|gemini> [--prompt <text>] [--file <path>]\n' "$skill" >&2
@@ -1910,11 +1918,26 @@ _vetcoders_has_agent() {
   [[ "$candidate" == "claude" || "$candidate" == "codex" || "$candidate" == "gemini" ]]
 }
 
+_vetcoders_is_help_flag() {
+  local candidate="${1:-}"
+  [[ "$candidate" == "help" || "$candidate" == "-h" || "$candidate" == "--help" ]]
+}
+
 _vetcoders_skill_wrapper() {
   local skill="$1"
   shift || true
 
   local tool="${1:-}"
+  if [[ "$skill" == "marbles" ]]; then
+    case "$tool" in
+      pause|stop|resume|session|inspect|delete|gc)
+        shift || true
+        "marbles-$tool" "$@"
+        return
+        ;;
+    esac
+  fi
+
   [[ -n "$tool" ]] || {
     _vetcoders_skill_wrapper_usage "$skill"
     return 1
@@ -1925,6 +1948,11 @@ _vetcoders_skill_wrapper() {
     return 1
   }
   shift || true
+
+  if _vetcoders_is_help_flag "${1:-}"; then
+    _vetcoders_skill_wrapper_usage "$skill"
+    return 0
+  fi
 
   case "$skill" in
     init) _vetcoders_skill_init "$tool" "$@" ;;

@@ -399,6 +399,58 @@ def test_vc_marbles_preserves_prompt_as_single_argument_inside_zellij(
     )
 
 
+def test_vc_marbles_inside_zellij_prints_launch_receipt(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    fake_bin = tmp_path / "bin"
+    isolated_root = tmp_path / "isolated-root"
+    tmpdir_root = tmp_path / "tmpdir"
+    capture_file = tmp_path / "marbles-args.txt"
+    zellij_capture_file = tmp_path / "zellij-args.txt"
+    spawn_script = (
+        crafted_home / "skills" / "vc-agents" / "scripts" / "marbles_spawn.sh"
+    )
+
+    home.mkdir()
+    fake_bin.mkdir()
+    isolated_root.mkdir()
+    tmpdir_root.mkdir()
+    spawn_script.parent.mkdir(parents=True)
+    _write_fake_marbles_spawn(spawn_script)
+    _write_replaying_zellij(fake_bin / "zellij")
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["VIBECRAFTED_HOME"] = str(crafted_home)
+    env["VIBECRAFTED_ROOT"] = str(isolated_root)
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["ZELLIJ_CAPTURE_FILE"] = str(zellij_capture_file)
+    env["EXPECTED_MARBLES_SPAWN"] = str(spawn_script)
+    env["TMPDIR"] = f"{tmpdir_root}/"
+    env["ZELLIJ"] = "operator"
+    env["ZELLIJ_PANE_ID"] = "terminal_7"
+    env["ZELLIJ_SESSION_NAME"] = "ambient-session"
+    env.pop("VIBECRAFTED_OPERATOR_SESSION", None)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'source "{HELPER_SCRIPT}"; codex-marbles --count 1 --depth 3',
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Marbles run launched in zellij tab: marbles-marb-" in result.stdout
+    assert "run_id:  marb-" in result.stdout
+    assert "inspect: vc-marbles inspect marb-" in result.stdout
+
+
 def test_vc_marbles_uses_no_watch_for_headless_runtime(tmp_path: Path) -> None:
     home = tmp_path / "home"
     crafted_home = home / ".vibecrafted"

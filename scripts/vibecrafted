@@ -1667,6 +1667,14 @@ run_skill() {
     return
   fi
 
+  if [[ "$skill" == "marbles" && "$agent" == --* ]]; then
+    printf '%b[error]%b Missing marbles agent before flags.\n' "$_red" "$_reset" >&2
+    printf '  Try: vibecrafted marbles codex %s %s\n' "$agent" "$*" >&2
+    printf '\n' >&2
+    cmd_skill_help "$skill" >&2
+    return 1
+  fi
+
   if _is_help_flag "${1:-}"; then
     cmd_skill_help "$skill" "$agent"
     return 0
