@@ -666,6 +666,7 @@ def test_marbles_runtime_steers_next_loop_from_ancestor_frontmatter(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_EDIT_ANCESTOR"] = "1"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
@@ -730,6 +731,7 @@ def test_marbles_runtime_keeps_ancestor_focus_when_next_plan_write_lags(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_EDIT_ANCESTOR"] = "1"
     env["MARBLES_TEST_DELAY_NEXT_PLAN"] = "2"
     env.pop("ZELLIJ", None)
@@ -781,6 +783,7 @@ def test_marbles_runtime_applies_rotation_schedule_without_ancestor_override(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
@@ -872,6 +875,7 @@ def test_marbles_runtime_consumes_ancestor_override_sequence_across_children(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_ANCESTOR_SEQUENCE"] = (
         "gemini|accessibility|;claude|auth hardening|"
     )
@@ -1003,6 +1007,7 @@ def test_marbles_no_watch_still_creates_god_and_ancestor_contract(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
@@ -1058,6 +1063,7 @@ def test_marbles_materializes_failed_loop_when_child_spawn_dies_before_meta(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_FAIL_BEFORE_META_LOOP"] = "2"
     env["VIBECRAFTED_MARBLES_META_TIMEOUT_S"] = "3"
     env["VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S"] = "2"
@@ -1143,6 +1149,7 @@ def test_marbles_spawn_fails_fast_when_watcher_script_is_invalid(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
@@ -1186,9 +1193,10 @@ def test_marbles_watcher_waits_for_meta_completion_before_advancing(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_DELAY_META_AFTER_REPORT_LOOP"] = "1"
     env["MARBLES_TEST_DELAY_META_AFTER_REPORT_S"] = "4"
-    env["VIBECRAFTED_MARBLES_META_TIMEOUT_S"] = "3"
+    env["VIBECRAFTED_MARBLES_META_TIMEOUT_S"] = "8"
     env["VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S"] = "10"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
@@ -1246,6 +1254,7 @@ def test_marbles_no_watch_keeps_report_hint_enabled(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
@@ -1289,6 +1298,7 @@ def test_marbles_watcher_does_not_consume_failed_fallback_report(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_FAIL_WITH_REPORT_LOOP"] = "1"
     env["VIBECRAFTED_MARBLES_META_TIMEOUT_S"] = "2"
     env["VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S"] = "2"
