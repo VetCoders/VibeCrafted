@@ -206,6 +206,24 @@ impl LaunchReadinessProbe {
             .output()
             .context("failed to run zellij readiness probe")?;
         if !output.status.success() {
+            // A non-zero exit with diagnostic stderr is a real probe error
+            // (bad flags, broken config, permission denied, missing socket
+            // root, etc.) and must surface to the operator overlay rather
+            // than collapsing into "session not visible". A non-zero exit
+            // with empty stderr is treated as a benign "no sessions yet"
+            // signal so we keep polling. zellij itself prints the
+            // "No active zellij sessions found." message on stderr, so the
+            // empty-stderr branch is only reached for stripped/quiet
+            // implementations or wrappers that intentionally silence
+            // diagnostics.
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.trim().is_empty() {
+                anyhow::bail!(
+                    "zellij readiness probe exited with {}: {}",
+                    output.status,
+                    stderr.trim()
+                );
+            }
             return Ok(false);
         }
         let stdout = String::from_utf8_lossy(&output.stdout);

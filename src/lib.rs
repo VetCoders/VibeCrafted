@@ -331,18 +331,18 @@ fn deep_control_command(app: &App, action: &DeepAction) -> LaunchCommand {
 }
 
 #[derive(Debug)]
-struct LaunchRunError {
-    message: String,
-    stderr: String,
+pub struct LaunchRunError {
+    pub message: String,
+    pub stderr: String,
     /// First error observed by the zellij readiness probe before the launch
     /// gave up. Distinguishes "session not visible" from "probe could not
     /// run" (bad flags, socket/config errors, missing binary). When None,
     /// the probe either succeeded or was never attempted.
-    probe_error: Option<String>,
+    pub probe_error: Option<String>,
 }
 
 impl LaunchRunError {
-    fn detail_lines(&self, summary: String) -> Vec<String> {
+    pub fn detail_lines(&self, summary: String) -> Vec<String> {
         let mut lines = vec![
             format!("command: {summary}"),
             format!("error: {}", self.message),
@@ -394,9 +394,9 @@ fn suspend_and_run(command: &LaunchCommand) -> Result<(), LaunchRunError> {
 /// readiness probe before giving up. Kept short so the operator does not
 /// freeze on a launch that never came up; long enough that real interactive
 /// launches on the host can register their named socket.
-const READINESS_DEADLINE: Duration = Duration::from_secs(2);
+pub const READINESS_DEADLINE: Duration = Duration::from_secs(2);
 
-fn wait_for_interactive_launch(
+pub fn wait_for_interactive_launch(
     command: &LaunchCommand,
     mut child: std::process::Child,
 ) -> Result<Output, LaunchRunError> {
@@ -466,17 +466,20 @@ fn wait_for_interactive_launch(
         // at the same session name; subsequent launches with the same
         // `--session` value would fight an orphan otherwise.
         let _ = child.kill();
-        let stderr_after_kill = child
-            .wait_with_output()
-            .map(|output| String::from_utf8_lossy(&output.stderr).into_owned())
-            .unwrap_or_default();
+        // Reap the killed child without `wait_with_output()`: any
+        // grandchild process (e.g. a long `sleep` inside a launched shell)
+        // that inherited our piped stderr would keep the pipe alive past
+        // the SIGKILL, defeating the whole readiness timeout. `wait()`
+        // blocks only on the direct child's exit, which the kill
+        // guarantees promptly.
+        let _ = child.wait();
         return Err(LaunchRunError {
             message: format!(
                 "zellij session '{}' did not appear within the {}ms readiness window",
                 probe.session_name,
                 READINESS_DEADLINE.as_millis()
             ),
-            stderr: stderr_after_kill,
+            stderr: String::new(),
             probe_error,
         });
     }
