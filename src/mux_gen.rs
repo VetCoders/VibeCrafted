@@ -24,7 +24,9 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 use crate::config::{Config, ServerConfig, expand_path};
-use crate::scan::{ConflictReport, HostFormat, HostKind, HostService, MergeOutcome, ScanResult};
+use crate::scan::{
+    ConflictReport, HostFile, HostFormat, HostKind, HostService, MergeOutcome, ScanResult,
+};
 
 /// Default mux directory, expanded from `~/.config/mux`.
 pub fn default_mux_dir() -> PathBuf {
@@ -366,7 +368,7 @@ pub struct PerClientOutputs {
 }
 
 /// Build one mux config file per originating client kind. Each file lists
-/// only the services from that scan (no cross-client dedup). The daemon
+/// the services from every selected source for that client kind. The daemon
 /// `config.toml` is still merged across every selected scan so the running
 /// mux can reach every upstream server.
 pub fn build_per_client_outputs(
@@ -383,9 +385,13 @@ pub fn build_per_client_outputs(
     let config_toml =
         toml::to_string_pretty(&daemon_cfg).context("serialize daemon config.toml")?;
 
-    // One file per originating kind.
-    let mut clients = Vec::with_capacity(scans.len());
-    for scan in scans {
+    // One file per originating client kind. Some clients have multiple
+    // canonical source paths (for example Junie / Cursor / VSCode), so merge
+    // those before choosing the output filename. Otherwise the later source
+    // would overwrite the earlier `junie.json` / `vscode.json` on disk.
+    let grouped_scans = group_scans_by_kind(scans);
+    let mut clients = Vec::with_capacity(grouped_scans.len());
+    for scan in &grouped_scans {
         if scan.services.is_empty() {
             continue;
         }
@@ -409,6 +415,31 @@ pub fn build_per_client_outputs(
         total_services: merged.services.len(),
         conflicts: merged.conflicts,
     })
+}
+
+fn group_scans_by_kind(scans: &[ScanResult]) -> Vec<ScanResult> {
+    let mut groups: Vec<(HostFile, Vec<ScanResult>)> = Vec::new();
+    for scan in scans {
+        if let Some((_, grouped)) = groups
+            .iter_mut()
+            .find(|(host, _)| host.kind == scan.host.kind)
+        {
+            grouped.push(scan.clone());
+        } else {
+            groups.push((scan.host.clone(), vec![scan.clone()]));
+        }
+    }
+
+    groups
+        .into_iter()
+        .map(|(host, scans)| {
+            let merged = crate::scan::merge_services(&scans);
+            ScanResult {
+                host,
+                services: merged.services,
+            }
+        })
+        .collect()
 }
 
 /// Write the daemon `config.toml` and every per-client file from
@@ -547,7 +578,7 @@ fn client_native_payload(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scan::MergeOutcome;
+    use crate::scan::{Confidence, ConfigSchema, HostFile, MergeOutcome};
     use tempfile::tempdir;
 
     fn one_service() -> MergeOutcome {
@@ -561,6 +592,18 @@ mod tests {
                 enabled: None,
             }],
             conflicts: Vec::new(),
+        }
+    }
+
+    fn host(kind: HostKind, path: &str) -> HostFile {
+        HostFile {
+            kind,
+            path: PathBuf::from(path),
+            format: HostFormat::Json,
+            schema: ConfigSchema::McpServersJson,
+            confidence: Confidence::High,
+            writable: true,
+            eligible_for_danger: true,
         }
     }
 
@@ -696,5 +739,45 @@ mod tests {
                 cmd
             );
         }
+    }
+
+    #[test]
+    fn per_client_outputs_merge_multiple_sources_for_same_kind() {
+        let dir = tempdir().expect("tempdir");
+        let mux_dir = dir.path().join("mux");
+        let scans = vec![
+            ScanResult {
+                host: host(HostKind::Junie, "/tmp/junie-global.json"),
+                services: vec![HostService {
+                    name: "memory".into(),
+                    command: "npx".into(),
+                    args: vec!["@modelcontextprotocol/server-memory".into()],
+                    socket: None,
+                    env: None,
+                    enabled: None,
+                }],
+            },
+            ScanResult {
+                host: host(HostKind::Junie, "/tmp/junie-project.json"),
+                services: vec![HostService {
+                    name: "brave".into(),
+                    command: "npx".into(),
+                    args: vec!["@modelcontextprotocol/server-brave-search".into()],
+                    socket: None,
+                    env: None,
+                    enabled: None,
+                }],
+            },
+        ];
+
+        let outputs =
+            build_per_client_outputs(&scans, &mux_dir, "rust-mux-proxy", &[]).expect("build");
+
+        assert_eq!(outputs.clients.len(), 1, "same kind must produce one file");
+        let client = &outputs.clients[0];
+        assert_eq!(client.path, mux_dir.join("junie.json"));
+        assert_eq!(client.services.len(), 2);
+        assert!(client.contents.contains("\"memory\""));
+        assert!(client.contents.contains("\"brave\""));
     }
 }
