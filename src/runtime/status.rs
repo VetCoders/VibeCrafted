@@ -64,7 +64,7 @@ pub fn spawn_status_writer(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Default status socket path.
-pub const DEFAULT_STATUS_SOCKET: &str = "/tmp/rmcp-mux.status.sock";
+pub const DEFAULT_STATUS_SOCKET: &str = "/tmp/rust-mux.status.sock";
 
 /// Response from the status endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -275,7 +275,7 @@ pub async fn query_status(socket_path: impl AsRef<Path>) -> Result<DaemonStatus>
 
 /// Print status in a formatted table.
 pub fn print_status_table(status: &DaemonStatus) {
-    println!("rmcp-mux v{} | uptime: {}", status.version, status.uptime);
+    println!("rust-mux v{} | uptime: {}", status.version, status.uptime);
     println!("{:─<72}", "");
     println!(
         "{:<20} {:^8} {:>8} {:>8} {:>10} {:>10}",
@@ -339,6 +339,11 @@ fn short_status(status: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_status_socket_uses_rust_mux_identity() {
+        assert_eq!(DEFAULT_STATUS_SOCKET, "/tmp/rust-mux.status.sock");
+    }
 
     #[test]
     fn short_status_mapping() {

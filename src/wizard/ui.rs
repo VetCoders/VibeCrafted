@@ -442,16 +442,9 @@ fn draw_step4_summary(f: &mut Frame, app: &AppState, area: Rect) {
                 "  Outputs  : {}/config.toml (daemon truth)",
                 mux_dir.display()
             )));
-            // Predict per-client filenames from selected sources.
-            let mut kinds: Vec<HostKind> = app
-                .sources
-                .iter()
-                .filter(|s| s.selected && matches!(s.status, SourceStatus::Ok { .. }))
-                .map(|s| s.host_file.kind)
-                .collect();
-            kinds.sort_by_key(|k| k.as_label());
-            kinds.dedup();
-            for kind in kinds {
+            // Predict per-client filenames from the selected STEP 2 services,
+            // matching what persist::selected_scans will actually write.
+            for kind in selected_per_client_output_kinds(app) {
                 let ext = match kind {
                     HostKind::Codex => "toml",
                     _ => "json",
@@ -678,6 +671,22 @@ fn kind_color_value(kind: HostKind) -> Color {
     }
 }
 
+fn selected_per_client_output_kinds(app: &AppState) -> Vec<HostKind> {
+    let mut kinds: Vec<HostKind> = app
+        .services
+        .iter()
+        .filter(|svc| svc.selected)
+        .filter_map(|svc| match &svc.source {
+            ServiceSource::Client { kind, .. } => Some(*kind),
+            ServiceSource::Custom { .. } => Some(HostKind::Custom),
+            ServiceSource::DetectedRunning => None,
+        })
+        .collect();
+    kinds.sort_by_key(|k| k.as_label());
+    kinds.dedup();
+    kinds
+}
+
 // Health badge — currently not surfaced on the per-service review (we lean on
 // the source label and pid), but kept around for the Living-Tree status panel.
 #[allow(dead_code)]
@@ -686,5 +695,117 @@ fn health_marker(status: HealthStatus) -> Span<'static> {
         HealthStatus::Healthy => Span::styled(" ●", Style::default().fg(Color::Green)),
         HealthStatus::Unhealthy => Span::styled(" ●", Style::default().fg(Color::Red)),
         HealthStatus::Unknown => Span::styled(" ○", Style::default().fg(Color::DarkGray)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ServerConfig;
+    use crate::scan::{Confidence, ConfigSchema, HostFile, HostFormat};
+    use crate::wizard::types::{
+        CustomPathInput, ServiceEntry, SourceEntry, Strategy, SummaryAction, TrayChoice,
+    };
+    use std::path::PathBuf;
+
+    fn host(kind: HostKind, path: &str) -> HostFile {
+        HostFile {
+            kind,
+            path: PathBuf::from(path),
+            format: HostFormat::Json,
+            schema: ConfigSchema::McpServersJson,
+            confidence: Confidence::High,
+            writable: true,
+            eligible_for_danger: true,
+        }
+    }
+
+    fn service(name: &str, source: ServiceSource, selected: bool) -> ServiceEntry {
+        ServiceEntry {
+            name: name.into(),
+            config: ServerConfig {
+                socket: None,
+                cmd: Some("npx".into()),
+                args: Some(vec!["@modelcontextprotocol/server-memory".into()]),
+                env: None,
+                max_active_clients: Some(5),
+                tray: Some(false),
+                service_name: Some(name.into()),
+                log_level: Some("info".into()),
+                lazy_start: Some(false),
+                max_request_bytes: Some(1_048_576),
+                request_timeout_ms: Some(30_000),
+                restart_backoff_ms: Some(1_000),
+                restart_backoff_max_ms: Some(30_000),
+                max_restarts: Some(5),
+                status_file: None,
+                heartbeat_interval_ms: Some(30_000),
+                heartbeat_timeout_ms: Some(30_000),
+                heartbeat_max_failures: Some(3),
+                heartbeat_enabled: Some(true),
+            },
+            health: HealthStatus::Unknown,
+            source,
+            pid: None,
+            selected,
+        }
+    }
+
+    fn app_for_summary() -> AppState {
+        AppState {
+            wizard_step: WizardStep::SummaryConfirm,
+            config_path: PathBuf::from("/tmp/mux.toml"),
+            sources: vec![
+                SourceEntry {
+                    host_file: host(HostKind::Claude, "/tmp/claude.json"),
+                    status: SourceStatus::Ok { servers_found: 1 },
+                    selected: true,
+                },
+                SourceEntry {
+                    host_file: host(HostKind::Codex, "/tmp/codex.toml"),
+                    status: SourceStatus::Ok { servers_found: 1 },
+                    selected: true,
+                },
+            ],
+            selected_source: 0,
+            custom_path: CustomPathInput::default(),
+            services: vec![
+                service(
+                    "memory",
+                    ServiceSource::Client {
+                        kind: HostKind::Claude,
+                        path: PathBuf::from("/tmp/claude.json"),
+                    },
+                    true,
+                ),
+                service(
+                    "brave",
+                    ServiceSource::Client {
+                        kind: HostKind::Codex,
+                        path: PathBuf::from("/tmp/codex.toml"),
+                    },
+                    false,
+                ),
+                service("running-only", ServiceSource::DetectedRunning, true),
+            ],
+            selected_service: 0,
+            strategy: Strategy::PerClient,
+            summary_action: SummaryAction::Confirm,
+            tray_choice: TrayChoice::No,
+            message: String::new(),
+            dry_run: true,
+            pending_action: None,
+            strategy_result: None,
+        }
+    }
+
+    #[test]
+    fn per_client_summary_kinds_follow_selected_services() {
+        let app = app_for_summary();
+
+        assert_eq!(
+            selected_per_client_output_kinds(&app),
+            vec![HostKind::Claude]
+        );
     }
 }

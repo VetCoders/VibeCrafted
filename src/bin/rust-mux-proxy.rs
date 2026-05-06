@@ -9,7 +9,7 @@ use tokio::net::UnixStream;
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Proxy STDIO to a rust-mux socket")]
 struct ProxyCli {
-    /// Path to the Unix socket exposed by rust-mux (e.g. ~/mcp-sockets/memory.sock).
+    /// Path to the Unix socket exposed by rust-mux (e.g. $HOME/.config/mux/sockets/memory.sock).
     #[arg(long)]
     socket: PathBuf,
 }
