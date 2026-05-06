@@ -20,13 +20,10 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
 use std::process::Command;
 
-use anyhow::Result;
-
 use crate::config::{ServerConfig, expand_path};
-use crate::scan::{HostKind, HostService, ScanResult, merge_services, scan_host_file};
+use crate::scan::{HostKind, HostService, ScanResult, merge_services};
 
 use super::types::{HealthStatus, ServiceEntry, ServiceSource};
 
@@ -338,59 +335,6 @@ fn extract_cmd_and_args(args: &str) -> (String, Vec<String>) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Custom-path import (used by --import-config and the wizard custom-path field)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Parse a single user-provided config file and return the contained services
-/// tagged with `ServiceSource::Custom`. Mirrors the well-known-client path
-/// but does not affect [`load_all_services`] — callers append the result.
-// Why: caller (the wizard custom-path input field on STEP 1) is added in
-// the next commit (5-step flow rebuild). Tests in this module already
-// exercise this fn so the helper itself is verified in isolation.
-#[allow(dead_code)]
-pub fn load_services_from_custom_path(path: &Path) -> Result<Vec<ServiceEntry>> {
-    let host = crate::scan::host_file_from_custom_path(path);
-    if !host.path.exists() {
-        return Ok(Vec::new());
-    }
-    let scan = scan_host_file(&host)?;
-    let mut out = Vec::with_capacity(scan.services.len());
-    for svc in scan.services {
-        out.push(ServiceEntry {
-            name: svc.name.clone(),
-            config: ServerConfig {
-                socket: svc.socket.clone(),
-                cmd: Some(svc.command.clone()),
-                args: Some(svc.args.clone()),
-                env: svc.env.clone(),
-                max_active_clients: Some(5),
-                tray: Some(false),
-                service_name: Some(svc.name.clone()),
-                log_level: Some("info".into()),
-                lazy_start: Some(false),
-                max_request_bytes: Some(1_048_576),
-                request_timeout_ms: Some(30_000),
-                restart_backoff_ms: Some(1_000),
-                restart_backoff_max_ms: Some(30_000),
-                max_restarts: Some(5),
-                status_file: None,
-                heartbeat_interval_ms: Some(30_000),
-                heartbeat_timeout_ms: Some(30_000),
-                heartbeat_max_failures: Some(3),
-                heartbeat_enabled: Some(true),
-            },
-            health: HealthStatus::Unknown,
-            source: ServiceSource::Custom {
-                path: host.path.clone(),
-            },
-            pid: None,
-            selected: true,
-        });
-    }
-    Ok(out)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Health check
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -409,35 +353,6 @@ pub fn check_health(config: &ServerConfig) -> HealthStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn custom_path_imports_services_with_custom_origin() {
-        let dir = tempdir().expect("tempdir");
-        let path = dir.path().join("workspace-mcp.json");
-        fs::write(
-            &path,
-            r#"{"mcpServers": {"memory": {"command": "npx", "args": ["@modelcontextprotocol/server-memory"]}}}"#,
-        )
-        .expect("write");
-        let entries = load_services_from_custom_path(&path).expect("custom load");
-        assert_eq!(entries.len(), 1);
-        match &entries[0].source {
-            ServiceSource::Custom { path: p } => assert_eq!(p, &path),
-            other => panic!("expected Custom origin, got {other:?}"),
-        }
-        assert_eq!(entries[0].name, "memory");
-    }
-
-    #[test]
-    fn custom_path_for_missing_file_yields_empty() {
-        let entries = load_services_from_custom_path(Path::new(
-            "/tmp/this-file-does-not-exist-rust-mux-services-test.json",
-        ))
-        .expect("missing-ok");
-        assert!(entries.is_empty());
-    }
 
     #[test]
     fn services_from_merge_attribute_first_source_kind() {

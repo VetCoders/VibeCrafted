@@ -89,13 +89,17 @@ pub enum PendingAction {
 }
 
 /// Source of a `ServiceEntry`. Drives UI labels and dedup decisions.
+///
+/// Custom-path imports (`--import-config`, wizard custom-path field) flow
+/// through `scan::host_file_from_custom_path`, which tags the host file with
+/// `HostKind::Custom`; the resulting `ServiceEntry::source` is therefore
+/// `ServiceSource::Client { kind: HostKind::Custom, .. }`. There is no
+/// separate `Custom` variant — that would be a parallel surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceSource {
-    /// Discovered inside a known MCP client config file.
+    /// Discovered inside a known MCP client config file (well-known clients
+    /// or `HostKind::Custom` for user-provided paths).
     Client { kind: HostKind, path: PathBuf },
-    /// User-provided custom config file (--import-config or wizard custom
-    /// path input).
-    Custom { path: PathBuf },
     /// Detected as a running process but not present in any scanned config.
     DetectedRunning,
 }
@@ -104,7 +108,6 @@ impl ServiceSource {
     pub fn short_label(&self) -> String {
         match self {
             ServiceSource::Client { kind, .. } => kind.as_label().to_string(),
-            ServiceSource::Custom { .. } => "custom".into(),
             ServiceSource::DetectedRunning => "running".into(),
         }
     }

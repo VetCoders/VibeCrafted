@@ -9,8 +9,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 use crate::scan::HostKind;
 
 use super::types::{
-    AppState, HealthStatus, ServiceSource, SourceStatus, Strategy, SummaryAction, TrayChoice,
-    WizardStep,
+    AppState, ServiceSource, SourceStatus, Strategy, SummaryAction, TrayChoice, WizardStep,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,7 +230,6 @@ fn draw_step2_review(f: &mut Frame, app: &AppState, area: Rect) {
         };
         let kind_color = match &svc.source {
             ServiceSource::Client { kind, .. } => kind_color_value(*kind),
-            ServiceSource::Custom { .. } => Color::DarkGray,
             ServiceSource::DetectedRunning => Color::Magenta,
         };
         let pid_span = match svc.pid {
@@ -678,7 +676,6 @@ fn selected_per_client_output_kinds(app: &AppState) -> Vec<HostKind> {
         .filter(|svc| svc.selected)
         .filter_map(|svc| match &svc.source {
             ServiceSource::Client { kind, .. } => Some(*kind),
-            ServiceSource::Custom { .. } => Some(HostKind::Custom),
             ServiceSource::DetectedRunning => None,
         })
         .collect();
@@ -687,24 +684,14 @@ fn selected_per_client_output_kinds(app: &AppState) -> Vec<HostKind> {
     kinds
 }
 
-// Health badge — currently not surfaced on the per-service review (we lean on
-// the source label and pid), but kept around for the Living-Tree status panel.
-#[allow(dead_code)]
-fn health_marker(status: HealthStatus) -> Span<'static> {
-    match status {
-        HealthStatus::Healthy => Span::styled(" ●", Style::default().fg(Color::Green)),
-        HealthStatus::Unhealthy => Span::styled(" ●", Style::default().fg(Color::Red)),
-        HealthStatus::Unknown => Span::styled(" ○", Style::default().fg(Color::DarkGray)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::ServerConfig;
     use crate::scan::{Confidence, ConfigSchema, HostFile, HostFormat};
     use crate::wizard::types::{
-        CustomPathInput, ServiceEntry, SourceEntry, Strategy, SummaryAction, TrayChoice,
+        CustomPathInput, HealthStatus, ServiceEntry, SourceEntry, Strategy, SummaryAction,
+        TrayChoice,
     };
     use std::path::PathBuf;
 

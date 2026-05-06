@@ -416,7 +416,16 @@ pub fn start_tray_daemon(app: &AppState) -> Result<String> {
         app.config_path.clone()
     };
 
-    let mut cmd = Command::new("rust-mux");
+    // Prefer the binary sitting next to the running wizard (covers `cargo run`
+    // and bespoke install paths); fall back to PATH lookup of `rust-mux`.
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("rust-mux")))
+        .filter(|p| p.exists())
+        .map(|p| p.into_os_string())
+        .unwrap_or_else(|| std::ffi::OsString::from("rust-mux"));
+
+    let mut cmd = Command::new(&bin);
     cmd.arg("--tray")
         .arg("--config")
         .arg(&config_arg)
@@ -484,7 +493,8 @@ mod tests {
                     heartbeat_enabled: Some(true),
                 },
                 health: super::super::types::HealthStatus::Unknown,
-                source: ServiceSource::Custom {
+                source: ServiceSource::Client {
+                    kind: HostKind::Custom,
                     path: tmp.join("custom.json"),
                 },
                 pid: None,
