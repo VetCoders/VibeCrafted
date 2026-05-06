@@ -73,12 +73,45 @@ Known structural debt — **triage, don't chop:**
 
 ## Wizard / config doctrine
 
-Two parallel paths in the wizard, do **not** merge them:
+The wizard runs a 5-step flow (see `docs/WIZARD.md` for screens):
 
-- **Safe path → `src/mux_gen.rs`.** Emits to `~/.config/mux/{mcp.json, mcp.toml, config.toml}` with dedup + conflict detection. Never touches host-side AI client configs. This is the default and the recommended onboarding flow.
-- **`[DANGER]` path → `src/danger.rs`.** Backup-first, preview-first JSON/TOML rewrite of `.claude/`, `.codex/`, `.gemini/`, `.junie/` host configs with rollback. Always create `.bak`, always offer `--dry-run`, always show the diff before write.
+```
+DiscoverySources → ServerReview → StrategyChoice → SummaryConfirm → ResultAndTray
+```
 
-Never silently rewrite a host config from the safe path. Never skip backup from the danger path.
+**Source of truth is client config files, not running processes.** STEP 1
+scans `default_sources()` (`~/.claude.json`, `~/.codex/config.toml`,
+`~/.gemini/settings.json`, `~/.junie/`, `~/.ai/`, `~/.agents/`, plus
+legacy editor hosts) and lets the operator add custom paths. ps-scan is
+demoted to enrichment-only — it stamps PIDs on matching entries and
+surfaces ps-only orphans, never drives discovery.
+
+Three strategies on STEP 3, do **not** merge them:
+
+- **Unified → `mux_gen::build_mux_outputs`.** Writes
+  `~/.config/mux/{config.toml, mcp.json, mcp.toml}` with every selected
+  server, deduplicated. Recommended onboarding flow. Never touches
+  host-side AI client configs. STEP 5 prints per-client startup
+  snippets (`claude --strict-mcp-config …`, `junie --mcp-location …`,
+  `gemini mcp add …`, plus a Codex merge note).
+- **Per-client → `mux_gen::build_per_client_outputs`.** Writes one mux
+  config per originating client kind in that client's native format
+  (`claude.json`, `codex.toml`, `junie.json`, …) under `~/.config/mux/`.
+  Daemon `config.toml` still merged across every selected source so
+  the running mux can reach every upstream server. Use when different
+  agents should see different stacks.
+- **`[DANGER]` Auto-rewire → `danger::plan_danger_rewrite` + `execute_plan`.**
+  Backup-first, preview-first JSON/TOML rewrite of `.claude/`,
+  `.codex/`, `.junie/` host configs with rollback. Always creates
+  timestamped `<file>.<unix_seconds>.bak`, always shows the preview,
+  always requires explicit `CONFIRM` on cooked stdin. Sources flagged
+  `eligible_for_danger = false` (currently Gemini's `settings.json` —
+  no verified strict-config flag) are listed but skipped.
+
+Never silently rewrite a host config from a non-danger strategy. Never
+skip the backup or the `CONFIRM` prompt on the danger path. Never
+reintroduce the legacy `[SAFE GEN] / [MUX ONLY] / [CLIPBOARD]` overlay
+— STEP 4's `Confirm / Back / Cancel` is the canonical action chooser.
 
 Reference: `docs/WIZARD.md`, `docs/vc-agents-client-discovery-plan.md`.
 
@@ -150,8 +183,10 @@ Skipping init in this repo is how parallel agents step on each other. Don't.
 
 - Reintroducing `src/runtime.rs` monolith because a plan referenced it. The plan is stale.
 - Reintroducing `src/runtime_legacy.rs` / `src/wizard_legacy.rs`. They are deleted on purpose.
+- Reintroducing the old 4-step wizard (`ServerSelection → ClientSelection → Confirmation → HealthCheck`) or the old `ConfirmChoice` overlay (`[SAFE GEN]/[MUX ONLY]/[CLIPBOARD]/[DANGER]`). The 5-step flow with `Strategy { Unified, PerClient, AutoRewire }` is canonical.
+- Reintroducing the `MCP_PATTERNS` whitelist as primary discovery. ps-scan is enrichment-only; configuration discovery runs through `scan::scan_hosts()`.
 - Silently dropping the `legacy rmcp_mux` detection regex.
-- Merging `src/mux_gen.rs` and `src/danger.rs` into one "wizard config writer" — the safe/danger split is the security model.
+- Merging `src/mux_gen.rs` and `src/danger.rs` into one "wizard config writer" — the strategy split is the security model.
 - Bumping `Cargo.toml` version without a matching `CHANGELOG.md` section.
 - Editing `AI_README.md` without also re-running structure check (`loctree-mcp focus src/`) — it lies the moment the tree changes.
 - Using `socat` instead of `rust-mux-proxy` for host STDIO bridges in examples.

@@ -176,7 +176,7 @@ Default service config: `~/.codex/mcp-mux.toml` (override with `--config`, pick 
 - `tray`, `service_name`, `log_level`
 - `status_file` — atomic JSON snapshots for UI/automation
 
-## Three-Step Wizard
+## Five-Step Wizard
 
 ```bash
 rust-mux wizard --config ~/.codex/mcp-mux.toml
@@ -184,15 +184,23 @@ rust-mux wizard --config ~/.codex/mcp-mux.toml
 make wizard
 ```
 
-1. **Server detection** — scans `ps` for MCP processes, loads config, toggles with `Space`.
-2. **Client detection** — finds Claude Code/Desktop, Codex, Junie, Gemini, plus generic `~/.ai/`, `~/.agents/` configs; shows rewire status.
-3. **Confirmation** — save options: Save All, Mux Only, Clipboard, Back, Exit.
+1. **DiscoverySources** — toggle which client config files to scan
+   (`~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`,
+   `~/.junie/`, `~/.ai/`, `~/.agents/`, plus legacy editor hosts), with
+   a custom-path text input (`i`) for additional files.
+2. **ServerReview** — read-only tree of discovered MCP servers grouped
+   by originating client. Identical entries are deduplicated; conflicts
+   surface with deterministic `-from-<kind>` rename.
+3. **StrategyChoice** — pick how to use the discovery:
+   - **Unified** — one mux config under `~/.config/mux/{config.toml, mcp.json, mcp.toml}` with every selected server. Recommended.
+   - **Per-client** — one mux config per originating client kind, in that client's native format (`claude.json`, `codex.toml`, `junie.json`, ...).
+   - **`[DANGER]` Auto-rewire** — backup-first preview-first rewrite of the user's existing client configs to route through `rust-mux-proxy`, with rollback commands.
+4. **SummaryConfirm** — preview of what will be written and where, then `Confirm` / `Back` / `Cancel`.
+5. **ResultAndTray** — show what was written with per-client startup snippets, then offer to start a tray daemon now (spawns `rust-mux --tray --config <generated>` detached).
 
-Navigation: `n` next, `p` previous, `Space` toggle, `Tab` switch panel, `q` quit.
+Navigation: `Up/Down` choose, `Space` toggle, `Enter` / `n` next step, `p` previous, `q` quit, `i` open custom-path input on STEP 1.
 
-The wizard exposes two write paths:
-- **Safe (default)** → `src/mux_gen.rs` emits `~/.config/mux/{mcp.json, mcp.toml, config.toml}`. Never touches host AI client configs.
-- **`[DANGER]` (opt-in)** → `src/danger.rs` performs backup-first, preview-first JSON/TOML rewrite of host configs (`.claude/`, `.codex/`, `.gemini/`, `.junie/`) with explicit rollback support.
+Source of truth is **client configs**, not running processes. ps-scan is used as enrichment to stamp PIDs and surface running orphans, never as the discovery driver.
 
 Detail: `docs/WIZARD.md`, `docs/vc-agents-client-discovery-plan.md`.
 

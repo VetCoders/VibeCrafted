@@ -1,291 +1,318 @@
-# rust-mux Wizard & Tray Monitoring Guide
+# rust-mux wizard — five-step flow
 
-Ten przewodnik prowadzi krok po kroku przez:
-- konfigurację `rust-mux` przez interaktywny wizard,
-- uruchomienie usługi z ikoną tray,
-- monitoring runtime przez status daemonu, dashboard i plik statusu JSON.
+> **Version:** 0.4.0
+> **Last updated:** 2026-05-06
 
-## 1) Wymagania
+The wizard takes you from "I have N MCP clients with overlapping servers" to
+"every client multiplexes through one rust-mux daemon" without surprising you.
+Five steps. Three strategies. Backups before any rewrite.
 
-- macOS lub Linux (Unix socket wymagany).
-- Rust toolchain (`cargo`, `rustc`).
-- Repo `rust-mux` sklonowane lokalnie.
-- Dla tray/dashboard: build z feature `tray` (domyślnie aktywny w standardowym buildzie).
-
-Szybki check:
-
-```bash
-cargo --version
-rustc --version
+```
+DiscoverySources → ServerReview → StrategyChoice → SummaryConfirm → ResultAndTray
 ```
 
-## 2) Build i quality gates
-
-W katalogu repo:
-
 ```bash
-make build
-make gates
+make wizard                           # uses default ~/.codex/mcp-mux.toml
+make wizard-dry-run                   # preview only, no writes
+
+# Or directly:
+cargo run --bin rust-mux -- wizard --config ~/.codex/mcp-mux.toml
+cargo run --bin rust-mux -- wizard --dry-run
+cargo run --bin rust-mux -- wizard --import-config ~/.workspace/mcp.json
 ```
 
-`make gates` uruchamia:
-- `cargo fmt -- --check`
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- `cargo test --all-targets --all-features`
+## Source of truth
 
-## 3) Ustaw zmienne robocze
+The wizard discovers MCP servers from your **client config files**, not from
+running processes. That matters: Claude Code and Codex spawn MCP servers on
+demand, so a `ps`-based scan would show "zero servers" outside an active
+session. Reading the configs gives a true picture regardless of runtime
+state. ps-scan is still used, but only as **enrichment** — it stamps PIDs on
+matching entries and surfaces ps-only orphans.
 
-Domyślne wartości są zdefiniowane w `Makefile`, ale warto jawnie ustawić własne:
+Default sources (auto-discovered if the file exists):
 
-```bash
-export CONFIG="$HOME/.codex/mcp-mux.toml"
-export SERVICE="general-memory"
-export SOCKET="/tmp/${SERVICE}.sock"
-export STATUS_FILE="$HOME/.rust-mux/status/${SERVICE}.json"
+| Path | Client | Schema |
+|---|---|---|
+| `~/.claude.json` | Claude Code | JSON `mcpServers` |
+| `~/Library/Application Support/Claude/claude_desktop_config.json` | Claude Desktop | JSON `mcpServers` |
+| `~/.codex/config.toml` | Codex CLI | TOML `[mcp_servers.<name>]` |
+| `~/.junie/mcp/mcp.json` | Junie | JSON `mcpServers` |
+| `~/.agents/mcp.json` | Junie (generic) | JSON `mcpServers` / `servers` |
+| `~/.ai/mcp.json` | Junie (generic) | JSON `mcpServers` / `servers` |
+| `~/.gemini/settings.json` | Gemini CLI | JSON `mcpServers` / `servers` |
+| `~/Library/Application Support/Cursor/User/settings.json` | Cursor | JSON (legacy) |
+| `~/Library/Application Support/Code/User/settings.json` | VS Code | JSON (legacy) |
+| `~/Library/Application Support/JetBrains/LLM/mcp.json` | JetBrains IDEs | JSON (legacy) |
+
+Use `--import-config <path>` (repeatable) on the CLI to pre-add custom
+sources before the wizard starts. Inside STEP 1, `i` opens the custom-path
+input field for ad-hoc additions.
+
+## STEP 1 — Discovery sources
+
+```
+┌─Sources [4/8]─────────────────────────────────────┐ ┌─Custom path───────────────┐
+│ ▶ [x] [Claude Code     ] ~/.claude.json 5 servers │ │ Add custom path            │
+│   [x] [Codex CLI       ] ~/.codex/config.toml   7 │ │                            │
+│   [x] [Junie           ] ~/.junie/mcp/mcp.json  3 │ │ > <empty>                  │
+│   [ ] [Gemini CLI      ] ~/.gemini/settings.json  │ │                            │
+│   [ ] [Claude Desktop  ] …/claude_desktop_config… │ │ Keys                       │
+│   [ ] [Cursor          ] …/Cursor/User/settings.… │ │   Up/Down  navigate        │
+│   [ ] [VS Code         ] …/Code/User/settings.js… │ │   Space    toggle          │
+│   [ ] [JetBrains       ] …/LLM/mcp.json not found │ │   i        custom path     │
+└───────────────────────────────────────────────────┘ │   Enter    add custom path │
+                                                     │   n        next step       │
+                                                     │   q        quit            │
+                                                     └────────────────────────────┘
 ```
 
-Możesz też podawać je inline do `make`, np.:
+Statuses surface the parse outcome (`N servers`, `empty`, `invalid`,
+`not found`). Sources that don't exist are deselected by default; you can
+flip them on if you plan to populate the file later.
 
-```bash
-make run SERVICE=brave-search CONFIG=$HOME/.codex/mcp-mux.toml
+The custom-path field opens with `i`. Type a path (`~` is expanded), then
+`Enter` to add it, `Esc` to abandon. The newly added source is selected
+automatically.
+
+## STEP 2 — Server review
+
+```
+┌─Servers [9/15]─────────────────────────┐ ┌─Review───────────────────────┐
+│ ─ claude                               │ │ Summary                      │
+│ ▶ [x] aicx-mcp                         │ │                              │
+│   [x] brave-search                     │ │   Total entries  : 15        │
+│   [x] loctree-mcp                      │ │   Unique names   : 9         │
+│   [x] context7                         │ │   Sources scanned: 3         │
+│   [x] memex                            │ │                              │
+│ ─ codex                                │ │ Keys                         │
+│   [x] playwright                       │ │   Up/Down  navigate          │
+│   [x] chrome-devtools (pid 21470)      │ │   Space    toggle            │
+│   [x] curl                             │ │   n        next step         │
+│   [x] youtube                          │ │   p        previous step     │
+│ ─ junie                                │ │   q        quit              │
+│   (deduped against claude/junie items) │ │                              │
+└────────────────────────────────────────┘ └──────────────────────────────┘
 ```
 
-## 4) Krok po kroku: wizard konfiguracji
+Servers are grouped by their originating client. Identical entries across
+clients (same `command + args + env`) collapse into one. If two clients
+disagree on how to launch the same logical server, both variants are kept
+and renamed with deterministic `-from-<kind>` suffixes; the right panel
+surfaces the conflict count.
 
-### Krok 4.1 — uruchom wizard (zapis zmian)
+PID badges (`pid 21470`) appear on entries whose `(cmd, args)` match a
+running process — the `enrich_running_state` pass.
 
-```bash
-make wizard CONFIG="$CONFIG" SERVICE="$SERVICE"
+You can untick any entry to drop it from the mux output. Defaults to all
+selected.
+
+## STEP 3 — Strategy
+
+```
+┌─Strategy────────────────────────────────────────────────────────────────┐
+│ How do you want to use mux?                                             │
+│                                                                         │
+│   (•) 1. Unified config                                                 │
+│       Write one ~/.config/mux/{config.toml,mcp.json,mcp.toml} with      │
+│       every selected server. Recommended.                               │
+│                                                                         │
+│   ( ) 2. Per-client configs                                             │
+│       Write a separate file per client kind (claude.json, codex.toml,   │
+│       junie.json, …) under ~/.config/mux/.                              │
+│                                                                         │
+│   ( ) 3. [DANGER] Auto-rewire existing client configs                   │
+│       Backup-first preview-first rewrite of your real client configs    │
+│       to route through rust-mux-proxy.                                  │
+│                                                                         │
+│ Up/Down to choose, Enter or n to continue, p to go back, q to quit.     │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-Alternatywnie bez zapisu (podgląd):
+`1`, `2`, `3` quick-pick. Up/Down navigate. Enter or `n` advances.
 
-```bash
-make wizard-dry-run CONFIG="$CONFIG" SERVICE="$SERVICE"
+### Unified
+
+Writes three files into `~/.config/mux/`:
+
+| File | Role |
+|---|---|
+| `config.toml` | Daemon truth — what `rust-mux` should run upstream. |
+| `mcp.json` | Client-facing JSON; every server's `command` is `rust-mux-proxy`. |
+| `mcp.toml` | Same shape as `mcp.json` but in TOML for Codex-style tooling. |
+
+Per-client startup snippets are printed on STEP 5:
+
+```
+claude --strict-mcp-config --mcp-config "$HOME/.config/mux/mcp.json"
+junie  --mcp-location      "$HOME/.config/mux/mcp.json"
+gemini mcp add aicx-mcp -- rust-mux-proxy --socket $HOME/.config/mux/sockets/aicx-mcp.sock
 ```
 
-### Krok 4.2 — sterowanie w TUI
+(Codex has no flag to swap the entire config file; the snippet tells you
+to merge `mcp.toml` into `~/.codex/config.toml` or use `codex mcp add`.)
 
-- `↑/↓` — nawigacja,
-- `Tab` — przełączanie panelu,
-- `Enter` — edycja pola,
-- `Space` — zaznaczenie/toggle,
-- `n` — kolejny krok,
-- `s` — zapis,
-- `q` — wyjście.
+### Per-client
 
-Wizard wykrywa i prowadzi przez kroki:
-1. server detection / wybór usług,
-2. client detection / hosty MCP,
-3. confirmation / zapis (safe path albo `[DANGER]`),
-4. health check.
+Writes one mux config per originating client kind, in that client's
+native format:
 
-### Krok 4.3 — wybór akcji w kroku 3
-
-W kroku potwierdzenia masz sześć opcji. Ścieżki różnią się tym, co
-faktycznie ląduje na dysku użytkownika:
-
-| Akcja           | Co robi |
-|-----------------|---------|
-| `SAFE GEN`      | Generuje **rust-mux-owned** pliki w `~/.config/mux/` (`config.toml`, `mcp.json`, `mcp.toml`) i drukuje precyzyjne instrukcje per-klient. Nie modyfikuje configów klientów. |
-| `MUX ONLY`      | Zapisuje legacy mux config do `--config` (np. `~/.codex/mcp-mux.toml`). |
-| `CLIPBOARD`     | Kopiuje TOML z mux config do schowka (macOS `pbcopy`). |
-| `[DANGER]`      | Backup-first preview-first rewrite **istniejących** configów klientów na `rust-mux-proxy`. Wymaga ręcznego wpisania `CONFIRM`. |
-| `BACK`          | Wraca do listy klientów. |
-| `EXIT`          | Wychodzi bez zmian. |
-
-#### Safe path (zalecane)
-
-Wybierz `SAFE GEN`. Wizard:
-
-1. zbierze wybrane usługi,
-2. zapisze trzy pliki w `~/.config/mux/`:
-   - `config.toml` — daemon truth: `rust-mux` startuje stąd oryginalne komendy MCP,
-   - `mcp.json` — JSON dla klientów; każdy server `command = "rust-mux-proxy"`,
-   - `mcp.toml` — TOML mirror dla Codex i klientów TOML-style,
-3. wydrukuje per-klient instrukcje:
-   - **Claude Code**: `claude --strict-mcp-config --mcp-config "$HOME/.config/mux/mcp.json"`,
-   - **Claude Desktop**: ręczny merge bloku `mcpServers` z `mcp.json` do `claude_desktop_config.json` (brak strict-config flagi w tym wariancie),
-   - **Codex CLI**: merge `[mcp_servers]` z `mcp.toml` do `~/.codex/config.toml` lub `codex mcp add ...` per server (Codex nie ma flagi do podmiany całego config-file),
-   - **Junie**: `junie --mcp-location "$HOME/.config/mux/mcp.json"`,
-   - **Gemini CLI**: zestaw `gemini mcp add <name> -- rust-mux-proxy --socket <path>` per usługa.
-
-Następnie wystartuj mux:
-
-```bash
-rust-mux --config ~/.config/mux/config.toml
+```
+~/.config/mux/
+  config.toml      # daemon truth (merged across every selected source)
+  claude.json      # only Claude's servers, in Claude Desktop's mcpServers shape
+  codex.toml       # only Codex's servers, in [mcp_servers.<name>] shape
+  junie.json       # only Junie's servers, in mcpServers shape
+  …
 ```
 
-Każdy klient odpalany z odpowiednią flagą będzie rozmawiał z mux'em
-zamiast bezpośrednio uruchamiać upstream MCP server.
+Useful when you want different stacks for different agents — e.g. give
+Claude five servers but Codex only two. Each client points at its own mux
+file with the per-kind startup commands STEP 5 prints.
 
-#### `[DANGER]` automatic client configuration
+### [DANGER] Auto-rewire
 
-Wybierz `[DANGER]` jeżeli chcesz, żeby wizard sam podmienił bloki
-`mcpServers` w istniejących configach klientów na `rust-mux-proxy`.
+Rewrites the user's existing client configs in-place to route through
+`rust-mux-proxy`. Discipline:
 
-Co dokładnie się dzieje:
+1. Every eligible source gets a timestamped backup
+   (`<file>.<unix_seconds>.bak`).
+2. Before any disk write the wizard prints a full preview and prompts
+   for `CONFIRM` (uppercase) on cooked stdin. Anything else cancels.
+3. Sources that fail to parse are recorded as `SkippedInvalid` and never
+   touched.
+4. Sources flagged `eligible_for_danger = false` (currently Gemini's
+   `settings.json`) are listed but skipped — the safe path snippets are
+   the supported route for those clients.
 
-1. Wizard wyjdzie z trybu TUI i pokaże **preview** każdej zmiany:
-   - lista plików,
-   - per-server jednoliniowe summaries `rewrite \`<name>\`: <oldcmd> -> rust-mux-proxy`,
-   - lista plików **pominiętych** (parse error, brak serwerów, ineligible) z powodem,
-   - przykładowy wzorzec backupu: `<file>.<unix_seconds>.bak`.
-2. Aby kontynuować, **musisz wpisać `CONFIRM`** (wielkimi literami) i nacisnąć Enter. Cokolwiek innego anuluje operację.
-3. Dla każdego pliku zatwierdzonego do zmiany wizard:
-   - tworzy timestamped backup tuż obok źródła (`config.toml.1714836500.bak`),
-   - przepisuje plik zachowując wszystkie inne klucze/tabele,
-   - drukuje status (`✓ wrote ... (backup: ...)`).
-4. Na końcu drukowane są dokładne `cp -p <backup> <target>` linie do rollbacku — pasta dowolnej z nich przywraca dany plik do stanu sprzed zmiany.
+The result panel includes one rollback command per backup:
 
-Pliki **niewalidne JSON/TOML nigdy nie są modyfikowane** — wizard zaznaczy
-je jako `SkippedInvalid` w preview i nie ruszy.
-
-Klient `Gemini` jest domyślnie oznaczony jako `ineligible_for_danger`
-ponieważ w obserwowanym środowisku nie ma flagi typu `--strict-mcp-config`,
-która gwarantowałaby że Gemini ZACHOWA się jak chcemy po podmianie pliku.
-Wybierz raczej safe path z gotowymi `gemini mcp add` instrukcjami.
-
-#### Custom JSON/TOML import
-
-Możesz zaimportować workspace-local lub niestandardowy plik MCP:
-
-```bash
-make wizard CONFIG="$CONFIG" SERVICE="$SERVICE" \
-  WIZARD_EXTRA="--import-config /path/to/repo/mcp.json"
+```
+cp -p '~/.claude.json.1714956123.bak' '~/.claude.json'
 ```
 
-(lub bezpośrednio `rust-mux wizard --import-config /path/to/file.json`).
+## STEP 4 — Summary & confirm
 
-Wizard auto-rozpozna format po rozszerzeniu (`.toml` → TOML mcp_servers,
-inne → JSON; w JSON spróbuje `mcpServers`, potem `servers` jeśli kształt
-jest MCP-like) i doda go do listy klientów w kroku 2 jako klient kind
-`Custom`.
-
-## 5) Start runtime z tray icon + monitoring JSON
-
-### Krok 5.1 — przygotuj katalog statusu
-
-```bash
-make status-file-init STATUS_FILE="$STATUS_FILE"
+```
+┌─Summary─────────────────────────────────────────┐ ┌─Action──────────┐
+│ About to:                                       │ │ Choose action   │
+│                                                 │ │                 │
+│   Strategy : Unified                            │ │ ▶ Confirm       │
+│   Outputs  : ~/.config/mux/config.toml          │ │   Back          │
+│              ~/.config/mux/mcp.json             │ │   Cancel        │
+│              ~/.config/mux/mcp.toml             │ │                 │
+│   Sockets  : ~/.config/mux/sockets              │ │ Up/Down: choose │
+│   Servers  : 9 selected                         │ │ Enter: do it    │
+│                                                 │ └─────────────────┘
+│   DRY-RUN: no files will be modified.           │
+└─────────────────────────────────────────────────┘
 ```
 
-### Krok 5.2 — uruchom mux w trybie tray
+Strategy-specific previews:
 
-```bash
-make run-tray CONFIG="$CONFIG" SERVICE="$SERVICE" STATUS_FILE="$STATUS_FILE"
+- **Unified** — three concrete output paths.
+- **Per-client** — daemon `config.toml` plus one predicted file per
+  selected source kind.
+- **Auto-rewire** — explicit list of files that *will* be rewritten,
+  plus the list of sources skipped because of `eligible_for_danger =
+  false`.
+
+Choose `Confirm`, `Back`, or `Cancel`. Confirm queues the strategy as a
+`PendingAction` so it can run on cooked stdout/stdin once the alt screen
+is dropped (the danger flow needs that for its `CONFIRM` prompt).
+
+## STEP 5 — Result & tray daemon
+
+```
+┌─Result──────────────────────────────────────────┐ ┌─Action─────────────┐
+│ Result                                          │ │ Tray daemon        │
+│                                                 │ │                    │
+│ Wrote rust-mux config under ~/.config/mux:      │ │ Run a multi-       │
+│   - .../config.toml (daemon truth)              │ │ service tray       │
+│   - .../mcp.json    (client JSON)               │ │ monitor for the    │
+│   - .../mcp.toml    (client TOML)               │ │ sockets you just   │
+│                                                 │ │ configured?        │
+│ Use it from your AI clients:                    │ │                    │
+│ • Claude Code (strict config)                   │ │ ▶ Start tray       │
+│     claude --strict-mcp-config …                │ │   daemon now       │
+│ • Codex CLI                                     │ │   No, exit         │
+│     # merge [mcp_servers] from …/mcp.toml       │ │                    │
+│ • Junie                                         │ │ Up/Down: choose    │
+│     junie --mcp-location …                      │ │ Enter: confirm     │
+│ • Gemini CLI                                    │ │                    │
+│     gemini mcp add aicx-mcp …                   │ └────────────────────┘
+└─────────────────────────────────────────────────┘
 ```
 
-To uruchamia `rust-mux` z:
-- `--tray`
-- `--status-file <ścieżka>`
+`Start tray daemon now` spawns `rust-mux --tray --config <generated>`
+detached from this terminal (stdin/stdout/stderr → `/dev/null`). `No`
+exits cleanly. A persistent launchd-managed tray service is on the
+roadmap; today the spawn is per-session.
 
-Tray menu pokazuje stan usługi i pozwala zakończyć mux (`Quit mux`).
+## Tray monitoring (after the wizard exits)
 
-## 6) Monitoring: status daemonu i dashboard
+The wizard's STEP 5 spawn is the convenience path. For long-running
+workflows you'll usually want one of:
 
-### 6.1 Sprawdź status wszystkich usług
+- `rust-mux --config ~/.config/mux/config.toml` — run the multi-service
+  daemon in the foreground so you can see its logs.
+- `rust-mux --tray --config ~/.config/mux/config.toml` — same, with the
+  tray-icon UI; quit it from the menu.
+- `rust-mux daemon-status` (or `make daemon-status`) — query the
+  running multi-service daemon over its Unix socket and dump per-service
+  status.
+- `rust-mux dashboard` (or `make dashboard`) — multi-service status
+  view in the system tray, reading the daemon's status snapshots.
+- `rust-mux health --config ~/.config/mux/config.toml --service <name>`
+  — single-service socket reachability probe.
 
-```bash
-make daemon-status
+## CLI flags
+
+```
+rust-mux wizard --config <PATH>         # mux daemon config (default ~/.codex/mcp-mux.toml)
+                --import-config <PATH>  # pre-load a custom MCP file as STEP 1 source (repeatable)
+                --dry-run               # plan everything, write nothing
 ```
 
-### 6.2 Uruchom dashboard tray oparty o status file
+The legacy `--service`, `--socket`, `--cmd`, `--args`, `--max-clients`,
+`--log-level`, `--tray` flags are accepted for backwards compatibility
+and ignored by the 5-step flow.
 
-```bash
-make dashboard STATUS_FILE="$STATUS_FILE"
-```
+## Troubleshooting
 
-### 6.3 Podgląd pliku statusu (JSON)
+- **Empty source list on STEP 1.** No client config was found at the
+  default paths. Use `i` to add a custom path, or pass
+  `--import-config <PATH>` on the CLI.
 
-```bash
-tail -f "$STATUS_FILE"
-```
+- **A source is "invalid".** STEP 1 surfaces the parser error in the
+  status panel after `i`. Common causes: trailing commas in JSON,
+  duplicate keys in TOML, `mcpServers` value that isn't an object.
 
-To jest najprostszy punkt integracji pod własny monitoring/UI.
+- **STEP 4 lists a file under "Skipped (no strict-config flag for
+  danger flow)".** That client (typically Gemini) doesn't have a
+  documented way to swap its entire MCP config file via a flag, so the
+  danger flow refuses to rewrite it. Use the safe-path snippets STEP 5
+  prints instead — they cover that client's recommended `mcp add`-style
+  setup.
 
-## 7) Proxy do hostów MCP
+- **`CONFIRM` prompt didn't appear after Auto-rewire.** It appears on
+  cooked stdout *after* the alt screen is dropped. If you see no
+  prompt, the plan had zero `Planned` actions (every selected source
+  was either invalid or ineligible).
 
-Po stronie hosta MCP (Claude/Codex/etc.) używaj proxy zamiast bezpośredniego procesu serwera:
+- **Tray daemon spawn says "Could not start … run manually".** Either
+  `rust-mux` isn't on `$PATH` or the config file you pointed at doesn't
+  exist. `cargo install --path .` (or copy the release binary onto
+  your `$PATH`) and try again.
 
-```bash
-make proxy SOCKET="$SOCKET"
-```
+## See also
 
-Bez `make`:
+- `docs/integration.md` — library use of `MuxConfig` / `spawn_mux_server`.
+- `docs/vc-agents-client-discovery-plan.md` — original plan for the
+  multi-client discovery layer this wizard now consumes.
+- `.vibecrafted/GUIDELINES.md` — repo-wide doctrine, including the
+  wizard's Unified / Per-client / Auto-rewire split.
 
-```bash
-rust-mux-proxy --socket "$SOCKET"
-```
+---
 
-## 8) Health check
-
-Szybki check rozwiązywania configu i dostępności socketu:
-
-```bash
-make health CONFIG="$CONFIG" SERVICE="$SERVICE"
-```
-
-## 9) Najczęstsze problemy (troubleshooting)
-
-### `wizard requires an interactive TTY`
-- Uruchamiasz wizard w nieinteraktywnym środowisku.
-- Rozwiązanie: uruchom lokalny terminal (TTY), nie pipeline CI.
-
-### Brak ikony tray
-- Sprawdź, czy build ma feature `tray` (dla `dashboard` target używa jawnie `--features tray`).
-- Sprawdź, czy środowisko desktopowe wspiera tray icon.
-
-### `service not found` lub puste statusy
-- Upewnij się, że `SERVICE` istnieje w `CONFIG` lub został utworzony przez wizard.
-- Zweryfikuj: `make wizard` i ponownie zapisz config.
-
-### Brak połączenia przez socket
-- Zweryfikuj zgodność ścieżki `SOCKET` pomiędzy mux i proxy.
-- Usuń stare artefakty i uruchom ponownie:
-
-```bash
-make clean-runtime SOCKET="$SOCKET" STATUS_FILE="$STATUS_FILE"
-make run-tray CONFIG="$CONFIG" SERVICE="$SERVICE" STATUS_FILE="$STATUS_FILE"
-```
-
-### Wizard surfacuje konflikt nazw serwerów
-- Powstaje, gdy ten sam server `name` (np. `memory`) jest w configach kilku klientów z **różnymi** `command`/`args`/`env`.
-- Wizard zapisuje obie wersje pod nazwami `memory-from-claude` i `memory-from-junie` (deterministyczny suffix per source kind).
-- Zedytuj `~/.config/mux/config.toml` jeżeli chcesz zachować tylko jedną wersję, lub dostarcz `--service` + `--cmd` żeby ujednolicić ręcznie.
-
-### Niewalidny plik klienta
-- Wizard NIGDY nie modyfikuje pliku, którego nie umie sparsować.
-- Preview oznaczy go jako `SkippedInvalid` z konkretnym błędem parsera.
-- Napraw plik ręcznie i uruchom wizard ponownie.
-
-### Po `[DANGER]` rewrite oryginalny serwer wciąż się uruchamia
-- Sprawdź, czy klient został zrestartowany po edycji pliku (Claude Desktop / Cursor / VSCode trzymają cache w pamięci).
-- Sprawdź, że `rust-mux` faktycznie nasłuchuje na socketach (`make daemon-status`).
-- Backup z timestampem stoi obok pliku (`<file>.<seconds>.bak`) — w razie kłopotu odpaluj rollback z linii wydrukowanej przez wizard.
-
-### Rollback po `[DANGER]`
-Wizard po executei drukuje zestaw `cp -p <backup> <file>` linii. Wklej dowolną z nich, żeby przywrócić dany plik:
-
-```bash
-cp -p ~/.codex/config.toml.1714836500.bak ~/.codex/config.toml
-```
-
-### Sekrety w `env`
-- Wszystko, co istniało w `env` na wejściu, jest zachowane w `~/.config/mux/config.toml` i propagowane do upstream MCP server przez `rust-mux`.
-- W client-facing `mcp.json`/`mcp.toml` jest dokładnie to samo `env` (potrzebne, gdyby klient sam chciał ustawić zmienne dla `rust-mux-proxy`).
-- Nie ma żadnej automatycznej rotacji ani redagowania — pamiętaj o uprawnieniach plików w `~/.config/mux/`.
-
-## 10) Lista najważniejszych targetów
-
-```bash
-make help
-```
-
-Najczęściej używane:
-- `make wizard`
-- `make run-tray`
-- `make daemon-status`
-- `make dashboard`
-- `make health`
-- `make gates`
+_𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents by VetCoders (c)2024-2026 LibraxisAI_
