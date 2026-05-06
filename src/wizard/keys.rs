@@ -288,7 +288,7 @@ pub fn handle_key(app: &mut AppState, key: KeyEvent) -> Result<bool> {
                 config: default_server_config(),
                 health: HealthStatus::Unknown,
                 dirty: true,
-                source: ServiceSource::Config,
+                source: ServiceSource::MuxConfig,
                 pid: None,
                 selected: true,
             });

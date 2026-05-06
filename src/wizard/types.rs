@@ -89,12 +89,59 @@ pub enum HealthStatus {
     Unhealthy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Where a `ServiceEntry` came from. Drives UI labels, dedup decisions,
+/// and which strategy options apply (e.g. only `Client` entries can be
+/// auto-rewired in the `[DANGER]` flow).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceSource {
-    /// Loaded from config file
-    Config,
-    /// Detected from running process
-    Detected,
+    /// Discovered inside a known MCP client config file (Claude / Codex /
+    /// Junie / Gemini / ...).
+    Client { kind: HostKind, path: PathBuf },
+    /// Loaded from the rust-mux daemon config (legacy `~/.codex/mcp-mux.toml`
+    /// or whatever was passed via `--config`).
+    MuxConfig,
+    /// User-provided custom config file (--import-config or wizard custom
+    /// path input).
+    // Why: variant is constructed by `services::load_services_from_custom_path`
+    // and rendered by ui.rs::draw_service_list, but the wizard step that
+    // *triggers* that load (custom path input field) lands in the next
+    // commit (5-step flow rebuild).
+    #[allow(dead_code)]
+    Custom { path: PathBuf },
+    /// Detected as a running process but not present in any scanned config
+    /// (rare; populated only when ps-scan enrichment finds an orphan).
+    DetectedRunning,
+}
+
+// Why: helper methods used by the 5-step UI rebuild that lands in the next
+// commit (STEP 2 server review per-client header, STEP 3 strategy gating).
+#[allow(dead_code)]
+impl ServiceSource {
+    /// Short label for UI list rendering.
+    pub fn short_label(&self) -> String {
+        match self {
+            ServiceSource::Client { kind, .. } => kind.as_label().to_string(),
+            ServiceSource::MuxConfig => "mux".into(),
+            ServiceSource::Custom { .. } => "custom".into(),
+            ServiceSource::DetectedRunning => "running".into(),
+        }
+    }
+
+    /// Path the entry was loaded from, when applicable.
+    pub fn path(&self) -> Option<&std::path::Path> {
+        match self {
+            ServiceSource::Client { path, .. } | ServiceSource::Custom { path } => {
+                Some(path.as_path())
+            }
+            _ => None,
+        }
+    }
+
+    /// `true` when this entry comes from a real client config (used to gate
+    /// the `[DANGER]` auto-rewrite eligibility check).
+    pub fn is_client(&self) -> bool {
+        matches!(self, ServiceSource::Client { .. })
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

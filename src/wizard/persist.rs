@@ -416,7 +416,7 @@ mod tests {
                 },
                 health: HealthStatus::Unknown,
                 dirty: false,
-                source: ServiceSource::Config,
+                source: ServiceSource::MuxConfig,
                 pid: None,
                 selected: true,
             }],

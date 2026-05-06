@@ -123,11 +123,28 @@ pub fn draw_service_list(f: &mut Frame, app: &AppState, area: Rect) {
                 Span::styled("[ ] ", Style::default().fg(Color::DarkGray))
             };
 
-            // Source indicator: config file vs detected process
-            let source_indicator = match svc.source {
-                ServiceSource::Config => Span::styled("[C]", Style::default().fg(Color::Blue)),
-                ServiceSource::Detected => Span::styled("[D]", Style::default().fg(Color::Magenta)),
+            // Source indicator: short tag derived from the entry's origin
+            // (`claude` / `codex` / `junie` / `gemini` / `mux` / `custom` / `run`).
+            let (tag_text, tag_color) = match &svc.source {
+                ServiceSource::Client { kind, .. } => {
+                    let color = match kind {
+                        HostKind::Claude | HostKind::ClaudeDesktop => Color::Yellow,
+                        HostKind::Codex => Color::Blue,
+                        HostKind::Junie => Color::Green,
+                        HostKind::Gemini => Color::Red,
+                        HostKind::Cursor => Color::Magenta,
+                        HostKind::VSCode => Color::Cyan,
+                        HostKind::JetBrains => Color::Green,
+                        HostKind::Custom | HostKind::Unknown => Color::DarkGray,
+                    };
+                    (kind.as_label().to_string(), color)
+                }
+                ServiceSource::MuxConfig => ("mux".into(), Color::Blue),
+                ServiceSource::Custom { .. } => ("custom".into(), Color::DarkGray),
+                ServiceSource::DetectedRunning => ("run".into(), Color::Magenta),
             };
+            let source_indicator =
+                Span::styled(format!("[{tag_text}]"), Style::default().fg(tag_color));
 
             // Health indicator
             let health_indicator = match svc.health {
@@ -156,12 +173,12 @@ pub fn draw_service_list(f: &mut Frame, app: &AppState, area: Rect) {
                 Span::raw("")
             };
 
-            // Show PID for detected processes
-            let pid_info = match (svc.source, svc.pid) {
-                (ServiceSource::Detected, Some(pid)) => {
+            // Show PID for any entry that ps-scan enrichment matched.
+            let pid_info = match svc.pid {
+                Some(pid) => {
                     Span::styled(format!(" ({})", pid), Style::default().fg(Color::DarkGray))
                 }
-                _ => Span::raw(""),
+                None => Span::raw(""),
             };
 
             ListItem::new(Line::from(vec![

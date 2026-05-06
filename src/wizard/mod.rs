@@ -105,7 +105,7 @@ pub async fn run_wizard(args: WizardArgs) -> Result<()> {
             config: default_server_config(),
             health: HealthStatus::Unknown,
             dirty: false,
-            source: ServiceSource::Config,
+            source: ServiceSource::MuxConfig,
             pid: None,
             selected: true,
         });
@@ -118,7 +118,7 @@ pub async fn run_wizard(args: WizardArgs) -> Result<()> {
             config: default_server_config(),
             health: HealthStatus::Unknown,
             dirty: false,
-            source: ServiceSource::Config,
+            source: ServiceSource::MuxConfig,
             pid: None,
             selected: true,
         });
