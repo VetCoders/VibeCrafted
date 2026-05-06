@@ -2,6 +2,84 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-05-06
+
+### Added
+- **5-step interactive wizard** replacing the legacy 4-step flow:
+  DiscoverySources → ServerReview → StrategyChoice → SummaryConfirm → ResultAndTray.
+- **Three explicit strategies** for using mux:
+  - **Unified** — one ~/.config/mux/{config.toml, mcp.json, mcp.toml}.
+  - **Per-client** — separate mux config per originating client kind in
+    that client's native format (claude.json, codex.toml, junie.json, ...).
+  - **[DANGER] Auto-rewire** — backup-first preview-first rewrite of
+    existing client configs to route through `rust-mux-proxy`, with
+    rollback commands.
+- **Custom-path input** on STEP 1 (`i` to enter) for client config files
+  outside the default discovery list.
+- **Tray daemon prompt** on STEP 5: spawn `rust-mux --tray --config
+  <generated>` detached from the wizard session.
+- New helpers:
+  - `mux_gen::build_per_client_outputs` + `write_per_client_outputs` +
+    `per_client_instructions` for the Per-client strategy.
+  - `wizard::services::build_services_from_scans` /
+    `enrich_running_state` / `load_services_from_custom_path` as the
+    public discovery surface.
+  - `config` checked file-read/copy helpers that reject parent
+    traversal at the filesystem boundary.
+- New canonical doc surfaces: `.vibecrafted/GUIDELINES.md` (per-repo,
+  agent-agnostic doctrine) and a fully rewritten `docs/WIZARD.md`.
+
+### Changed
+- **Discovery is now driven by client config files**, not by ps-scan.
+  The legacy `MCP_PATTERNS` whitelist is demoted to enrichment-only —
+  it stamps PIDs on matching entries and surfaces ps-only orphans, but
+  never drives the discovery list.
+- **Source-of-truth model** flipped: client configs (Claude / Codex /
+  Junie / Gemini / ...) are authoritative; running processes are
+  side-effects.
+- **Wizard title** rebranded from `rmcp_mux wizard` to `rust-mux
+  wizard`. Daemon-status banner and multi-server dashboard header
+  rebranded in lockstep.
+- **Socket path canonicalised** to v0.4.0
+  `~/.rmcp-servers/rust-mux/sockets/` everywhere (was a mix of
+  `~/mcp-sockets/` and the canonical path).
+- **AI_README** bumped to 0.4.0 / 2026-05-05; project structure
+  reflects modular `runtime/` + `wizard/` and the new helper modules.
+
+### Fixed
+- Self-skip dedup bug in the ps-scan: `args.contains("rust-mux") ||
+  args.contains("rust-mux")` was a copy/paste; the second clause now
+  correctly matches the legacy `rmcp_mux` binary name.
+- Per-client strategy output collisions for same-kind sources (Junie
+  ×3, Cursor ×2, VSCode ×2): same-kind scans now merge before writing
+  one file per kind.
+- Per-client and danger strategies now honour STEP 2 server selection
+  (previously rescanned the source verbatim).
+- Wizard's per-client summary filenames now follow STEP 2 selected
+  services instead of selected source rows.
+- Socket allocation ownership returned to `mux_gen` (services.rs no
+  longer injects a default socket path that mux_gen would override).
+- Removed dead `#[allow(dead_code)]` carry-overs from the C2/C3
+  rebuild after consumers landed in the 5-step flow.
+- Documentation drift: rmcp_mux references in doc comments, status
+  banners, and proxy `--socket` help text replaced with rust-mux.
+
+### Security
+- Audited dependency tree for the `tray` feature: 0 vulnerabilities, 1
+  unsoundness (glib 0.18.5 RUSTSEC-2024-0429, not on rust-mux's call
+  graph) and 8 unmaintained advisories (GTK3 stack via tray-icon).
+  Tracked in `.vibecrafted/GUIDELINES.md` under "Tray feature
+  dependency risks". CI mitigation: `--no-default-features`.
+- `config::checked_read_to_string` and `checked_copy` helpers reject
+  parent-traversal paths and canonicalise filesystem boundaries; used
+  by `scan::scan_host_file` and `danger` plan execution.
+
+### Coverage notes
+- `cargo test --all-targets --all-features` baseline went from 83 → 87
+  passing (+4 new wizard::services tests, plus persist.rs scenarios).
+  `mux_transport_roundtrip_with_loctree_mcp` (ignored) passes against
+  local `loctree-mcp v0.9.4`.
+
 ## [0.4.0] - 2025-12-26
 
 ### Breaking Changes

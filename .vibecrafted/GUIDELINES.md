@@ -115,6 +115,21 @@ reintroduce the legacy `[SAFE GEN] / [MUX ONLY] / [CLIPBOARD]` overlay
 
 Reference: `docs/WIZARD.md`, `docs/vc-agents-client-discovery-plan.md`.
 
+## Tray feature dependency risks
+
+The `tray` Cargo feature pulls `tray-icon → muda (gtk feature) → gtk 0.18 → glib 0.18`. As of 2026-05-06 cargo audit reports:
+
+- 1 unsoundness: glib 0.18.5 — **RUSTSEC-2024-0429** (`VariantStrIter::{next, nth, next_back, nth_back, last}` UB; patched in glib >= 0.20.0).
+- 8 unmaintained: atk, atk-sys, gdk, gdk-sys, gtk, gtk-sys, gtk3-macros, proc-macro-error (RUSTSEC-2024-0412..0420 + RUSTSEC-2024-0370 — gtk-rs GTK3 bindings archived; migration path is gtk4-rs).
+
+Mitigation in place: CI builds with `--no-default-features`, so library and proxy binary consumers never link the unsound code; only desktop/tray users do.
+
+Active code path: rust-mux's tray code does **not** call `glib::VariantStrIter` directly. The unsound function is reachable only via tray-icon's menu construction code.
+
+Action: track tray-icon for a release that bumps the chain to glib >= 0.20 (or migrates muda to gtk4-rs). Bump in lockstep when available.
+
+Operator-facing impact: none today; no CVE, no exploit path. The advisory is a "correctness debt to clear" rather than a security incident.
+
 ## API surface (library users)
 
 The public library surface is what's re-exported from `src/lib.rs`. Keep it stable across patch versions:
