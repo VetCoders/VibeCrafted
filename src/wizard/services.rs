@@ -29,78 +29,41 @@ use std::process::Command;
 
 use anyhow::Result;
 
-use crate::config::{ServerConfig, expand_path, load_config};
-use crate::scan::{
-    HostKind, HostService, MergeOutcome, ScanResult, merge_services, scan_host_file, scan_hosts,
-};
+use crate::config::{ServerConfig, expand_path};
+use crate::scan::{HostKind, HostService, ScanResult, merge_services, scan_host_file};
 
-use super::types::{FormState, HealthStatus, ServiceEntry, ServiceSource};
+use super::types::{HealthStatus, ServiceEntry, ServiceSource};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Service loading
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Default per-service socket directory used when synthesising a `ServerConfig`
-/// for a service we discovered in a client config (clients usually only
-/// specify command/args, not a socket — the mux assigns one).
+/// Default per-service socket path used when synthesising a `ServerConfig`
+/// from a discovered MCP service (clients usually only specify command/args
+/// — the mux assigns the socket).
 fn default_socket_path(name: &str) -> String {
     format!("~/.rmcp-servers/rust-mux/sockets/{}.sock", name)
 }
 
-/// Load every service the wizard should consider, in priority order:
+/// Build the wizard's list of `ServiceEntry` from a set of `ScanResult`s.
 ///
-/// 1. Client-config services (Claude/Codex/Junie/Gemini/...).
-/// 2. Mux daemon config services (the file at `mux_config_path`).
-/// 3. Running-process orphans surfaced via ps-scan.
+/// - Runs `merge_services` to dedup identical entries.
+/// - Attributes each merged entry to its **first** originating client kind+path
+///   (sources are ordered by `default_sources()` priority).
+/// - Synthesises a `ServerConfig` with sensible v0.4.0 defaults.
 ///
-/// Selection defaults to `true` for every entry; the operator can untick
-/// in the wizard.
-pub fn load_all_services(mux_config_path: &Path) -> Result<Vec<ServiceEntry>> {
-    let scans = scan_hosts();
-    let merged = merge_services(&scans);
-    let mut services = services_from_merge(&scans, &merged);
+/// Callers append to the result and run `enrich_running_state` afterwards
+/// to stamp PIDs and surface ps-only orphans.
+pub fn build_services_from_scans(scans: &[ScanResult]) -> Vec<ServiceEntry> {
+    let merged = merge_services(scans);
 
-    // Mux daemon config (legacy path). Skip entries already present from a
-    // client-config scan to avoid double-listing the same logical server.
-    if let Some(cfg) = load_config(mux_config_path)? {
-        for (name, server_cfg) in cfg.servers {
-            let already = services
-                .iter()
-                .any(|s| s.name == name || configs_equivalent(&s.config, &server_cfg));
-            if already {
-                continue;
-            }
-            services.push(ServiceEntry {
-                name,
-                config: server_cfg,
-                health: HealthStatus::Unknown,
-                dirty: false,
-                source: ServiceSource::MuxConfig,
-                pid: None,
-                selected: true,
-            });
-        }
-    }
-
-    // ps-scan enrichment: stamp PIDs on matching entries; surface orphans as
-    // `DetectedRunning`.
-    enrich_running_state(&mut services);
-
-    services.sort_by(client_first_then_name);
-
-    Ok(services)
-}
-
-fn services_from_merge(scans: &[ScanResult], merged: &MergeOutcome) -> Vec<ServiceEntry> {
-    // Index from (cmd, args, env) -> (HostKind, path) so we can attribute
-    // the merged service to its originating client. We keep the first source
-    // encountered (sources are ordered by `default_sources` priority).
+    // Index from (cmd, args, env) -> (HostKind, path). Keeps the first source
+    // encountered (default_sources is ordered by priority).
     let mut origin_index: HashMap<String, (HostKind, std::path::PathBuf)> = HashMap::new();
     for scan in scans {
         for svc in &scan.services {
-            let key = svc_key(svc);
             origin_index
-                .entry(key)
+                .entry(svc_key(svc))
                 .or_insert_with(|| (scan.host.kind, scan.host.path.clone()));
         }
     }
@@ -144,7 +107,6 @@ fn services_from_merge(scans: &[ScanResult], merged: &MergeOutcome) -> Vec<Servi
             name: svc.name.clone(),
             config,
             health: HealthStatus::Unknown,
-            dirty: false,
             source: origin,
             pid: None,
             selected: true,
@@ -173,24 +135,6 @@ fn env_signature(env: Option<&HashMap<String, String>>) -> String {
         .map(|(k, v)| format!("{k}={v}"))
         .collect::<Vec<_>>()
         .join(",")
-}
-
-fn configs_equivalent(a: &ServerConfig, b: &ServerConfig) -> bool {
-    a.cmd == b.cmd && a.args == b.args && a.env == b.env
-}
-
-fn client_first_then_name(a: &ServiceEntry, b: &ServiceEntry) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-    let rank = |s: &ServiceSource| match s {
-        ServiceSource::Client { .. } => 0,
-        ServiceSource::MuxConfig => 1,
-        ServiceSource::Custom { .. } => 2,
-        ServiceSource::DetectedRunning => 3,
-    };
-    match rank(&a.source).cmp(&rank(&b.source)) {
-        Ordering::Equal => a.name.cmp(&b.name),
-        other => other,
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,7 +202,6 @@ pub fn enrich_running_state(services: &mut Vec<ServiceEntry>) {
                     heartbeat_enabled: Some(true),
                 },
                 health: HealthStatus::Healthy,
-                dirty: false,
                 source: ServiceSource::DetectedRunning,
                 pid: Some(proc.pid),
                 selected: false,
@@ -455,7 +398,6 @@ pub fn load_services_from_custom_path(path: &Path) -> Result<Vec<ServiceEntry>> 
                 heartbeat_enabled: Some(true),
             },
             health: HealthStatus::Unknown,
-            dirty: false,
             source: ServiceSource::Custom {
                 path: host.path.clone(),
             },
@@ -479,112 +421,6 @@ pub fn check_health(config: &ServerConfig) -> HealthStatus {
     match UnixStream::connect(&socket_path) {
         Ok(_) => HealthStatus::Healthy,
         Err(_) => HealthStatus::Unhealthy,
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Default config and form conversions
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn default_server_config() -> ServerConfig {
-    ServerConfig {
-        socket: Some(default_socket_path("general-memory")),
-        cmd: Some("npx".into()),
-        args: Some(vec!["@modelcontextprotocol/server-memory".into()]),
-        env: None,
-        max_active_clients: Some(5),
-        tray: Some(false),
-        service_name: None,
-        log_level: Some("info".into()),
-        lazy_start: Some(false),
-        max_request_bytes: Some(1_048_576),
-        request_timeout_ms: Some(30_000),
-        restart_backoff_ms: Some(1_000),
-        restart_backoff_max_ms: Some(30_000),
-        max_restarts: Some(5),
-        status_file: None,
-        heartbeat_interval_ms: Some(30_000),
-        heartbeat_timeout_ms: Some(30_000),
-        heartbeat_max_failures: Some(3),
-        heartbeat_enabled: Some(true),
-    }
-}
-
-pub fn form_from_service(svc: &ServiceEntry) -> FormState {
-    let env_str = svc
-        .config
-        .env
-        .as_ref()
-        .map(|m| {
-            m.iter()
-                .map(|(k, v)| format!("{}={}", k, v))
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .unwrap_or_default();
-
-    FormState {
-        service_name: svc.name.clone(),
-        socket: svc.config.socket.clone().unwrap_or_default(),
-        cmd: svc.config.cmd.clone().unwrap_or_else(|| "npx".into()),
-        args: svc.config.args.clone().unwrap_or_default().join(" "),
-        env: env_str,
-        max_clients: svc.config.max_active_clients.unwrap_or(5).to_string(),
-        log_level: svc
-            .config
-            .log_level
-            .clone()
-            .unwrap_or_else(|| "info".into()),
-        tray: svc.config.tray.unwrap_or(false),
-        dirty: false,
-    }
-}
-
-pub fn service_from_form(form: &FormState) -> ServerConfig {
-    let args_vec: Vec<String> = form
-        .args
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
-
-    let env_map: HashMap<String, String> = form
-        .env
-        .split_whitespace()
-        .filter_map(|pair| {
-            let mut parts = pair.splitn(2, '=');
-            match (parts.next(), parts.next()) {
-                (Some(k), Some(v)) if !k.is_empty() => Some((k.to_string(), v.to_string())),
-                _ => None,
-            }
-        })
-        .collect();
-
-    let env = if env_map.is_empty() {
-        None
-    } else {
-        Some(env_map)
-    };
-
-    ServerConfig {
-        socket: Some(form.socket.clone()),
-        cmd: Some(form.cmd.clone()),
-        args: Some(args_vec),
-        env,
-        max_active_clients: form.max_clients.trim().parse().ok(),
-        tray: Some(form.tray),
-        service_name: Some(form.service_name.clone()),
-        log_level: Some(form.log_level.clone()),
-        lazy_start: Some(false),
-        max_request_bytes: Some(1_048_576),
-        request_timeout_ms: Some(30_000),
-        restart_backoff_ms: Some(1_000),
-        restart_backoff_max_ms: Some(30_000),
-        max_restarts: Some(5),
-        status_file: None,
-        heartbeat_interval_ms: Some(30_000),
-        heartbeat_timeout_ms: Some(30_000),
-        heartbeat_max_failures: Some(3),
-        heartbeat_enabled: Some(true),
     }
 }
 
@@ -644,8 +480,7 @@ mod tests {
                 enabled: None,
             }],
         };
-        let merged = merge_services(std::slice::from_ref(&scan));
-        let entries = services_from_merge(std::slice::from_ref(&scan), &merged);
+        let entries = build_services_from_scans(std::slice::from_ref(&scan));
         assert_eq!(entries.len(), 1);
         match &entries[0].source {
             ServiceSource::Client { kind, path } => {

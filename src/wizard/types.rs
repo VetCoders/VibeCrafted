@@ -1,85 +1,113 @@
 //! Type definitions for the wizard module.
+//!
+//! v0.4.0 5-step flow:
+//!
+//! 1. **DiscoverySources** — pick which client config files to scan, plus
+//!    optional custom paths.
+//! 2. **ServerReview** — per-client tree of discovered servers, dedup count,
+//!    conflict hints. Read-only.
+//! 3. **StrategyChoice** — Unified vs Per-client vs Auto-rewire (DANGER).
+//! 4. **SummaryConfirm** — preview of what will be written and to where,
+//!    then Confirm / Back / Cancel.
+//! 5. **ResultAndTray** — show what was actually done, per-client setup
+//!    snippets, and offer to start a tray daemon now.
 
 use std::path::PathBuf;
 
 use crate::config::ServerConfig;
-use crate::scan::{Confidence, ConfigSchema, HostFormat, HostKind};
+use crate::scan::{HostFile, HostKind};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Enums
+// Wizard flow
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Wizard step in the four-step flow
+/// Wizard step in the five-step flow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WizardStep {
-    /// Step 1: Detect and select MCP servers
-    ServerSelection,
-    /// Step 2: Detect and select MCP clients (hosts)
-    ClientSelection,
-    /// Step 3: Final confirmation and save options
-    Confirmation,
-    /// Step 4: Health check - verify configuration works
-    HealthCheck,
+    /// Step 1: Choose which client config files to scan, optional custom paths.
+    DiscoverySources,
+    /// Step 2: Read-only review of discovered servers, grouped by client.
+    ServerReview,
+    /// Step 3: Pick the strategy (Unified / Per-client / Auto-rewire).
+    StrategyChoice,
+    /// Step 4: Preview what will happen, confirm or go back.
+    SummaryConfirm,
+    /// Step 5: Show the result and offer to start the tray daemon.
+    ResultAndTray,
 }
 
-/// Choice for the health check step
+/// Strategy on STEP 3. Drives what STEP 4 previews and STEP 5 reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HealthCheckChoice {
-    /// Configuration verified, exit wizard
-    Ok,
-    /// Re-run detection and try again
-    TryAgain,
+pub enum Strategy {
+    /// One unified mux config under `~/.config/mux/{config.toml, mcp.json, mcp.toml}`.
+    /// Every selected server, deduplicated. Recommended.
+    Unified,
+    /// Separate per-client mux configs under `~/.config/mux/<client>.{json,toml}`,
+    /// only that client's servers. Native format per client.
+    PerClient,
+    /// `[DANGER]` Auto-rewire existing client configs in-place to route
+    /// through `rust-mux-proxy`. Backup-first, preview-first, rollback-ready.
+    AutoRewire,
 }
 
-/// Action queued by a confirm-dialog choice that needs to run *outside* the
-/// raw-mode TUI loop (e.g. anything that prints to stdout or asks for typed
-/// confirmation on a normal terminal).
+/// Action chosen on STEP 4 (SummaryConfirm).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SummaryAction {
+    Confirm,
+    Back,
+    Cancel,
+}
+
+/// Tray daemon prompt on STEP 5.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayChoice {
+    /// Spawn `rust-mux --tray --multi-service` in the background detached
+    /// from this terminal.
+    StartNow,
+    /// Skip the tray daemon, exit cleanly.
+    No,
+}
+
+/// Action queued by an in-step Enter handler that needs to run *outside* the
+/// raw-mode TUI loop (anything that prints to stdout, prompts via stdin, or
+/// spawns a long-running detached process).
 ///
-/// `keys.rs` sets this and exits the loop; `wizard/mod.rs::run_tui` drains
-/// it after restoring the cooked terminal.
+/// `keys.rs` sets this and exits the loop; `wizard/mod.rs::run_tui` drains it
+/// after restoring the cooked terminal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PendingAction {
-    SafeGenerate,
-    DangerAutoConfigure,
+    /// Strategy::Unified — write `~/.config/mux/{config.toml, mcp.json, mcp.toml}`.
+    GenerateUnified,
+    /// Strategy::PerClient — write per-kind native files in `~/.config/mux/`.
+    GeneratePerClient,
+    /// Strategy::AutoRewire — backup-first preview-first rewrite of existing
+    /// client configs to route through `rust-mux-proxy`.
+    AutoRewire,
+    /// Spawn the tray daemon detached; runs after the strategy result is
+    /// printed.
+    StartTrayDaemon,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Field {
-    ServiceName,
-    Socket,
-    Cmd,
-    Args,
-    Env,
-    MaxClients,
-    LogLevel,
-    Tray,
+/// Source of a `ServiceEntry`. Drives UI labels and dedup decisions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServiceSource {
+    /// Discovered inside a known MCP client config file.
+    Client { kind: HostKind, path: PathBuf },
+    /// User-provided custom config file (--import-config or wizard custom
+    /// path input).
+    Custom { path: PathBuf },
+    /// Detected as a running process but not present in any scanned config.
+    DetectedRunning,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Panel {
-    ServiceList,
-    Editor,
-    ConfirmDialog,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfirmChoice {
-    /// Safe path: write `~/.config/mux/{config.toml,mcp.json,mcp.toml}` and
-    /// print per-client setup commands. Existing client configs are left
-    /// untouched.
-    SafeGenerate,
-    /// Save mux daemon config only (legacy `~/.codex/mcp-mux.toml` flow).
-    SaveMuxOnly,
-    /// Copy mux config to clipboard.
-    CopyToClipboard,
-    /// `[DANGER]` automatically rewrite known MCP server blocks in existing
-    /// client configs to point at `rust-mux-proxy`. Backup-first,
-    /// preview-first, explicit-confirmation-only.
-    DangerAutoConfigure,
-    /// Go back to the previous step.
-    Back,
-    /// Exit without saving.
-    Exit,
+impl ServiceSource {
+    pub fn short_label(&self) -> String {
+        match self {
+            ServiceSource::Client { kind, .. } => kind.as_label().to_string(),
+            ServiceSource::Custom { .. } => "custom".into(),
+            ServiceSource::DetectedRunning => "running".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,209 +117,102 @@ pub enum HealthStatus {
     Unhealthy,
 }
 
-/// Where a `ServiceEntry` came from. Drives UI labels, dedup decisions,
-/// and which strategy options apply (e.g. only `Client` entries can be
-/// auto-rewired in the `[DANGER]` flow).
+// ─────────────────────────────────────────────────────────────────────────────
+// Source-step state (STEP 1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Status of a discovery source after we tried to read it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ServiceSource {
-    /// Discovered inside a known MCP client config file (Claude / Codex /
-    /// Junie / Gemini / ...).
-    Client { kind: HostKind, path: PathBuf },
-    /// Loaded from the rust-mux daemon config (legacy `~/.codex/mcp-mux.toml`
-    /// or whatever was passed via `--config`).
-    MuxConfig,
-    /// User-provided custom config file (--import-config or wizard custom
-    /// path input).
-    // Why: variant is constructed by `services::load_services_from_custom_path`
-    // and rendered by ui.rs::draw_service_list, but the wizard step that
-    // *triggers* that load (custom path input field) lands in the next
-    // commit (5-step flow rebuild).
-    #[allow(dead_code)]
-    Custom { path: PathBuf },
-    /// Detected as a running process but not present in any scanned config
-    /// (rare; populated only when ps-scan enrichment finds an orphan).
-    DetectedRunning,
+pub enum SourceStatus {
+    /// File present and parsed cleanly.
+    Ok { servers_found: usize },
+    /// File present but contained no MCP server entries.
+    Empty,
+    /// File present but failed to parse — `details` carries the error.
+    InvalidFormat { details: String },
+    /// File not present on disk.
+    Missing,
 }
 
-// Why: helper methods used by the 5-step UI rebuild that lands in the next
-// commit (STEP 2 server review per-client header, STEP 3 strategy gating).
-#[allow(dead_code)]
-impl ServiceSource {
-    /// Short label for UI list rendering.
+impl SourceStatus {
     pub fn short_label(&self) -> String {
         match self {
-            ServiceSource::Client { kind, .. } => kind.as_label().to_string(),
-            ServiceSource::MuxConfig => "mux".into(),
-            ServiceSource::Custom { .. } => "custom".into(),
-            ServiceSource::DetectedRunning => "running".into(),
+            SourceStatus::Ok { servers_found } => format!("{servers_found} servers"),
+            SourceStatus::Empty => "empty".into(),
+            SourceStatus::InvalidFormat { .. } => "invalid".into(),
+            SourceStatus::Missing => "not found".into(),
         }
-    }
-
-    /// Path the entry was loaded from, when applicable.
-    pub fn path(&self) -> Option<&std::path::Path> {
-        match self {
-            ServiceSource::Client { path, .. } | ServiceSource::Custom { path } => {
-                Some(path.as_path())
-            }
-            _ => None,
-        }
-    }
-
-    /// `true` when this entry comes from a real client config (used to gate
-    /// the `[DANGER]` auto-rewrite eligibility check).
-    pub fn is_client(&self) -> bool {
-        matches!(self, ServiceSource::Client { .. })
     }
 }
 
+/// One row on STEP 1: a candidate source the operator can include or skip.
+#[derive(Debug, Clone)]
+pub struct SourceEntry {
+    pub host_file: HostFile,
+    pub status: SourceStatus,
+    /// Whether the operator wants this source included.
+    pub selected: bool,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Structs
+// Service-review state (STEP 2)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// One service entry surfaced in STEP 2. Always selected by default; the
+/// operator can untick to drop it from the mux output.
 #[derive(Debug, Clone)]
 pub struct ServiceEntry {
     pub name: String,
     pub config: ServerConfig,
     pub health: HealthStatus,
-    pub dirty: bool,
     pub source: ServiceSource,
-    /// PID of running process (if detected)
+    /// PID of running process (set by ps-scan enrichment).
     pub pid: Option<u32>,
-    /// Whether this server is selected for inclusion in mux config
+    /// Whether this server is selected for inclusion in mux config.
     pub selected: bool,
 }
 
-/// Represents a detected MCP client (host application)
-#[derive(Debug, Clone)]
-pub struct ClientEntry {
-    /// Host kind (Codex, Claude, ClaudeDesktop, Junie, Gemini, ...)
-    pub kind: HostKind,
-    /// Path to the client's config file
-    pub config_path: PathBuf,
-    /// Wire format of the file (json/toml).
-    pub format: HostFormat,
-    /// Logical schema inside the file.
-    pub schema: ConfigSchema,
-    /// Discovery confidence — informs the UI label and filtering.
-    pub confidence: Confidence,
-    /// Whether this client is selected for rewiring
-    pub selected: bool,
-    /// Services defined in this client's config
-    pub services: Vec<String>,
-    /// Whether the client is already rewired to use rust-mux
-    pub already_rewired: bool,
-    /// Whether the config file exists (client may be installed but without MCP config)
-    pub config_exists: bool,
-    /// Whether this client is eligible for the [DANGER] auto-rewrite flow.
-    pub eligible_for_danger: bool,
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// AppState — the wizard's working set
+// ─────────────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
-pub struct FormState {
-    pub service_name: String,
-    pub socket: String,
-    pub cmd: String,
-    pub args: String,
-    pub env: String,
-    pub max_clients: String,
-    pub log_level: String,
-    pub tray: bool,
-    pub dirty: bool,
-}
-
-impl Default for FormState {
-    fn default() -> Self {
-        Self {
-            service_name: String::new(),
-            socket: String::new(),
-            cmd: "npx".into(),
-            args: "@modelcontextprotocol/server-memory".into(),
-            env: String::new(),
-            max_clients: "5".into(),
-            log_level: "info".into(),
-            tray: false,
-            dirty: false,
-        }
-    }
+/// Editing the custom-path input field on STEP 1.
+#[derive(Debug, Clone, Default)]
+pub struct CustomPathInput {
+    pub buffer: String,
+    /// Whether we are currently in raw-keystroke editing of the buffer.
+    pub editing: bool,
+    /// Latest validation message ("file not found", "parsed N servers", ...)
+    pub status: Option<String>,
 }
 
 pub struct AppState {
-    /// Current wizard step
+    /// Current wizard step.
     pub wizard_step: WizardStep,
-    /// Path to mux config file
+    /// Path to mux config file (for the legacy mux-only persist path).
     pub config_path: PathBuf,
-    /// Detected/configured MCP servers
+    /// Discovery sources surfaced on STEP 1.
+    pub sources: Vec<SourceEntry>,
+    /// Currently highlighted source on STEP 1.
+    pub selected_source: usize,
+    /// Custom-path input on STEP 1.
+    pub custom_path: CustomPathInput,
+    /// All discovered services (computed when leaving STEP 1).
     pub services: Vec<ServiceEntry>,
-    /// Currently highlighted server in list
+    /// Currently highlighted service on STEP 2.
     pub selected_service: usize,
-    /// Detected MCP clients (hosts)
-    pub clients: Vec<ClientEntry>,
-    /// Currently highlighted client in list
-    pub selected_client: usize,
-    /// Form state for editing
-    pub form: FormState,
-    pub current_field: Field,
-    pub editing: Option<Field>,
-    pub active_panel: Panel,
-    pub confirm_choice: ConfirmChoice,
-    /// Health check step choice
-    pub health_choice: HealthCheckChoice,
+    /// STEP 3 strategy radio.
+    pub strategy: Strategy,
+    /// STEP 4 confirm choice.
+    pub summary_action: SummaryAction,
+    /// STEP 5 tray prompt.
+    pub tray_choice: TrayChoice,
+    /// Status bar message.
     pub message: String,
     pub dry_run: bool,
-    /// Action to perform after the TUI loop exits and the terminal has
-    /// been restored to cooked mode (used for `[DANGER]` and the
-    /// safe-path generator that prints to stdout).
+    /// Action to perform after the TUI loop exits and the terminal is back
+    /// to cooked mode.
     pub pending_action: Option<PendingAction>,
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Navigation helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn previous_field(current: Field) -> Field {
-    match current {
-        Field::ServiceName => Field::Tray,
-        Field::Socket => Field::ServiceName,
-        Field::Cmd => Field::Socket,
-        Field::Args => Field::Cmd,
-        Field::Env => Field::Args,
-        Field::MaxClients => Field::Env,
-        Field::LogLevel => Field::MaxClients,
-        Field::Tray => Field::LogLevel,
-    }
-}
-
-pub fn next_field(current: Field) -> Field {
-    match current {
-        Field::ServiceName => Field::Socket,
-        Field::Socket => Field::Cmd,
-        Field::Cmd => Field::Args,
-        Field::Args => Field::Env,
-        Field::Env => Field::MaxClients,
-        Field::MaxClients => Field::LogLevel,
-        Field::LogLevel => Field::Tray,
-        Field::Tray => Field::ServiceName,
-    }
-}
-
-pub fn previous_confirm_choice(current: ConfirmChoice) -> ConfirmChoice {
-    match current {
-        ConfirmChoice::SafeGenerate => ConfirmChoice::Exit,
-        ConfirmChoice::SaveMuxOnly => ConfirmChoice::SafeGenerate,
-        ConfirmChoice::CopyToClipboard => ConfirmChoice::SaveMuxOnly,
-        ConfirmChoice::DangerAutoConfigure => ConfirmChoice::CopyToClipboard,
-        ConfirmChoice::Back => ConfirmChoice::DangerAutoConfigure,
-        ConfirmChoice::Exit => ConfirmChoice::Back,
-    }
-}
-
-pub fn next_confirm_choice(current: ConfirmChoice) -> ConfirmChoice {
-    match current {
-        ConfirmChoice::SafeGenerate => ConfirmChoice::SaveMuxOnly,
-        ConfirmChoice::SaveMuxOnly => ConfirmChoice::CopyToClipboard,
-        ConfirmChoice::CopyToClipboard => ConfirmChoice::DangerAutoConfigure,
-        ConfirmChoice::DangerAutoConfigure => ConfirmChoice::Back,
-        ConfirmChoice::Back => ConfirmChoice::Exit,
-        ConfirmChoice::Exit => ConfirmChoice::SafeGenerate,
-    }
+    /// Free-text result that STEP 5 displays after the strategy ran.
+    pub strategy_result: Option<String>,
 }

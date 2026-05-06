@@ -1,524 +1,323 @@
-//! Key handling logic for the wizard TUI.
+//! Key handling for the 5-step wizard flow.
+
+use std::path::PathBuf;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 
-use super::clients::detect_clients;
-use super::persist::execute_confirm_choice;
-use super::services::{check_health, default_server_config, form_from_service, service_from_form};
+use super::services::{build_services_from_scans, check_health, enrich_running_state};
 use super::types::{
-    AppState, ConfirmChoice, Field, HealthCheckChoice, HealthStatus, Panel, PendingAction,
-    ServiceEntry, ServiceSource, WizardStep, next_confirm_choice, next_field,
-    previous_confirm_choice, previous_field,
+    AppState, PendingAction, SourceEntry, SourceStatus, Strategy, SummaryAction, TrayChoice,
+    WizardStep,
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main key handler
-// ─────────────────────────────────────────────────────────────────────────────
-
+/// Top-level key dispatcher. Returns `Ok(true)` to break the TUI loop.
 pub fn handle_key(app: &mut AppState, key: KeyEvent) -> Result<bool> {
-    // Handle confirm dialog separately
-    if app.active_panel == Panel::ConfirmDialog {
-        return handle_confirm_dialog_key(app, key);
+    match app.wizard_step {
+        WizardStep::DiscoverySources => handle_step1(app, key),
+        WizardStep::ServerReview => handle_step2(app, key),
+        WizardStep::StrategyChoice => handle_step3(app, key),
+        WizardStep::SummaryConfirm => handle_step4(app, key),
+        WizardStep::ResultAndTray => handle_step5(app, key),
     }
-
-    let is_ctrl_s = key.modifiers.contains(KeyModifiers::CONTROL)
-        && matches!(key.code, KeyCode::Char('s') | KeyCode::Char('S'));
-    let is_plain_s = matches!(key.code, KeyCode::Char('s') | KeyCode::Char('S'))
-        && app.editing.is_none()
-        && app.active_panel != Panel::Editor;
-    let is_save = is_ctrl_s || is_plain_s;
-
-    match key.code {
-        // Quit (only when not editing)
-        KeyCode::Char('q') if app.editing.is_none() => {
-            return Ok(true);
-        }
-
-        // Save -> open confirm dialog
-        _ if is_save => {
-            // First sync form to service
-            sync_form_to_service(app);
-            app.active_panel = Panel::ConfirmDialog;
-            app.confirm_choice = ConfirmChoice::SafeGenerate;
-            app.message = "Use arrows to select, Enter to confirm".into();
-        }
-
-        // Tab to switch panels
-        KeyCode::Tab if app.editing.is_none() => {
-            app.active_panel = match app.active_panel {
-                Panel::ServiceList => Panel::Editor,
-                Panel::Editor => Panel::ServiceList,
-                Panel::ConfirmDialog => Panel::ConfirmDialog,
-            };
-            update_message(app);
-        }
-
-        KeyCode::BackTab if app.editing.is_none() => {
-            app.active_panel = match app.active_panel {
-                Panel::ServiceList => Panel::Editor,
-                Panel::Editor => Panel::ServiceList,
-                Panel::ConfirmDialog => Panel::ConfirmDialog,
-            };
-            update_message(app);
-        }
-
-        // Navigation
-        KeyCode::Up if app.editing.is_none() => {
-            match (app.wizard_step, app.active_panel) {
-                (WizardStep::ServerSelection, Panel::ServiceList) if app.selected_service > 0 => {
-                    sync_form_to_service(app);
-                    app.selected_service -= 1;
-                    load_service_to_form(app);
-                }
-                (WizardStep::ServerSelection, Panel::Editor) => {
-                    app.current_field = previous_field(app.current_field);
-                }
-                (WizardStep::ClientSelection, Panel::ServiceList) if app.selected_client > 0 => {
-                    app.selected_client -= 1;
-                }
-                (WizardStep::Confirmation, _) => {
-                    // Navigate through save options
-                    app.confirm_choice = previous_confirm_choice(app.confirm_choice);
-                }
-                (WizardStep::HealthCheck, _) => {
-                    // Toggle between Ok and TryAgain
-                    app.health_choice = match app.health_choice {
-                        HealthCheckChoice::Ok => HealthCheckChoice::TryAgain,
-                        HealthCheckChoice::TryAgain => HealthCheckChoice::Ok,
-                    };
-                }
-                _ => {}
-            }
-        }
-
-        KeyCode::Down if app.editing.is_none() => {
-            match (app.wizard_step, app.active_panel) {
-                (WizardStep::ServerSelection, Panel::ServiceList)
-                    if app.selected_service < app.services.len().saturating_sub(1) =>
-                {
-                    sync_form_to_service(app);
-                    app.selected_service += 1;
-                    load_service_to_form(app);
-                }
-                (WizardStep::ServerSelection, Panel::Editor) => {
-                    app.current_field = next_field(app.current_field);
-                }
-                (WizardStep::ClientSelection, Panel::ServiceList)
-                    if app.selected_client < app.clients.len().saturating_sub(1) =>
-                {
-                    app.selected_client += 1;
-                }
-                (WizardStep::Confirmation, _) => {
-                    // Navigate through save options
-                    app.confirm_choice = next_confirm_choice(app.confirm_choice);
-                }
-                (WizardStep::HealthCheck, _) => {
-                    // Toggle between Ok and TryAgain
-                    app.health_choice = match app.health_choice {
-                        HealthCheckChoice::Ok => HealthCheckChoice::TryAgain,
-                        HealthCheckChoice::TryAgain => HealthCheckChoice::Ok,
-                    };
-                }
-                _ => {}
-            }
-        }
-
-        // Enter
-        KeyCode::Enter => {
-            match (app.wizard_step, app.active_panel) {
-                (WizardStep::ServerSelection, Panel::ServiceList) => {
-                    // Switch to editor panel
-                    app.active_panel = Panel::Editor;
-                    update_message(app);
-                }
-                (WizardStep::ServerSelection, Panel::Editor)
-                    if app.current_field == Field::Tray =>
-                {
-                    app.form.tray = !app.form.tray;
-                    app.form.dirty = true;
-                }
-                (WizardStep::ServerSelection, Panel::Editor) => {
-                    app.editing = Some(app.current_field);
-                    app.message = "Editing... Esc to finish".into();
-                }
-                (WizardStep::ClientSelection, Panel::ServiceList)
-                    if app.selected_client < app.clients.len() =>
-                {
-                    // Toggle client selection on Enter as well
-                    app.clients[app.selected_client].selected =
-                        !app.clients[app.selected_client].selected;
-                    update_step2_message(app);
-                }
-                (WizardStep::Confirmation, _) => {
-                    // Execute the selected action
-                    return execute_confirm_choice(app);
-                }
-                (WizardStep::HealthCheck, _) => {
-                    // Execute health check choice
-                    return execute_health_check_choice(app);
-                }
-                _ => {}
-            }
-        }
-
-        // Space toggles selection (in ServiceList for both steps) or tray (in Editor)
-        KeyCode::Char(' ') => {
-            match (app.wizard_step, app.active_panel) {
-                (WizardStep::ServerSelection, Panel::ServiceList)
-                    if app.selected_service < app.services.len() =>
-                {
-                    // Toggle selection for current server
-                    app.services[app.selected_service].selected =
-                        !app.services[app.selected_service].selected;
-                    let selected_count = app.services.iter().filter(|s| s.selected).count();
-                    app.message = format!(
-                        "STEP 1: {} servers selected | Space: toggle | Tab: edit | n: next step",
-                        selected_count
-                    );
-                }
-                (WizardStep::ServerSelection, Panel::Editor)
-                    if app.current_field == Field::Tray =>
-                {
-                    app.form.tray = !app.form.tray;
-                    app.form.dirty = true;
-                }
-                (WizardStep::ClientSelection, Panel::ServiceList)
-                    if app.selected_client < app.clients.len() =>
-                {
-                    // Toggle selection for current client
-                    app.clients[app.selected_client].selected =
-                        !app.clients[app.selected_client].selected;
-                    update_step2_message(app);
-                }
-                _ => {}
-            }
-        }
-
-        // Escape
-        KeyCode::Esc if app.editing.is_some() => {
-            app.editing = None;
-            update_message(app);
-        }
-
-        // Next step with 'n' key
-        KeyCode::Char('n') if app.editing.is_none() => {
-            match app.wizard_step {
-                WizardStep::ServerSelection => {
-                    // Check if any servers are selected
-                    let selected_count = app.services.iter().filter(|s| s.selected).count();
-                    if selected_count == 0 {
-                        app.message =
-                            "Please select at least one server (use Space to toggle)".into();
-                    } else {
-                        // Move to step 2: Client Selection
-                        sync_form_to_service(app);
-                        app.wizard_step = WizardStep::ClientSelection;
-                        app.clients = detect_clients();
-                        app.selected_client = 0;
-                        app.active_panel = Panel::ServiceList;
-                        let client_count = app.clients.len();
-                        app.message = format!(
-                            "STEP 2: Client Detection - {} clients found | Space: toggle | n: next step | p: previous",
-                            client_count
-                        );
-                    }
-                }
-                WizardStep::ClientSelection => {
-                    // Move to step 3: Confirmation
-                    app.wizard_step = WizardStep::Confirmation;
-                    app.active_panel = Panel::ConfirmDialog;
-                    app.confirm_choice = ConfirmChoice::SafeGenerate;
-                    app.message = "STEP 3: Confirm - Select action and press Enter".into();
-                }
-                WizardStep::Confirmation => {
-                    // Already at confirmation, do nothing
-                }
-                WizardStep::HealthCheck => {
-                    // Already at last step, do nothing
-                }
-            }
-        }
-
-        // Previous step with 'p' key
-        KeyCode::Char('p') if app.editing.is_none() => {
-            match app.wizard_step {
-                WizardStep::ServerSelection => {
-                    // Already at first step, do nothing
-                }
-                WizardStep::ClientSelection => {
-                    // Go back to step 1
-                    app.wizard_step = WizardStep::ServerSelection;
-                    app.active_panel = Panel::ServiceList;
-                    let selected_count = app.services.iter().filter(|s| s.selected).count();
-                    app.message = format!(
-                        "STEP 1: Server Detection - {} servers selected | Space: toggle | n: next step",
-                        selected_count
-                    );
-                }
-                WizardStep::Confirmation => {
-                    // Go back to step 2
-                    app.wizard_step = WizardStep::ClientSelection;
-                    app.active_panel = Panel::ServiceList;
-                    let client_count = app.clients.len();
-                    app.message = format!(
-                        "STEP 2: Client Detection - {} clients found | Space: toggle | n: next step | p: previous",
-                        client_count
-                    );
-                }
-                WizardStep::HealthCheck => {
-                    // Go back to step 3
-                    app.wizard_step = WizardStep::Confirmation;
-                    app.active_panel = Panel::ConfirmDialog;
-                    app.confirm_choice = ConfirmChoice::SafeGenerate;
-                    app.message = "STEP 3: Confirm - Select action and press Enter".into();
-                }
-            }
-        }
-
-        // Add new service with 'a' key
-        KeyCode::Char('a')
-            if app.editing.is_none()
-                && app.active_panel == Panel::ServiceList
-                && app.wizard_step == WizardStep::ServerSelection =>
-        {
-            let new_name = format!("new-service-{}", app.services.len() + 1);
-            app.services.push(ServiceEntry {
-                name: new_name,
-                config: default_server_config(),
-                health: HealthStatus::Unknown,
-                dirty: true,
-                source: ServiceSource::MuxConfig,
-                pid: None,
-                selected: true,
-            });
-            app.selected_service = app.services.len() - 1;
-            load_service_to_form(app);
-            app.message = "New service added. Edit in the right panel.".into();
-        }
-
-        // Refresh health with 'r' key (must be before general Char(c) handler)
-        KeyCode::Char('r') if app.editing.is_none() => {
-            for svc in &mut app.services {
-                svc.health = check_health(&svc.config);
-            }
-            app.message = "Health checks refreshed".into();
-        }
-
-        // Backspace in edit mode
-        KeyCode::Backspace => {
-            if let Some(field) = app.editing {
-                mutate_field(&mut app.form, field, |s| {
-                    s.pop();
-                });
-            }
-        }
-
-        // Character input in edit mode (must be last among Char handlers)
-        KeyCode::Char(c) => {
-            if let Some(field) = app.editing {
-                mutate_field(&mut app.form, field, |s| s.push(c));
-            }
-        }
-
-        _ => {}
-    }
-
-    Ok(false)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Confirm dialog key handler
+// STEP 1: Discovery sources
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn handle_confirm_dialog_key(app: &mut AppState, key: KeyEvent) -> Result<bool> {
-    let choices = [
-        ConfirmChoice::SafeGenerate,
-        ConfirmChoice::SaveMuxOnly,
-        ConfirmChoice::CopyToClipboard,
-        ConfirmChoice::DangerAutoConfigure,
-        ConfirmChoice::Back,
-        ConfirmChoice::Exit,
-    ];
-    let current_idx = choices
+fn handle_step1(app: &mut AppState, key: KeyEvent) -> Result<bool> {
+    // While editing the custom path, every keystroke goes into the buffer.
+    if app.custom_path.editing {
+        match key.code {
+            KeyCode::Esc => {
+                app.custom_path.editing = false;
+                update_step1_message(app);
+            }
+            KeyCode::Enter => {
+                let path = std::mem::take(&mut app.custom_path.buffer);
+                app.custom_path.editing = false;
+                if path.trim().is_empty() {
+                    app.custom_path.status = Some("Path was empty.".into());
+                } else {
+                    add_custom_source(app, &path);
+                }
+                update_step1_message(app);
+            }
+            KeyCode::Backspace => {
+                app.custom_path.buffer.pop();
+            }
+            KeyCode::Char(c) => {
+                app.custom_path.buffer.push(c);
+            }
+            _ => {}
+        }
+        return Ok(false);
+    }
+
+    match key.code {
+        KeyCode::Char('q') => return Ok(true),
+        KeyCode::Char('i') => {
+            app.custom_path.editing = true;
+            app.message = "Editing custom path… type a path, Enter to add, Esc to cancel.".into();
+        }
+        KeyCode::Up if app.selected_source > 0 => {
+            app.selected_source -= 1;
+        }
+        KeyCode::Down if app.selected_source + 1 < app.sources.len() => {
+            app.selected_source += 1;
+        }
+        KeyCode::Char(' ') if !app.sources.is_empty() => {
+            let idx = app.selected_source.min(app.sources.len() - 1);
+            app.sources[idx].selected = !app.sources[idx].selected;
+            update_step1_message(app);
+        }
+        KeyCode::Char('n') | KeyCode::Enter | KeyCode::Right => {
+            advance_to_step2(app);
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn add_custom_source(app: &mut AppState, raw_path: &str) {
+    let expanded = crate::config::expand_path(raw_path);
+    let path = PathBuf::from(&expanded);
+    let host_file = crate::scan::host_file_from_custom_path(&path);
+    let status = if !path.exists() {
+        SourceStatus::Missing
+    } else {
+        match crate::scan::scan_host_file(&host_file) {
+            Ok(scan) if scan.services.is_empty() => SourceStatus::Empty,
+            Ok(scan) => SourceStatus::Ok {
+                servers_found: scan.services.len(),
+            },
+            Err(err) => SourceStatus::InvalidFormat {
+                details: err.to_string(),
+            },
+        }
+    };
+    app.custom_path.status = Some(format!(
+        "Added {}: {}",
+        host_file.path.display(),
+        status.short_label()
+    ));
+    app.sources.push(SourceEntry {
+        host_file,
+        status,
+        selected: true,
+    });
+    app.selected_source = app.sources.len() - 1;
+}
+
+fn update_step1_message(app: &mut AppState) {
+    if app.custom_path.editing {
+        app.message = "Editing custom path… type a path, Enter to add, Esc to cancel.".into();
+        return;
+    }
+    let selected = app.sources.iter().filter(|s| s.selected).count();
+    let total = app.sources.len();
+    app.message = format!(
+        "STEP 1: {selected}/{total} sources selected | Space toggle | i custom path | n next | q quit"
+    );
+}
+
+fn advance_to_step2(app: &mut AppState) {
+    let scans: Vec<_> = app
+        .sources
         .iter()
-        .position(|c| *c == app.confirm_choice)
-        .unwrap_or(0);
+        .filter(|s| s.selected && matches!(s.status, SourceStatus::Ok { .. }))
+        .filter_map(|s| crate::scan::scan_host_file(&s.host_file).ok())
+        .collect();
 
+    let mut services = build_services_from_scans(&scans);
+    enrich_running_state(&mut services);
+
+    // Cheap health checks on entries with sockets, so STEP 2 has badge data
+    // available if a future view turns the column on.
+    for svc in &mut services {
+        svc.health = check_health(&svc.config);
+    }
+
+    app.services = services;
+    app.selected_service = 0;
+    app.wizard_step = WizardStep::ServerReview;
+    update_step2_message(app);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 2: Server review
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn handle_step2(app: &mut AppState, key: KeyEvent) -> Result<bool> {
     match key.code {
-        KeyCode::Left | KeyCode::Up => {
-            let new_idx = if current_idx == 0 {
-                choices.len() - 1
+        KeyCode::Char('q') => return Ok(true),
+        KeyCode::Up if app.selected_service > 0 => {
+            app.selected_service -= 1;
+        }
+        KeyCode::Down if app.selected_service + 1 < app.services.len() => {
+            app.selected_service += 1;
+        }
+        KeyCode::Char(' ') if !app.services.is_empty() => {
+            let idx = app.selected_service.min(app.services.len() - 1);
+            app.services[idx].selected = !app.services[idx].selected;
+            update_step2_message(app);
+        }
+        KeyCode::Char('n') | KeyCode::Right | KeyCode::Enter => {
+            if app.services.iter().filter(|s| s.selected).count() == 0 {
+                app.message = "Select at least one server (Space) before continuing.".into();
             } else {
-                current_idx - 1
-            };
-            app.confirm_choice = choices[new_idx];
+                app.wizard_step = WizardStep::StrategyChoice;
+                update_step3_message(app);
+            }
         }
-        KeyCode::Right | KeyCode::Down => {
-            let new_idx = (current_idx + 1) % choices.len();
-            app.confirm_choice = choices[new_idx];
-        }
-        KeyCode::Enter => match app.confirm_choice {
-            ConfirmChoice::SafeGenerate => {
-                // Defer to the post-loop drain so prints land on cooked stdout.
-                app.pending_action = Some(PendingAction::SafeGenerate);
-                return Ok(true);
-            }
-            ConfirmChoice::SaveMuxOnly => {
-                if !app.dry_run {
-                    super::persist::persist_all(app)?;
-                }
-                app.message = if app.dry_run {
-                    "Dry run: mux config would be saved. Exiting...".into()
-                } else {
-                    "Mux configuration saved!".into()
-                };
-                return Ok(true);
-            }
-            ConfirmChoice::CopyToClipboard => {
-                use std::io::Write;
-                let cfg = super::persist::build_config_for_export(app);
-                if let Ok(text) = toml::to_string_pretty(&cfg) {
-                    if let Ok(mut child) = std::process::Command::new("pbcopy")
-                        .stdin(std::process::Stdio::piped())
-                        .spawn()
-                    {
-                        if let Some(mut stdin) = child.stdin.take() {
-                            let _ = stdin.write_all(text.as_bytes());
-                        }
-                        let _ = child.wait();
-                        app.message = "Configuration copied to clipboard!".into();
-                    } else {
-                        app.message = "Failed to copy to clipboard (pbcopy not available)".into();
-                    }
-                } else {
-                    app.message = "Failed to serialize configuration".into();
-                }
-            }
-            ConfirmChoice::DangerAutoConfigure => {
-                // Defer to post-loop drain — needs to leave alt screen and
-                // run a normal-stdin confirmation prompt.
-                app.pending_action = Some(PendingAction::DangerAutoConfigure);
-                return Ok(true);
-            }
-            ConfirmChoice::Back => {
-                app.active_panel = Panel::Editor;
-                update_message(app);
-            }
-            ConfirmChoice::Exit => {
-                return Ok(true);
-            }
-        },
-        KeyCode::Esc => {
-            app.active_panel = Panel::Editor;
-            update_message(app);
+        KeyCode::Char('p') | KeyCode::Left => {
+            app.wizard_step = WizardStep::DiscoverySources;
+            update_step1_message(app);
         }
         _ => {}
     }
     Ok(false)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Health check choice handler
-// ─────────────────────────────────────────────────────────────────────────────
-
-fn execute_health_check_choice(app: &mut AppState) -> Result<bool> {
-    match app.health_choice {
-        HealthCheckChoice::Ok => {
-            // Configuration verified, exit wizard
-            app.message = "Configuration verified successfully! Exiting...".into();
-            Ok(true)
-        }
-        HealthCheckChoice::TryAgain => {
-            // Re-run detection and go back to step 1
-            use super::services::load_all_services;
-
-            // Reload services from config and detect running processes
-            if let Ok(services) = load_all_services(&app.config_path) {
-                app.services = services;
-            }
-
-            // Run health checks on all services
-            for svc in &mut app.services {
-                svc.health = check_health(&svc.config);
-            }
-
-            // Clear clients (will be re-detected in step 2)
-            app.clients.clear();
-            app.selected_client = 0;
-
-            // Reset to step 1
-            app.wizard_step = WizardStep::ServerSelection;
-            app.selected_service = 0;
-            app.active_panel = Panel::ServiceList;
-            app.health_choice = HealthCheckChoice::Ok;
-
-            if !app.services.is_empty() {
-                load_service_to_form(app);
-            }
-
-            let selected_count = app.services.iter().filter(|s| s.selected).count();
-            app.message = format!(
-                "STEP 1: Server Detection (retry) - {} servers | Space: toggle | n: next step",
-                selected_count
-            );
-
-            Ok(false)
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper functions
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn sync_form_to_service(app: &mut AppState) {
-    if app.form.dirty {
-        let idx = app.selected_service;
-        if idx < app.services.len() {
-            app.services[idx].name = app.form.service_name.clone();
-            app.services[idx].config = service_from_form(&app.form);
-            app.services[idx].dirty = true;
-        }
-        app.form.dirty = false;
-    }
-}
-
-pub fn load_service_to_form(app: &mut AppState) {
-    let idx = app.selected_service;
-    if idx < app.services.len() {
-        app.form = form_from_service(&app.services[idx]);
-    }
-}
-
-pub fn update_message(app: &mut AppState) {
-    app.message = match app.active_panel {
-        Panel::ServiceList => "Tab: switch | Up/Down: select | Enter: edit | n: new | r: refresh health | s: save | q: quit".into(),
-        Panel::Editor => "Tab: switch | Up/Down: navigate | Enter: edit field | Space: toggle tray | Esc: stop edit | s: save".into(),
-        Panel::ConfirmDialog => "Left/Right: select | Enter: confirm | Esc: cancel".into(),
-    };
-}
-
-fn mutate_field<F: FnOnce(&mut String)>(form: &mut super::types::FormState, field: Field, f: F) {
-    let target = match field {
-        Field::ServiceName => &mut form.service_name,
-        Field::Socket => &mut form.socket,
-        Field::Cmd => &mut form.cmd,
-        Field::Args => &mut form.args,
-        Field::Env => &mut form.env,
-        Field::MaxClients => &mut form.max_clients,
-        Field::LogLevel => &mut form.log_level,
-        Field::Tray => return,
-    };
-    f(target);
-    form.dirty = true;
 }
 
 fn update_step2_message(app: &mut AppState) {
-    let selected_count = app.clients.iter().filter(|c| c.selected).count();
-    let total_count = app.clients.len();
+    let selected = app.services.iter().filter(|s| s.selected).count();
     app.message = format!(
-        "STEP 2: {} of {} clients selected | Space: toggle | n: next step | p: previous",
-        selected_count, total_count
+        "STEP 2: {selected}/{} servers selected | Space toggle | n next | p prev | q quit",
+        app.services.len()
     );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 3: Strategy
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn handle_step3(app: &mut AppState, key: KeyEvent) -> Result<bool> {
+    let order = [Strategy::Unified, Strategy::PerClient, Strategy::AutoRewire];
+    let idx = order.iter().position(|s| *s == app.strategy).unwrap_or(0);
+    match key.code {
+        KeyCode::Char('q') => return Ok(true),
+        KeyCode::Up => {
+            if idx > 0 {
+                app.strategy = order[idx - 1];
+            }
+        }
+        KeyCode::Down => {
+            if idx + 1 < order.len() {
+                app.strategy = order[idx + 1];
+            }
+        }
+        KeyCode::Char('1') => app.strategy = Strategy::Unified,
+        KeyCode::Char('2') => app.strategy = Strategy::PerClient,
+        KeyCode::Char('3') => app.strategy = Strategy::AutoRewire,
+        KeyCode::Char('n') | KeyCode::Right | KeyCode::Enter => {
+            app.wizard_step = WizardStep::SummaryConfirm;
+            app.summary_action = SummaryAction::Confirm;
+            update_step4_message(app);
+        }
+        KeyCode::Char('p') | KeyCode::Left => {
+            app.wizard_step = WizardStep::ServerReview;
+            update_step2_message(app);
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn update_step3_message(app: &mut AppState) {
+    app.message = "STEP 3: Up/Down to choose strategy | 1/2/3 quick pick | n next | p prev".into();
+    let _ = app;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 4: Summary + confirm
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn handle_step4(app: &mut AppState, key: KeyEvent) -> Result<bool> {
+    let order = [
+        SummaryAction::Confirm,
+        SummaryAction::Back,
+        SummaryAction::Cancel,
+    ];
+    let idx = order
+        .iter()
+        .position(|a| *a == app.summary_action)
+        .unwrap_or(0);
+    match key.code {
+        KeyCode::Char('q') => return Ok(true),
+        KeyCode::Up => {
+            if idx > 0 {
+                app.summary_action = order[idx - 1];
+            }
+        }
+        KeyCode::Down => {
+            if idx + 1 < order.len() {
+                app.summary_action = order[idx + 1];
+            }
+        }
+        KeyCode::Char('p') | KeyCode::Left => {
+            app.wizard_step = WizardStep::StrategyChoice;
+            update_step3_message(app);
+        }
+        KeyCode::Enter => match app.summary_action {
+            SummaryAction::Confirm => {
+                queue_pending_for_strategy(app);
+                return Ok(true);
+            }
+            SummaryAction::Back => {
+                app.wizard_step = WizardStep::StrategyChoice;
+                update_step3_message(app);
+            }
+            SummaryAction::Cancel => return Ok(true),
+        },
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn update_step4_message(app: &mut AppState) {
+    app.message = "STEP 4: Up/Down to pick action | Enter to do it | p back | q quit".into();
+    let _ = app;
+}
+
+fn queue_pending_for_strategy(app: &mut AppState) {
+    app.pending_action = Some(match app.strategy {
+        Strategy::Unified => PendingAction::GenerateUnified,
+        Strategy::PerClient => PendingAction::GeneratePerClient,
+        Strategy::AutoRewire => PendingAction::AutoRewire,
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 5: Result + tray prompt
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn handle_step5(app: &mut AppState, key: KeyEvent) -> Result<bool> {
+    let order = [TrayChoice::StartNow, TrayChoice::No];
+    let idx = order
+        .iter()
+        .position(|t| *t == app.tray_choice)
+        .unwrap_or(0);
+    match key.code {
+        KeyCode::Char('q') => return Ok(true),
+        KeyCode::Up => {
+            if idx > 0 {
+                app.tray_choice = order[idx - 1];
+            }
+        }
+        KeyCode::Down => {
+            if idx + 1 < order.len() {
+                app.tray_choice = order[idx + 1];
+            }
+        }
+        KeyCode::Enter => match app.tray_choice {
+            TrayChoice::StartNow => {
+                app.pending_action = Some(PendingAction::StartTrayDaemon);
+                return Ok(true);
+            }
+            TrayChoice::No => return Ok(true),
+        },
+        _ => {}
+    }
+    Ok(false)
 }

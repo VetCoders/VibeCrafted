@@ -1,35 +1,51 @@
-//! Persistence and export functions for the wizard.
+//! Persistence and export functions for the 5-step wizard.
 //!
-//! Three flows live here:
-//! - **Safe path** (`run_safe_generate`): build `~/.config/mux/{config.toml,
-//!   mcp.json, mcp.toml}` and print per-client setup instructions. Never
-//!   touches existing client configs.
-//! - **Mux-only persist** (`persist_all`): legacy save-to-`~/.codex/mcp-mux.toml`.
-//! - **Danger path** (`run_danger_auto_configure`): build a
-//!   [`crate::danger::DangerPlan`], leave the alternate screen so the user
-//!   sees the full preview, prompt for an explicit `CONFIRM` token, and
-//!   only then mutate files.
+//! Three strategies live here, plus the tray-daemon launcher:
+//!
+//! - `run_unified_generate` — Strategy::Unified — write
+//!   `~/.config/mux/{config.toml, mcp.json, mcp.toml}` plus per-client
+//!   setup snippets.
+//! - `run_per_client_generate` — Strategy::PerClient — one mux config file
+//!   per originating client kind, in that client's native format. Daemon
+//!   `config.toml` still merged across every selected source.
+//! - `run_danger_auto_configure` — Strategy::AutoRewire — backup-first
+//!   preview-first rewrite of the user's existing client configs.
+//! - `start_tray_daemon` — spawns `rust-mux --tray --multi-service` detached
+//!   (STEP 5 "Yes — start now").
 
 use std::io::{Write, stdin, stdout};
+use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
 
-use crate::config::{Config, expand_path, safe_copy};
+use crate::config::expand_path;
 use crate::danger::{
     DangerStatus, execute_plan, format_preview, plan_danger_rewrite, rollback_commands,
 };
 use crate::mux_gen::{
-    build_mux_outputs, default_mux_dir, safe_path_instructions, write_mux_outputs,
+    build_mux_outputs, build_per_client_outputs, default_mux_dir, per_client_instructions,
+    safe_path_instructions, write_mux_outputs, write_per_client_outputs,
 };
-use crate::scan::{HostFile, MergeOutcome};
+use crate::scan::{HostFile, MergeOutcome, ScanResult, scan_host_file};
 
-use super::types::{AppState, ConfirmChoice, HealthCheckChoice, Panel, WizardStep};
+use super::types::{AppState, SourceStatus};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Build a MergeOutcome for the safe / danger flows from the wizard's selected
-// services and selected clients.
+// Build helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Re-scan the operator's selected sources so the strategies see the same
+/// services they had on STEP 2.
+fn selected_scans(app: &AppState) -> Vec<ScanResult> {
+    app.sources
+        .iter()
+        .filter(|s| s.selected && matches!(s.status, SourceStatus::Ok { .. }))
+        .filter_map(|s| scan_host_file(&s.host_file).ok())
+        .collect()
+}
+
+/// Build a [`MergeOutcome`] from the operator's STEP 2 selection, restricted
+/// to entries the operator left ticked.
 fn build_merge_from_services(app: &AppState) -> MergeOutcome {
     use crate::scan::HostService;
     let mut services = Vec::new();
@@ -52,41 +68,26 @@ fn build_merge_from_services(app: &AppState) -> MergeOutcome {
     }
 }
 
-fn build_host_files_from_clients(app: &AppState) -> Vec<HostFile> {
-    app.clients
+/// Selected sources, restricted to those eligible for the danger flow.
+fn danger_eligible_sources(app: &AppState) -> Vec<HostFile> {
+    app.sources
         .iter()
-        .filter(|c| c.selected && c.config_exists)
-        .map(|c| HostFile {
-            kind: c.kind,
-            path: c.config_path.clone(),
-            format: c.format,
-            schema: c.schema,
-            confidence: c.confidence,
-            writable: true,
-            eligible_for_danger: c.eligible_for_danger,
+        .filter(|s| {
+            s.selected
+                && matches!(s.status, SourceStatus::Ok { .. })
+                && s.host_file.eligible_for_danger
         })
+        .map(|s| s.host_file.clone())
         .collect()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Config building (legacy mux-only persist target)
+// Strategy::Unified
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn build_config_for_export(app: &AppState) -> Config {
-    let mut cfg = Config::default();
-    for svc in &app.services {
-        if svc.selected {
-            cfg.servers.insert(svc.name.clone(), svc.config.clone());
-        }
-    }
-    cfg
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Safe path: write `~/.config/mux/{config.toml,mcp.json,mcp.toml}`
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn run_safe_generate(app: &AppState) -> Result<String> {
+/// Write `~/.config/mux/{config.toml, mcp.json, mcp.toml}` and return the
+/// human-readable summary that STEP 5 will display.
+pub fn run_unified_generate(app: &AppState) -> Result<String> {
     let merge = build_merge_from_services(app);
     if merge.services.is_empty() {
         return Ok("No services selected — nothing generated.".into());
@@ -95,81 +96,145 @@ pub fn run_safe_generate(app: &AppState) -> Result<String> {
     let outputs = build_mux_outputs(&merge, &mux_dir, "rust-mux-proxy", &[])?;
 
     if app.dry_run {
-        let mut summary = String::new();
-        summary.push_str(&format!(
-            "(dry-run) Would generate mux configs under {}:\n",
-            outputs.mux_dir.display()
+        return Ok(format!(
+            "(dry-run) Would generate:\n  - {}\n  - {}\n  - {}\nPer-client setup commands would be printed on completion.",
+            outputs.config_toml_path.display(),
+            outputs.mcp_json_path.display(),
+            outputs.mcp_toml_path.display()
         ));
-        summary.push_str(&format!("  - {}\n", outputs.config_toml_path.display()));
-        summary.push_str(&format!("  - {}\n", outputs.mcp_json_path.display()));
-        summary.push_str(&format!("  - {}\n", outputs.mcp_toml_path.display()));
-        summary.push_str("Per-client commands would be printed on completion.");
-        return Ok(summary);
     }
 
     write_mux_outputs(&outputs)?;
 
-    // Print instructions to stdout (visible after the wizard exits its
-    // alternate screen). Keep the in-TUI message short.
-    println!();
-    println!(
-        "✅ rust-mux config generated at {}",
+    let mut summary = String::new();
+    summary.push_str(&format!(
+        "Wrote rust-mux config under {}:\n",
         outputs.mux_dir.display()
-    );
-    println!("   • Daemon truth : {}", outputs.config_toml_path.display());
-    println!("   • Client JSON  : {}", outputs.mcp_json_path.display());
-    println!("   • Client TOML  : {}", outputs.mcp_toml_path.display());
-    println!();
-    println!("Start the mux:");
-    println!(
-        "   rust-mux --config {}",
+    ));
+    summary.push_str(&format!(
+        "  - {} (daemon truth)\n",
         outputs.config_toml_path.display()
-    );
-    println!();
-    println!("Per-client setup instructions:");
+    ));
+    summary.push_str(&format!(
+        "  - {} (client JSON)\n",
+        outputs.mcp_json_path.display()
+    ));
+    summary.push_str(&format!(
+        "  - {} (client TOML)\n",
+        outputs.mcp_toml_path.display()
+    ));
+    summary.push('\n');
+    summary.push_str(&format!(
+        "Start the mux:\n  rust-mux --config {}\n\n",
+        outputs.config_toml_path.display()
+    ));
+    summary.push_str("Use it from your AI clients:\n");
     for inst in safe_path_instructions(&outputs) {
-        println!("• {} ({})", inst.headline, inst.kind.as_label());
+        summary.push_str(&format!("• {} ({})\n", inst.headline, inst.kind.as_label()));
         for cmd in &inst.commands {
-            println!("    {cmd}");
+            summary.push_str(&format!("    {cmd}\n"));
         }
-        println!("    note: {}", inst.note);
-        println!();
+        summary.push_str(&format!("    note: {}\n\n", inst.note));
     }
     if !outputs.conflicts.is_empty() {
-        println!(
-            "⚠️  {} server-name conflict(s) surfaced — review the config.toml entries.",
+        summary.push_str(&format!(
+            "⚠️  {} server-name conflict(s) surfaced — review the config.toml entries.\n",
             outputs.conflicts.len()
-        );
-        println!();
+        ));
     }
-
-    Ok(format!(
-        "Generated {} mux files at {} ({} services)",
-        3,
-        outputs.mux_dir.display(),
-        outputs.services.len()
-    ))
+    Ok(summary)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Danger path: rewrite existing client configs.
+// Strategy::PerClient
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Danger flow. Caller is responsible for leaving the TUI's alternate
-/// screen and disabling raw mode before invoking this; the `_unused_sink`
-/// argument is here only so `wizard/mod.rs` can keep a single signature
-/// across pending actions if it later needs a real writer.
-pub fn run_danger_auto_configure<W: std::io::Write>(
-    app: &AppState,
-    _unused_sink: &mut W,
-) -> Result<String> {
+/// Write per-client mux config files plus a shared daemon `config.toml`.
+pub fn run_per_client_generate(app: &AppState) -> Result<String> {
+    let scans = selected_scans(app);
+    if scans.is_empty() {
+        return Ok("No selected sources parsed cleanly — nothing generated.".into());
+    }
+    let mux_dir = default_mux_dir();
+    let outputs = build_per_client_outputs(&scans, &mux_dir, "rust-mux-proxy", &[])?;
+
+    if app.dry_run {
+        let mut s = format!(
+            "(dry-run) Would write under {}:\n",
+            outputs.mux_dir.display()
+        );
+        s.push_str(&format!(
+            "  - {} (daemon truth)\n",
+            outputs.config_toml_path.display()
+        ));
+        for client in &outputs.clients {
+            s.push_str(&format!(
+                "  - {} ({} servers)\n",
+                client.path.display(),
+                client.services.len()
+            ));
+        }
+        return Ok(s);
+    }
+
+    write_per_client_outputs(&outputs)?;
+
+    let mut summary = String::new();
+    summary.push_str(&format!(
+        "Wrote rust-mux per-client configs under {}:\n",
+        outputs.mux_dir.display()
+    ));
+    summary.push_str(&format!(
+        "  - {} (daemon truth, {} unique servers)\n",
+        outputs.config_toml_path.display(),
+        outputs.total_services
+    ));
+    for client in &outputs.clients {
+        summary.push_str(&format!(
+            "  - {} ({} servers)\n",
+            client.path.display(),
+            client.services.len()
+        ));
+    }
+    summary.push('\n');
+    summary.push_str(&format!(
+        "Start the mux:\n  rust-mux --config {}\n\n",
+        outputs.config_toml_path.display()
+    ));
+    summary.push_str("Use the per-client mux files from each AI client:\n");
+    for inst in per_client_instructions(&outputs) {
+        summary.push_str(&format!("• {} ({})\n", inst.headline, inst.kind.as_label()));
+        for cmd in &inst.commands {
+            summary.push_str(&format!("    {cmd}\n"));
+        }
+        summary.push_str(&format!("    note: {}\n\n", inst.note));
+    }
+    if !outputs.conflicts.is_empty() {
+        summary.push_str(&format!(
+            "⚠️  {} server-name conflict(s) surfaced across clients — daemon config kept the variants apart with -from-<kind> suffixes.\n",
+            outputs.conflicts.len()
+        ));
+    }
+    Ok(summary)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Strategy::AutoRewire (DANGER)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Caller is responsible for leaving the TUI's alternate screen and disabling
+/// raw mode before invoking this; the function uses cooked stdin/stdout for
+/// the explicit `CONFIRM` prompt.
+pub fn run_danger_auto_configure(app: &AppState) -> Result<String> {
     let merge = build_merge_from_services(app);
     if merge.services.is_empty() {
         return Ok("No services selected — danger flow has nothing to do.".into());
     }
-    let sources = build_host_files_from_clients(app);
+    let sources = danger_eligible_sources(app);
     if sources.is_empty() {
-        return Ok("No selected clients have an existing config; nothing to rewrite.".into());
+        return Ok(
+            "No selected sources are eligible for danger rewrite (or none parsed cleanly).".into(),
+        );
     }
 
     let plan = plan_danger_rewrite(
@@ -251,124 +316,48 @@ pub fn run_danger_auto_configure<W: std::io::Write>(
     }
 
     Ok(format!(
-        "Danger flow applied to {written} file(s); see terminal for details."
+        "Auto-rewire applied to {written} file(s); see terminal for details and rollback commands."
     ))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Legacy mux-only persistence (writes to AppState.config_path).
+// Tray daemon launcher (STEP 5 "Yes — start now")
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn persist_all(app: &AppState) -> Result<()> {
-    let expanded_path = expand_path(app.config_path.to_string_lossy());
-
-    if let Some(parent) = expanded_path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", parent.display()))?;
+/// Spawn `rust-mux --tray --multi-service` detached from this terminal so the
+/// wizard exit doesn't kill the daemon. Returns a short summary line.
+pub fn start_tray_daemon(app: &AppState) -> Result<String> {
+    if app.dry_run {
+        return Ok("(dry-run) tray daemon would be started in the background.".into());
     }
 
-    let mut cfg = Config::default();
-    for svc in &app.services {
-        cfg.servers.insert(svc.name.clone(), svc.config.clone());
-    }
-
-    let serialized = match expanded_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "json" => serde_json::to_string_pretty(&cfg)?,
-        "yaml" | "yml" => serde_yaml::to_string(&cfg)?,
-        _ => toml::to_string_pretty(&cfg)?,
+    // Pick the most useful config target: prefer the freshly generated mux
+    // config.toml, fall back to the wizard's --config argument.
+    let mux_config = default_mux_dir().join("config.toml");
+    let config_arg = if mux_config.exists() {
+        mux_config
+    } else {
+        app.config_path.clone()
     };
 
-    if expanded_path.exists() {
-        let backup_path = expanded_path.with_extension("bak");
-        safe_copy(&expanded_path, &backup_path)?;
-    }
+    let mut cmd = Command::new("rust-mux");
+    cmd.arg("--tray")
+        .arg("--config")
+        .arg(&config_arg)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 
-    std::fs::write(&expanded_path, serialized)
-        .with_context(|| format!("failed to write {}", expanded_path.display()))?;
-
-    Ok(())
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Confirm choice execution (called from the in-step Enter handler)
-//
-// Note: the alt-screen-leave dance for the danger flow happens inside
-// `run_danger_auto_configure`. The UI handler in `keys.rs` calls into this
-// function only for the choices that stay inside the TUI; danger is
-// dispatched separately so the borrow on the terminal can be threaded in.
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn execute_confirm_choice(app: &mut AppState) -> Result<bool> {
-    match app.confirm_choice {
-        ConfirmChoice::SafeGenerate => {
-            let summary = run_safe_generate(app)?;
-            app.message = summary;
-            app.wizard_step = WizardStep::HealthCheck;
-            app.active_panel = Panel::ServiceList;
-            app.health_choice = HealthCheckChoice::Ok;
-            Ok(false)
-        }
-        ConfirmChoice::SaveMuxOnly => {
-            if !app.dry_run {
-                persist_all(app)?;
-            }
-            app.wizard_step = WizardStep::HealthCheck;
-            app.active_panel = Panel::ServiceList;
-            app.health_choice = HealthCheckChoice::Ok;
-            app.message = if app.dry_run {
-                "STEP 4: Health Check (dry-run) — mux config would have been saved.".into()
-            } else {
-                "STEP 4: Health Check — mux config saved.".into()
-            };
-            Ok(false)
-        }
-        ConfirmChoice::CopyToClipboard => {
-            let cfg = build_config_for_export(app);
-            if let Ok(text) = toml::to_string_pretty(&cfg) {
-                if let Ok(mut child) = std::process::Command::new("pbcopy")
-                    .stdin(std::process::Stdio::piped())
-                    .spawn()
-                {
-                    if let Some(mut stdin) = child.stdin.take() {
-                        let _ = stdin.write_all(text.as_bytes());
-                    }
-                    let _ = child.wait();
-                    app.message = "Configuration copied to clipboard!".into();
-                } else {
-                    app.message = "Failed to copy to clipboard (pbcopy not available)".into();
-                }
-            } else {
-                app.message = "Failed to serialize configuration".into();
-            }
-            Ok(false)
-        }
-        ConfirmChoice::DangerAutoConfigure => {
-            // Dispatched from `keys.rs` which has access to the terminal.
-            // Reaching this branch means the caller forgot to special-case
-            // it: surface a clear error so we never silently no-op on a
-            // dangerous path.
-            Err(anyhow::anyhow!(
-                "DangerAutoConfigure must be dispatched via keys.rs, not execute_confirm_choice"
-            ))
-        }
-        ConfirmChoice::Back => {
-            app.wizard_step = WizardStep::ClientSelection;
-            app.active_panel = Panel::ServiceList;
-            let selected_count = app.clients.iter().filter(|c| c.selected).count();
-            let total_count = app.clients.len();
-            app.message = format!(
-                "STEP 2: {} of {} clients selected | Space: toggle | n: next step | p: previous",
-                selected_count, total_count
-            );
-            Ok(false)
-        }
-        ConfirmChoice::Exit => Ok(true),
+    match cmd.spawn() {
+        Ok(child) => Ok(format!(
+            "Started tray daemon (pid {}) using config {}",
+            child.id(),
+            config_arg.display()
+        )),
+        Err(err) => Ok(format!(
+            "Could not start tray daemon: {err}. Run manually: rust-mux --tray --config {}",
+            config_arg.display()
+        )),
     }
 }
 
@@ -376,17 +365,19 @@ pub fn execute_confirm_choice(app: &mut AppState) -> Result<bool> {
 mod tests {
     use super::*;
     use crate::config::ServerConfig;
-    use crate::wizard::types::FormState;
     use crate::wizard::types::{
-        AppState, ConfirmChoice, Field, HealthCheckChoice, HealthStatus, Panel, ServiceEntry,
-        ServiceSource, WizardStep,
+        AppState, CustomPathInput, ServiceEntry, ServiceSource, Strategy, SummaryAction,
+        TrayChoice, WizardStep,
     };
     use tempfile::tempdir;
 
     fn make_app(tmp: &std::path::Path) -> AppState {
         AppState {
-            wizard_step: WizardStep::Confirmation,
+            wizard_step: WizardStep::SummaryConfirm,
             config_path: tmp.join("mcp-mux.toml"),
+            sources: Vec::new(),
+            selected_source: 0,
+            custom_path: CustomPathInput::default(),
             services: vec![ServiceEntry {
                 name: "memory".into(),
                 config: ServerConfig {
@@ -414,56 +405,73 @@ mod tests {
                     heartbeat_max_failures: Some(3),
                     heartbeat_enabled: Some(true),
                 },
-                health: HealthStatus::Unknown,
-                dirty: false,
-                source: ServiceSource::MuxConfig,
+                health: super::super::types::HealthStatus::Unknown,
+                source: ServiceSource::Custom {
+                    path: tmp.join("custom.json"),
+                },
                 pid: None,
                 selected: true,
             }],
             selected_service: 0,
-            clients: Vec::new(),
-            selected_client: 0,
-            form: FormState::default(),
-            current_field: Field::ServiceName,
-            editing: None,
-            active_panel: Panel::ConfirmDialog,
-            confirm_choice: ConfirmChoice::SafeGenerate,
-            health_choice: HealthCheckChoice::Ok,
+            strategy: Strategy::Unified,
+            summary_action: SummaryAction::Confirm,
+            tray_choice: TrayChoice::No,
             message: String::new(),
             dry_run: false,
             pending_action: None,
+            strategy_result: None,
         }
     }
 
     #[test]
-    fn safe_generate_dry_run_does_not_write_files() {
+    fn unified_dry_run_does_not_write_files() {
         let dir = tempdir().expect("tempdir");
         let mut app = make_app(dir.path());
         app.dry_run = true;
-        // override mux dir indirectly by HOME isn't easy here — we accept the
-        // real default path is computed; the dry-run branch must short-circuit
-        // before touching disk.
-        let summary = run_safe_generate(&app).expect("safe-gen dry");
-        assert!(summary.contains("dry-run") || summary.contains("Would"));
+        let summary = run_unified_generate(&app).expect("unified dry");
+        assert!(
+            summary.contains("dry-run") || summary.contains("Would"),
+            "summary should announce dry-run: {summary}"
+        );
     }
 
     #[test]
-    fn safe_generate_with_no_services_selected_is_noop() {
+    fn unified_with_no_services_selected_is_noop() {
         let dir = tempdir().expect("tempdir");
         let mut app = make_app(dir.path());
         app.services[0].selected = false;
-        let summary = run_safe_generate(&app).expect("safe-gen empty");
+        let summary = run_unified_generate(&app).expect("unified empty");
         assert!(summary.contains("No services"));
     }
 
     #[test]
-    fn execute_confirm_safe_generate_routes_to_health_check_in_dry_run() {
+    fn per_client_with_no_sources_is_noop() {
+        let dir = tempdir().expect("tempdir");
+        let app = make_app(dir.path());
+        let summary = run_per_client_generate(&app).expect("per-client empty");
+        assert!(
+            summary.contains("No selected sources") || summary.contains("nothing generated"),
+            "summary: {summary}"
+        );
+    }
+
+    #[test]
+    fn danger_with_no_sources_is_noop() {
+        let dir = tempdir().expect("tempdir");
+        let app = make_app(dir.path());
+        let summary = run_danger_auto_configure(&app).expect("danger empty");
+        assert!(
+            summary.contains("eligible") || summary.contains("nothing"),
+            "summary: {summary}"
+        );
+    }
+
+    #[test]
+    fn start_tray_daemon_dry_run_short_circuits() {
         let dir = tempdir().expect("tempdir");
         let mut app = make_app(dir.path());
         app.dry_run = true;
-        app.confirm_choice = ConfirmChoice::SafeGenerate;
-        let exit = execute_confirm_choice(&mut app).expect("safe gen confirm");
-        assert!(!exit);
-        assert_eq!(app.wizard_step, WizardStep::HealthCheck);
+        let summary = start_tray_daemon(&app).expect("tray dry");
+        assert!(summary.contains("dry-run"));
     }
 }

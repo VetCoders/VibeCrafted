@@ -24,7 +24,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 use crate::config::{Config, ServerConfig, expand_path};
-use crate::scan::{ConflictReport, HostKind, HostService, MergeOutcome};
+use crate::scan::{ConflictReport, HostFormat, HostKind, HostService, MergeOutcome, ScanResult};
 
 /// Default mux directory, expanded from `~/.config/mux`.
 pub fn default_mux_dir() -> PathBuf {
@@ -333,6 +333,210 @@ fn build_client_toml(
     }
     ClientTomlRoot {
         mcp_servers: servers,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-client outputs (Strategy::PerClient)
+//
+// Instead of one unified mcp.{json,toml}, write one mux config file per
+// originating client kind, in that client's native format. The mux daemon
+// config (`config.toml`) still holds a single deduplicated view, because
+// the daemon must know every upstream server.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PerClientFile {
+    pub kind: HostKind,
+    pub path: PathBuf,
+    pub format: HostFormat,
+    pub contents: String,
+    pub services: Vec<HostService>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PerClientOutputs {
+    pub mux_dir: PathBuf,
+    pub socket_dir: PathBuf,
+    pub config_toml_path: PathBuf,
+    pub config_toml: String,
+    pub clients: Vec<PerClientFile>,
+    pub total_services: usize,
+    pub conflicts: Vec<ConflictReport>,
+}
+
+/// Build one mux config file per originating client kind. Each file lists
+/// only the services from that scan (no cross-client dedup). The daemon
+/// `config.toml` is still merged across every selected scan so the running
+/// mux can reach every upstream server.
+pub fn build_per_client_outputs(
+    scans: &[ScanResult],
+    mux_dir: &Path,
+    proxy_cmd: &str,
+    proxy_args: &[String],
+) -> Result<PerClientOutputs> {
+    let socket_dir = default_socket_dir(mux_dir);
+
+    // Daemon truth: union of every service we plan to multiplex.
+    let merged = crate::scan::merge_services(scans);
+    let daemon_cfg = build_daemon_config(&merged.services, &socket_dir);
+    let config_toml =
+        toml::to_string_pretty(&daemon_cfg).context("serialize daemon config.toml")?;
+
+    // One file per originating kind.
+    let mut clients = Vec::with_capacity(scans.len());
+    for scan in scans {
+        if scan.services.is_empty() {
+            continue;
+        }
+        let (filename, format, contents) =
+            client_native_payload(scan, &socket_dir, proxy_cmd, proxy_args)?;
+        clients.push(PerClientFile {
+            kind: scan.host.kind,
+            path: mux_dir.join(filename),
+            format,
+            contents,
+            services: scan.services.clone(),
+        });
+    }
+
+    Ok(PerClientOutputs {
+        mux_dir: mux_dir.to_path_buf(),
+        socket_dir,
+        config_toml_path: mux_dir.join("config.toml"),
+        config_toml,
+        clients,
+        total_services: merged.services.len(),
+        conflicts: merged.conflicts,
+    })
+}
+
+/// Write the daemon `config.toml` and every per-client file from
+/// [`build_per_client_outputs`] to disk.
+pub fn write_per_client_outputs(outputs: &PerClientOutputs) -> Result<Vec<PathBuf>> {
+    fs::create_dir_all(&outputs.mux_dir).with_context(|| {
+        format!(
+            "failed to create mux directory {}",
+            outputs.mux_dir.display()
+        )
+    })?;
+    fs::create_dir_all(&outputs.socket_dir).with_context(|| {
+        format!(
+            "failed to create socket directory {}",
+            outputs.socket_dir.display()
+        )
+    })?;
+
+    fs::write(&outputs.config_toml_path, &outputs.config_toml)
+        .with_context(|| format!("failed to write {}", outputs.config_toml_path.display()))?;
+
+    let mut written = vec![outputs.config_toml_path.clone()];
+    for client in &outputs.clients {
+        fs::write(&client.path, &client.contents)
+            .with_context(|| format!("failed to write {}", client.path.display()))?;
+        written.push(client.path.clone());
+    }
+    Ok(written)
+}
+
+/// Per-client startup snippet for [`PerClientOutputs`]. Same `ClientInstruction`
+/// shape as the unified flow, but each entry points at its own native file.
+pub fn per_client_instructions(outputs: &PerClientOutputs) -> Vec<ClientInstruction> {
+    outputs
+        .clients
+        .iter()
+        .map(|c| {
+            let path = c.path.display().to_string();
+            let (headline, commands, note) = match c.kind {
+                HostKind::Claude => (
+                    "Claude Code (per-client mux config)".to_string(),
+                    vec![format!(
+                        "claude --strict-mcp-config --mcp-config \"{path}\""
+                    )],
+                    "Strict mode keeps Claude on the mux config only.".to_string(),
+                ),
+                HostKind::ClaudeDesktop => (
+                    "Claude Desktop (per-client mux config)".to_string(),
+                    vec![format!(
+                        "Replace the `mcpServers` block in ~/Library/Application Support/Claude/claude_desktop_config.json with the contents of {path}"
+                    )],
+                    "Claude Desktop has no strict-config flag; either swap by hand or use the [DANGER] strategy.".to_string(),
+                ),
+                HostKind::Codex => (
+                    "Codex CLI (per-client mux config)".to_string(),
+                    vec![
+                        "# Codex has no flag that swaps the entire config file.".to_string(),
+                        format!("# Merge the [mcp_servers] block from {path} into ~/.codex/config.toml,"),
+                        "# or run `codex mcp add` for each entry pointing at rust-mux-proxy.".to_string(),
+                    ],
+                    "There is no verified Codex flag for an alternative MCP config file.".to_string(),
+                ),
+                HostKind::Junie => (
+                    "Junie (per-client mux config)".to_string(),
+                    vec![format!("junie --mcp-location \"{path}\"")],
+                    "Junie supports `--mcp-location` for an alternative MCP file.".to_string(),
+                ),
+                HostKind::Gemini => (
+                    "Gemini CLI (per-client mux config)".to_string(),
+                    gemini_mcp_add_commands(&c.services, &outputs.socket_dir),
+                    "Gemini has no strict-config flag; use `gemini mcp add` per server.".to_string(),
+                ),
+                HostKind::Cursor | HostKind::VSCode | HostKind::JetBrains => (
+                    format!("{} (per-client mux config)", c.kind.display_name()),
+                    vec![format!(
+                        "Merge the `mcpServers` block from {path} into the editor's MCP settings."
+                    )],
+                    "These editors load MCP from their settings file; the mux file is provided as a drop-in snippet."
+                        .to_string(),
+                ),
+                HostKind::Custom | HostKind::Unknown => (
+                    format!("{} (per-client mux config)", c.kind.display_name()),
+                    vec![format!("Use {path} according to your client's MCP config conventions.")],
+                    "Unknown client: refer to the application's MCP setup documentation."
+                        .to_string(),
+                ),
+            };
+            ClientInstruction {
+                kind: c.kind,
+                headline,
+                commands,
+                note,
+            }
+        })
+        .collect()
+}
+
+/// Pick a filename + format + serialised contents for a per-client mux file.
+fn client_native_payload(
+    scan: &ScanResult,
+    socket_dir: &Path,
+    proxy_cmd: &str,
+    proxy_args: &[String],
+) -> Result<(String, HostFormat, String)> {
+    match scan.host.kind {
+        HostKind::Codex => {
+            let body = build_client_toml(&scan.services, socket_dir, proxy_cmd, proxy_args);
+            let text =
+                toml::to_string_pretty(&body).context("serialize codex per-client mux file")?;
+            Ok(("codex.toml".into(), HostFormat::Toml, text))
+        }
+        // Every other kind takes JSON with `mcpServers`. ClaudeDesktop and
+        // Cursor/VSCode/JetBrains all consume that shape.
+        HostKind::Claude
+        | HostKind::ClaudeDesktop
+        | HostKind::Junie
+        | HostKind::Gemini
+        | HostKind::Cursor
+        | HostKind::VSCode
+        | HostKind::JetBrains
+        | HostKind::Custom
+        | HostKind::Unknown => {
+            let body = build_client_json(&scan.services, socket_dir, proxy_cmd, proxy_args);
+            let text = serde_json::to_string_pretty(&body)
+                .context("serialize per-client mux JSON file")?;
+            let filename = format!("{}.json", scan.host.kind.as_label());
+            Ok((filename, HostFormat::Json, text))
+        }
     }
 }
 

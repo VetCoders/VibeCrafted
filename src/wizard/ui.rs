@@ -1,20 +1,20 @@
-//! UI drawing functions for the wizard TUI.
+//! UI drawing functions for the wizard TUI (5-step flow).
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 
 use crate::scan::HostKind;
 
 use super::types::{
-    AppState, ConfirmChoice, Field, HealthCheckChoice, HealthStatus, Panel, ServiceSource,
+    AppState, HealthStatus, ServiceSource, SourceStatus, Strategy, SummaryAction, TrayChoice,
     WizardStep,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main draw function
+// Top-level draw
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub fn draw_ui(f: &mut Frame, app: &AppState) {
@@ -22,18 +22,19 @@ pub fn draw_ui(f: &mut Frame, app: &AppState) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(3), // Title
-            Constraint::Min(10),   // Main area (two columns)
+            Constraint::Length(3), // Title bar
+            Constraint::Min(10),   // Body
             Constraint::Length(3), // Status bar
         ])
         .split(f.area());
 
-    // Title with step indicator
+    // Title bar
     let step_info = match app.wizard_step {
-        WizardStep::ServerSelection => "Step 1/4: Server Detection",
-        WizardStep::ClientSelection => "Step 2/4: Client Detection",
-        WizardStep::Confirmation => "Step 3/4: Confirmation",
-        WizardStep::HealthCheck => "Step 4/4: Health Check",
+        WizardStep::DiscoverySources => "Step 1/5: Discovery Sources",
+        WizardStep::ServerReview => "Step 2/5: Server Review",
+        WizardStep::StrategyChoice => "Step 3/5: Strategy Choice",
+        WizardStep::SummaryConfirm => "Step 4/5: Summary & Confirm",
+        WizardStep::ResultAndTray => "Step 5/5: Result & Tray Daemon",
     };
     let title = Paragraph::new(Line::from(vec![
         Span::styled(
@@ -45,33 +46,14 @@ pub fn draw_ui(f: &mut Frame, app: &AppState) {
     ]));
     f.render_widget(title, chunks[0]);
 
-    // Main area: two columns
-    let main_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(35), // Left: list
-            Constraint::Percentage(65), // Right: editor/details
-        ])
-        .split(chunks[1]);
-
-    // Draw appropriate content based on wizard step
+    // Body
+    let body = chunks[1];
     match app.wizard_step {
-        WizardStep::ServerSelection => {
-            draw_service_list(f, app, main_chunks[0]);
-            draw_editor(f, app, main_chunks[1]);
-        }
-        WizardStep::ClientSelection => {
-            draw_client_list(f, app, main_chunks[0]);
-            draw_client_details(f, app, main_chunks[1]);
-        }
-        WizardStep::Confirmation => {
-            draw_summary(f, app, main_chunks[0]);
-            draw_save_options(f, app, main_chunks[1]);
-        }
-        WizardStep::HealthCheck => {
-            draw_health_check_info(f, app, main_chunks[0]);
-            draw_health_check_options(f, app, main_chunks[1]);
-        }
+        WizardStep::DiscoverySources => draw_step1_sources(f, app, body),
+        WizardStep::ServerReview => draw_step2_review(f, app, body),
+        WizardStep::StrategyChoice => draw_step3_strategy(f, app, body),
+        WizardStep::SummaryConfirm => draw_step4_summary(f, app, body),
+        WizardStep::ResultAndTray => draw_step5_result(f, app, body),
     }
 
     // Status bar
@@ -86,764 +68,623 @@ pub fn draw_ui(f: &mut Frame, app: &AppState) {
         .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL).title("Status"));
     f.render_widget(status, chunks[2]);
-
-    // Draw confirm dialog if active
-    if app.active_panel == Panel::ConfirmDialog {
-        draw_confirm_dialog(f, app);
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Service list (Step 1)
+// STEP 1: Discovery sources
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn draw_service_list(f: &mut Frame, app: &AppState, area: Rect) {
-    let is_active =
-        app.active_panel == Panel::ServiceList && app.wizard_step == WizardStep::ServerSelection;
-    let border_style = if is_active {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+fn draw_step1_sources(f: &mut Frame, app: &AppState, area: Rect) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(area);
 
-    // Count services by source and selection for title
-    let selected_count = app.services.iter().filter(|s| s.selected).count();
-    let total_count = app.services.len();
-    let title = format!("STEP 1: Servers [{}/{}]", selected_count, total_count);
+    // Left: list of candidate sources.
+    let selected_count = app.sources.iter().filter(|s| s.selected).count();
+    let total_count = app.sources.len();
+    let title = format!("Sources [{}/{}]", selected_count, total_count);
 
     let items: Vec<ListItem> = app
-        .services
+        .sources
         .iter()
         .enumerate()
-        .map(|(i, svc)| {
-            // Selection checkbox
-            let checkbox = if svc.selected {
+        .map(|(i, src)| {
+            let checkbox = if src.selected {
                 Span::styled("[x] ", Style::default().fg(Color::Green))
             } else {
                 Span::styled("[ ] ", Style::default().fg(Color::DarkGray))
             };
-
-            // Source indicator: short tag derived from the entry's origin
-            // (`claude` / `codex` / `junie` / `gemini` / `mux` / `custom` / `run`).
-            let (tag_text, tag_color) = match &svc.source {
-                ServiceSource::Client { kind, .. } => {
-                    let color = match kind {
-                        HostKind::Claude | HostKind::ClaudeDesktop => Color::Yellow,
-                        HostKind::Codex => Color::Blue,
-                        HostKind::Junie => Color::Green,
-                        HostKind::Gemini => Color::Red,
-                        HostKind::Cursor => Color::Magenta,
-                        HostKind::VSCode => Color::Cyan,
-                        HostKind::JetBrains => Color::Green,
-                        HostKind::Custom | HostKind::Unknown => Color::DarkGray,
-                    };
-                    (kind.as_label().to_string(), color)
-                }
-                ServiceSource::MuxConfig => ("mux".into(), Color::Blue),
-                ServiceSource::Custom { .. } => ("custom".into(), Color::DarkGray),
-                ServiceSource::DetectedRunning => ("run".into(), Color::Magenta),
+            let kind_tag = Span::styled(
+                format!("[{:<14}]", src.host_file.kind.display_name()),
+                Style::default().fg(kind_color(src.host_file.kind)),
+            );
+            let path_span = Span::raw(src.host_file.path.display().to_string());
+            let status_color = match src.status {
+                SourceStatus::Ok { .. } => Color::Green,
+                SourceStatus::Empty => Color::DarkGray,
+                SourceStatus::InvalidFormat { .. } => Color::Red,
+                SourceStatus::Missing => Color::DarkGray,
             };
-            let source_indicator =
-                Span::styled(format!("[{tag_text}]"), Style::default().fg(tag_color));
-
-            // Health indicator
-            let health_indicator = match svc.health {
-                HealthStatus::Healthy => Span::styled(" ● ", Style::default().fg(Color::Green)),
-                HealthStatus::Unhealthy => Span::styled(" ● ", Style::default().fg(Color::Red)),
-                HealthStatus::Unknown => Span::styled(" ○ ", Style::default().fg(Color::DarkGray)),
-            };
-
-            let name_style = if i == app.selected_service {
-                if is_active {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                }
+            let status_span = Span::styled(
+                format!("  {}", src.status.short_label()),
+                Style::default().fg(status_color),
+            );
+            let highlight = if i == app.selected_source {
+                Span::styled(" ▶ ", Style::default().fg(Color::Yellow))
             } else {
-                Style::default()
-            };
-
-            let dirty_marker = if svc.dirty {
-                Span::styled(" *", Style::default().fg(Color::Yellow))
-            } else {
-                Span::raw("")
-            };
-
-            // Show PID for any entry that ps-scan enrichment matched.
-            let pid_info = match svc.pid {
-                Some(pid) => {
-                    Span::styled(format!(" ({})", pid), Style::default().fg(Color::DarkGray))
-                }
-                None => Span::raw(""),
+                Span::raw("   ")
             };
 
             ListItem::new(Line::from(vec![
+                highlight,
                 checkbox,
-                source_indicator,
-                health_indicator,
-                Span::styled(&svc.name, name_style),
-                dirty_marker,
-                pid_info,
+                kind_tag,
+                Span::raw(" "),
+                path_span,
+                status_span,
             ]))
         })
         .collect();
-
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(border_style)
+            .border_style(Style::default().fg(Color::Cyan))
             .title(title),
     );
+    f.render_widget(list, columns[0]);
 
-    f.render_widget(list, area);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Editor panel (Step 1)
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn draw_editor(f: &mut Frame, app: &AppState, area: Rect) {
-    let is_active = app.active_panel == Panel::Editor;
-    let border_style = if is_active {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-
-    let fields = vec![
-        (Field::ServiceName, "Service name", &app.form.service_name),
-        (Field::Socket, "Socket", &app.form.socket),
-        (Field::Cmd, "Command", &app.form.cmd),
-        (Field::Args, "Args", &app.form.args),
-        (Field::Env, "Env vars", &app.form.env),
-        (Field::MaxClients, "Max clients", &app.form.max_clients),
-        (Field::LogLevel, "Log level", &app.form.log_level),
+    // Right: custom-path input + key hints.
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "Add custom path",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
     ];
-
-    let mut lines: Vec<Line> = fields
-        .into_iter()
-        .map(|(field, label, value)| {
-            let label_style = Style::default().fg(Color::Cyan);
-            let val_style = if Some(field) == app.editing {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else if field == app.current_field && is_active {
-                Style::default().fg(Color::Green)
-            } else {
-                Style::default()
-            };
-
-            Line::from(vec![
-                Span::styled(format!("{label:<14}"), label_style),
-                Span::styled(value.clone(), val_style),
-            ])
-        })
-        .collect();
-
-    // Tray field
-    let tray_label = if app.form.tray { "true" } else { "false" };
-    let tray_style = if Some(Field::Tray) == app.editing {
+    let buf_style = if app.custom_path.editing {
         Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD)
-    } else if app.current_field == Field::Tray && is_active {
-        Style::default().fg(Color::Green)
     } else {
         Style::default()
     };
-    lines.push(Line::from(vec![
-        Span::styled("Tray enabled  ", Style::default().fg(Color::Cyan)),
-        Span::styled(tray_label, tray_style),
-    ]));
-
-    let editor = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(border_style)
-            .title("Editor"),
-    );
-
-    f.render_widget(editor, area);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Client list (Step 2)
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn draw_client_list(f: &mut Frame, app: &AppState, area: Rect) {
-    let is_active =
-        app.active_panel == Panel::ServiceList && app.wizard_step == WizardStep::ClientSelection;
-    let border_style = if is_active {
-        Style::default().fg(Color::Cyan)
+    let buf_display = if app.custom_path.buffer.is_empty() {
+        "<empty>".to_string()
     } else {
-        Style::default().fg(Color::DarkGray)
+        app.custom_path.buffer.clone()
     };
+    lines.push(Line::from(vec![
+        Span::raw("> "),
+        Span::styled(buf_display, buf_style),
+        if app.custom_path.editing {
+            Span::styled("_", Style::default().fg(Color::Yellow))
+        } else {
+            Span::raw("")
+        },
+    ]));
+    if let Some(status) = &app.custom_path.status {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            status.clone(),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Keys",
+        Style::default().add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from("  Up/Down  navigate sources"));
+    lines.push(Line::from("  Space    toggle selection"));
+    lines.push(Line::from("  i        edit custom path"));
+    lines.push(Line::from("  Enter    add custom path"));
+    lines.push(Line::from("  n        next step"));
+    lines.push(Line::from("  q        quit"));
 
-    let selected_count = app.clients.iter().filter(|c| c.selected).count();
-    let total_count = app.clients.len();
-    let title = format!("STEP 2: Clients [{}/{}]", selected_count, total_count);
-
-    let items: Vec<ListItem> = app
-        .clients
-        .iter()
-        .enumerate()
-        .map(|(i, client)| {
-            // Selection checkbox
-            let checkbox = if client.selected {
-                Span::styled("[x] ", Style::default().fg(Color::Green))
-            } else {
-                Span::styled("[ ] ", Style::default().fg(Color::DarkGray))
-            };
-
-            // Host kind indicator
-            let kind_label = match client.kind {
-                HostKind::Codex => Span::styled("Codex", Style::default().fg(Color::Blue)),
-                HostKind::Claude => Span::styled("Claude", Style::default().fg(Color::Yellow)),
-                HostKind::ClaudeDesktop => {
-                    Span::styled("Claude Desktop", Style::default().fg(Color::Yellow))
-                }
-                HostKind::Junie => Span::styled("Junie", Style::default().fg(Color::Green)),
-                HostKind::Gemini => Span::styled("Gemini", Style::default().fg(Color::Red)),
-                HostKind::Cursor => Span::styled("Cursor", Style::default().fg(Color::Magenta)),
-                HostKind::VSCode => Span::styled("VSCode", Style::default().fg(Color::Cyan)),
-                HostKind::JetBrains => Span::styled("JetBrains", Style::default().fg(Color::Green)),
-                HostKind::Custom => Span::styled("Custom", Style::default().fg(Color::DarkGray)),
-                HostKind::Unknown => Span::styled("Unknown", Style::default().fg(Color::DarkGray)),
-            };
-
-            // Rewired status indicator
-            let status = if !client.config_exists {
-                Span::styled(" [no config]", Style::default().fg(Color::Red))
-            } else if client.already_rewired {
-                Span::styled(" [rewired]", Style::default().fg(Color::Green))
-            } else {
-                Span::styled(" [not rewired]", Style::default().fg(Color::Yellow))
-            };
-
-            let name_style = if i == app.selected_client {
-                if is_active {
-                    Style::default().add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                }
-            } else {
-                Style::default()
-            };
-
-            // Service count
-            let svc_count = Span::styled(
-                format!(" ({} svcs)", client.services.len()),
-                Style::default().fg(Color::DarkGray),
-            );
-
-            ListItem::new(Line::from(vec![
-                checkbox,
-                Span::styled("", name_style), // Apply style context
-                kind_label,
-                status,
-                svc_count,
-            ]))
-        })
-        .collect();
-
-    if items.is_empty() {
-        let empty_msg = Paragraph::new(
-            "No MCP clients detected.\nSupported: Codex, Cursor, VSCode, Claude, JetBrains",
-        )
+    let panel = Paragraph::new(lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(border_style)
-                .title(title),
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title("Custom path"),
         )
         .wrap(Wrap { trim: true });
-        f.render_widget(empty_msg, area);
-        return;
-    }
+    f.render_widget(panel, columns[1]);
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 2: Server review
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn draw_step2_review(f: &mut Frame, app: &AppState, area: Rect) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .split(area);
+
+    // Left: per-client tree of services with checkboxes.
+    let mut items: Vec<ListItem> = Vec::new();
+    let mut current_kind: Option<ServiceSource> = None;
+    for (idx, svc) in app.services.iter().enumerate() {
+        // Group separator when the source kind changes.
+        let same_group = match (&current_kind, &svc.source) {
+            (Some(a), b) => a == b,
+            (None, _) => false,
+        };
+        if !same_group {
+            current_kind = Some(svc.source.clone());
+            items.push(ListItem::new(Line::from(vec![Span::styled(
+                format!("─ {} ", svc.source.short_label()),
+                Style::default().fg(Color::DarkGray),
+            )])));
+        }
+        let checkbox = if svc.selected {
+            Span::styled("[x] ", Style::default().fg(Color::Green))
+        } else {
+            Span::styled("[ ] ", Style::default().fg(Color::DarkGray))
+        };
+        let highlight = if idx == app.selected_service {
+            Span::styled("▶ ", Style::default().fg(Color::Yellow))
+        } else {
+            Span::raw("  ")
+        };
+        let kind_color = match &svc.source {
+            ServiceSource::Client { kind, .. } => kind_color_value(*kind),
+            ServiceSource::Custom { .. } => Color::DarkGray,
+            ServiceSource::DetectedRunning => Color::Magenta,
+        };
+        let pid_span = match svc.pid {
+            Some(pid) => Span::styled(
+                format!(" (pid {pid})"),
+                Style::default().fg(Color::DarkGray),
+            ),
+            None => Span::raw(""),
+        };
+        items.push(ListItem::new(Line::from(vec![
+            highlight,
+            checkbox,
+            Span::styled(svc.name.clone(), Style::default().fg(kind_color)),
+            pid_span,
+        ])));
+    }
+    if items.is_empty() {
+        items.push(ListItem::new(Line::from(Span::styled(
+            "No servers discovered. Go back (p) and add sources.",
+            Style::default().fg(Color::Yellow),
+        ))));
+    }
+    let selected_count = app.services.iter().filter(|s| s.selected).count();
+    let title = format!("Servers [{}/{}]", selected_count, app.services.len());
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(border_style)
+            .border_style(Style::default().fg(Color::Cyan))
             .title(title),
     );
+    f.render_widget(list, columns[0]);
 
-    f.render_widget(list, area);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Client details panel (Step 2)
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn draw_client_details(f: &mut Frame, app: &AppState, area: Rect) {
-    let is_active =
-        app.active_panel == Panel::Editor && app.wizard_step == WizardStep::ClientSelection;
-    let border_style = if is_active {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-
-    let mut lines: Vec<Line> = vec![
+    // Right: summary + dedup + key hints.
+    let unique_names: std::collections::HashSet<&str> =
+        app.services.iter().map(|s| s.name.as_str()).collect();
+    let mut lines = vec![
         Line::from(Span::styled(
-            "Client Configuration Details",
+            "Summary",
             Style::default().add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
+        Line::from(format!("  Total entries  : {}", app.services.len())),
+        Line::from(format!("  Unique names   : {}", unique_names.len())),
+        Line::from(format!(
+            "  Sources scanned: {}",
+            app.sources.iter().filter(|s| s.selected).count()
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Keys",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from("  Up/Down  navigate"),
+        Line::from("  Space    toggle selection"),
+        Line::from("  n        next step"),
+        Line::from("  p        previous step"),
+        Line::from("  q        quit"),
     ];
 
-    if app.clients.is_empty() {
-        lines.push(Line::from("No clients detected."));
-        lines.push(Line::from(""));
-        lines.push(Line::from("The wizard searches for MCP client configs in:"));
-        lines.push(Line::from("  • ~/.claude.json (Claude Code)"));
-        lines.push(Line::from(
-            "  • ~/Library/Application Support/Claude/claude_desktop_config.json (Claude Desktop)",
-        ));
-        lines.push(Line::from("  • ~/.codex/config.toml (Codex)"));
-        lines.push(Line::from("  • ~/.junie/mcp/mcp.json (Junie)"));
-        lines.push(Line::from(
-            "  • ~/.agents/mcp.json or ~/.ai/mcp.json (Junie generic)",
-        ));
-        lines.push(Line::from("  • ~/.gemini/settings.json (Gemini)"));
-        lines.push(Line::from(
-            "  • Cursor / VSCode / JetBrains settings (legacy, optional)",
-        ));
-    } else if app.selected_client < app.clients.len() {
-        let client = &app.clients[app.selected_client];
-
-        lines.push(Line::from(vec![
-            Span::styled("Host:     ", Style::default().fg(Color::Cyan)),
-            Span::raw(client.kind.as_label()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Config:   ", Style::default().fg(Color::Cyan)),
-            Span::raw(client.config_path.display().to_string()),
-        ]));
-
-        // Config existence status
-        if !client.config_exists {
-            lines.push(Line::from(vec![
-                Span::styled("Status:   ", Style::default().fg(Color::Cyan)),
-                Span::styled(
-                    "No MCP config file (app installed)",
-                    Style::default().fg(Color::Red),
-                ),
-            ]));
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "A new MCP config will be created for this client.",
-                Style::default().fg(Color::Yellow),
-            )));
-        } else {
-            lines.push(Line::from(vec![
-                Span::styled("Status:   ", Style::default().fg(Color::Cyan)),
-                if client.already_rewired {
-                    Span::styled(
-                        "Already rewired to rust-mux",
-                        Style::default().fg(Color::Green),
-                    )
-                } else {
-                    Span::styled("Not yet rewired", Style::default().fg(Color::Yellow))
-                },
-            ]));
-        }
-
+    if app.services.is_empty() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "Services in this client:",
-            Style::default().add_modifier(Modifier::BOLD),
-        )));
-
-        if client.services.is_empty() {
-            if client.config_exists {
-                lines.push(Line::from("  (no MCP services defined yet)"));
-            } else {
-                lines.push(Line::from("  (config will be created with mux services)"));
-            }
-        } else {
-            for svc in &client.services {
-                lines.push(Line::from(format!("  • {}", svc)));
-            }
-        }
-
-        lines.push(Line::from(""));
-        if client.selected {
-            if client.config_exists {
-                lines.push(Line::from(Span::styled(
-                    "This client will be rewired to use rust-mux-proxy.",
-                    Style::default().fg(Color::Green),
-                )));
-            } else {
-                lines.push(Line::from(Span::styled(
-                    "A new MCP config will be created for this client.",
-                    Style::default().fg(Color::Green),
-                )));
-            }
-        } else {
-            lines.push(Line::from(Span::styled(
-                "This client will NOT be modified.",
-                Style::default().fg(Color::DarkGray),
-            )));
-        }
-    }
-
-    let details = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(border_style)
-                .title("Details"),
-        )
-        .wrap(Wrap { trim: true });
-
-    f.render_widget(details, area);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Summary panel (Step 3)
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn draw_summary(f: &mut Frame, app: &AppState, area: Rect) {
-    let border_style = Style::default().fg(Color::Cyan);
-
-    let selected_servers: Vec<&str> = app
-        .services
-        .iter()
-        .filter(|s| s.selected)
-        .map(|s| s.name.as_str())
-        .collect();
-
-    let selected_clients: Vec<&str> = app
-        .clients
-        .iter()
-        .filter(|c| c.selected)
-        .map(|c| c.kind.as_label())
-        .collect();
-
-    let mut lines: Vec<Line> = vec![
-        Line::from(Span::styled(
-            "Configuration Summary",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            format!("Selected Servers ({})", selected_servers.len()),
-            Style::default().fg(Color::Cyan),
-        )),
-    ];
-
-    for name in &selected_servers {
-        lines.push(Line::from(format!("  [x] {}", name)));
-    }
-
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        format!("Selected Clients ({})", selected_clients.len()),
-        Style::default().fg(Color::Cyan),
-    )));
-
-    for name in &selected_clients {
-        lines.push(Line::from(format!("  [x] {}", name)));
-    }
-
-    let summary = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(border_style)
-                .title("STEP 3: Summary"),
-        )
-        .wrap(Wrap { trim: true });
-
-    f.render_widget(summary, area);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Save options panel (Step 3)
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn draw_save_options(f: &mut Frame, app: &AppState, area: Rect) {
-    let border_style = Style::default().fg(Color::Cyan);
-
-    let choices = [
-        (
-            ConfirmChoice::SafeGenerate,
-            "Safe generate",
-            "Write ~/.config/mux/{config.toml,mcp.json,mcp.toml} + print per-client setup commands",
-        ),
-        (
-            ConfirmChoice::SaveMuxOnly,
-            "Mux only",
-            "Save legacy mux config only (no client setup)",
-        ),
-        (
-            ConfirmChoice::CopyToClipboard,
-            "Clipboard",
-            "Copy mux config to clipboard",
-        ),
-        (
-            ConfirmChoice::DangerAutoConfigure,
-            "[DANGER] auto",
-            "Backup-first preview-first rewrite of EXISTING client configs to use rust-mux-proxy",
-        ),
-        (ConfirmChoice::Back, "Back", "Return to previous step"),
-        (ConfirmChoice::Exit, "Exit", "Exit without saving"),
-    ];
-
-    let mut lines: Vec<Line> = vec![
-        Line::from(Span::styled(
-            "Save Options",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from("Use Up/Down to select, Enter to confirm:"),
-        Line::from(""),
-    ];
-
-    for (choice, label, description) in choices {
-        let is_selected = choice == app.confirm_choice;
-        let prefix = if is_selected { "▶ " } else { "  " };
-        let style = if is_selected {
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        };
-
-        lines.push(Line::from(vec![
-            Span::styled(prefix, style),
-            Span::styled(format!("[{}]", label), style),
-            Span::raw(" - "),
-            Span::styled(description, Style::default().fg(Color::DarkGray)),
-        ]));
-    }
-
-    lines.push(Line::from(""));
-    if app.dry_run {
-        lines.push(Line::from(Span::styled(
-            "DRY-RUN MODE: no files will be modified",
+            "No services discovered from selected sources.",
             Style::default().fg(Color::Yellow),
         )));
-    } else {
-        lines.push(Line::from(Span::styled(
-            "Safe path writes only ~/.config/mux/* and never touches client configs.",
-            Style::default().fg(Color::Green),
-        )));
-        lines.push(Line::from(Span::styled(
-            "[DANGER] path takes a timestamped backup of every client file before any change.",
-            Style::default().fg(Color::Red),
-        )));
     }
 
-    let options = Paragraph::new(lines)
+    let panel = Paragraph::new(lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(border_style)
-                .title("Actions"),
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title("Review"),
         )
         .wrap(Wrap { trim: true });
-
-    f.render_widget(options, area);
+    f.render_widget(panel, columns[1]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Health check panel (Step 4)
+// STEP 3: Strategy
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn draw_health_check_info(f: &mut Frame, app: &AppState, area: Rect) {
-    let border_style = Style::default().fg(Color::Cyan);
-
-    let selected_servers: Vec<&str> = app
-        .services
-        .iter()
-        .filter(|s| s.selected)
-        .map(|s| s.name.as_str())
-        .collect();
-
-    let selected_clients: Vec<&str> = app
-        .clients
-        .iter()
-        .filter(|c| c.selected)
-        .map(|c| c.kind.as_label())
-        .collect();
-
-    let mut lines: Vec<Line> = vec![
-        Line::from(Span::styled(
-            "Configuration Saved!",
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Now verify the configuration works:",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from("1. Go to your MCP client application"),
-        Line::from("2. Check if the MCP servers are working"),
-        Line::from("3. Return here and confirm the result"),
-        Line::from(""),
-        Line::from(Span::styled(
-            format!("Configured Servers ({})", selected_servers.len()),
-            Style::default().fg(Color::Cyan),
-        )),
-    ];
-
-    for name in &selected_servers {
-        lines.push(Line::from(format!("  [x] {}", name)));
-    }
-
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        format!("Rewired Clients ({})", selected_clients.len()),
-        Style::default().fg(Color::Cyan),
-    )));
-
-    for name in &selected_clients {
-        lines.push(Line::from(format!("  [x] {}", name)));
-    }
-
-    let info = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(border_style)
-                .title("STEP 4: Health Check"),
-        )
-        .wrap(Wrap { trim: true });
-
-    f.render_widget(info, area);
-}
-
-pub fn draw_health_check_options(f: &mut Frame, app: &AppState, area: Rect) {
-    let border_style = Style::default().fg(Color::Cyan);
-
+fn draw_step3_strategy(f: &mut Frame, app: &AppState, area: Rect) {
     let choices = [
         (
-            HealthCheckChoice::Ok,
-            "OK",
-            "Configuration verified - exit wizard",
+            Strategy::Unified,
+            "Unified config",
+            "Write one ~/.config/mux/{config.toml,mcp.json,mcp.toml} with every selected server. Recommended.",
         ),
         (
-            HealthCheckChoice::TryAgain,
-            "Try Again",
-            "Re-run detection and reconfigure",
+            Strategy::PerClient,
+            "Per-client configs",
+            "Write a separate file per client kind (claude.json, codex.toml, junie.json, ...) under ~/.config/mux/.",
+        ),
+        (
+            Strategy::AutoRewire,
+            "[DANGER] Auto-rewire existing client configs",
+            "Backup-first preview-first rewrite of your real client configs to route through rust-mux-proxy.",
         ),
     ];
 
     let mut lines: Vec<Line> = vec![
         Line::from(Span::styled(
-            "Verification",
+            "How do you want to use mux?",
             Style::default().add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from("Did the configuration work correctly?"),
-        Line::from(""),
-        Line::from("Use Up/Down to select, Enter to confirm:"),
-        Line::from(""),
     ];
-
-    for (choice, label, description) in choices {
-        let is_selected = choice == app.health_choice;
-        let prefix = if is_selected { "▶ " } else { "  " };
-        let style = if is_selected {
+    for (idx, (choice, label, description)) in choices.iter().enumerate() {
+        let is_selected = *choice == app.strategy;
+        let marker = if is_selected { "(•)" } else { "( )" };
+        let label_style = if is_selected {
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
-
+        let danger = matches!(choice, Strategy::AutoRewire);
+        let label_color = if danger {
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+        } else {
+            label_style
+        };
         lines.push(Line::from(vec![
-            Span::styled(prefix, style),
-            Span::styled(format!("[{}]", label), style),
-            Span::raw(" - "),
-            Span::styled(description, Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("  {marker} ")),
+            Span::styled(
+                format!("{}. ", idx + 1),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(label.to_string(), label_color),
         ]));
+        lines.push(Line::from(vec![
+            Span::raw("       "),
+            Span::styled(
+                description.to_string(),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+        lines.push(Line::from(""));
     }
-
-    lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "Tip: Keep this terminal open while testing",
+        "Up/Down to choose, Enter or n to continue, p to go back, q to quit.",
         Style::default().fg(Color::DarkGray),
     )));
 
-    let options = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(border_style)
-                .title("Actions"),
-        )
-        .wrap(Wrap { trim: true });
-
-    f.render_widget(options, area);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Confirm dialog (overlay)
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn draw_confirm_dialog(f: &mut Frame, app: &AppState) {
-    let area = f.area();
-    let dialog_width = 40;
-    let dialog_height = 7;
-    let x = (area.width.saturating_sub(dialog_width)) / 2;
-    let y = (area.height.saturating_sub(dialog_height)) / 2;
-    let dialog_area = Rect::new(x, y, dialog_width, dialog_height);
-
-    // Clear the background
-    f.render_widget(Clear, dialog_area);
-
-    let choices = [
-        (ConfirmChoice::SafeGenerate, "SAFE GEN"),
-        (ConfirmChoice::SaveMuxOnly, "MUX ONLY"),
-        (ConfirmChoice::CopyToClipboard, "CLIPBOARD"),
-        (ConfirmChoice::DangerAutoConfigure, "[DANGER]"),
-        (ConfirmChoice::Back, "BACK"),
-        (ConfirmChoice::Exit, "EXIT"),
-    ];
-
-    let choice_spans: Vec<Span> = choices
-        .iter()
-        .map(|(choice, label)| {
-            if *choice == app.confirm_choice {
-                Span::styled(
-                    format!(" [{label}] "),
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                )
-            } else {
-                Span::styled(format!("  {label}  "), Style::default().fg(Color::White))
-            }
-        })
-        .collect();
-
-    let content = vec![
-        Line::from(""),
-        Line::from("Save configuration?"),
-        Line::from(""),
-        Line::from(choice_spans),
-    ];
-
-    let dialog = Paragraph::new(content)
+    let panel = Paragraph::new(lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Cyan))
-                .title("Confirm"),
+                .title("Strategy"),
         )
-        .alignment(ratatui::layout::Alignment::Center);
+        .wrap(Wrap { trim: true });
+    f.render_widget(panel, area);
+}
 
-    f.render_widget(dialog, dialog_area);
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 4: Summary + confirm
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn draw_step4_summary(f: &mut Frame, app: &AppState, area: Rect) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .split(area);
+
+    let strategy_label = match app.strategy {
+        Strategy::Unified => "Unified",
+        Strategy::PerClient => "Per-client configs",
+        Strategy::AutoRewire => "[DANGER] Auto-rewire client configs",
+    };
+    let mux_dir = crate::mux_gen::default_mux_dir();
+    let socket_dir = crate::mux_gen::default_socket_dir(&mux_dir);
+    let selected_services: Vec<&str> = app
+        .services
+        .iter()
+        .filter(|s| s.selected)
+        .map(|s| s.name.as_str())
+        .collect();
+
+    let mut left = vec![
+        Line::from(Span::styled(
+            "About to:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(format!("  Strategy : {strategy_label}")),
+    ];
+
+    match app.strategy {
+        Strategy::Unified => {
+            left.push(Line::from(format!(
+                "  Outputs  : {}/config.toml",
+                mux_dir.display()
+            )));
+            left.push(Line::from(format!(
+                "             {}/mcp.json",
+                mux_dir.display()
+            )));
+            left.push(Line::from(format!(
+                "             {}/mcp.toml",
+                mux_dir.display()
+            )));
+        }
+        Strategy::PerClient => {
+            left.push(Line::from(format!(
+                "  Outputs  : {}/config.toml (daemon truth)",
+                mux_dir.display()
+            )));
+            // Predict per-client filenames from selected sources.
+            let mut kinds: Vec<HostKind> = app
+                .sources
+                .iter()
+                .filter(|s| s.selected && matches!(s.status, SourceStatus::Ok { .. }))
+                .map(|s| s.host_file.kind)
+                .collect();
+            kinds.sort_by_key(|k| k.as_label());
+            kinds.dedup();
+            for kind in kinds {
+                let ext = match kind {
+                    HostKind::Codex => "toml",
+                    _ => "json",
+                };
+                left.push(Line::from(format!(
+                    "             {}/{}.{}",
+                    mux_dir.display(),
+                    kind.as_label(),
+                    ext
+                )));
+            }
+        }
+        Strategy::AutoRewire => {
+            left.push(Line::from(""));
+            left.push(Line::from(Span::styled(
+                "  Will rewrite (with .bak per file):",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )));
+            for src in app.sources.iter().filter(|s| {
+                s.selected
+                    && matches!(s.status, SourceStatus::Ok { .. })
+                    && s.host_file.eligible_for_danger
+            }) {
+                left.push(Line::from(format!(
+                    "    • {}",
+                    src.host_file.path.display()
+                )));
+            }
+            let ineligible: Vec<&_> = app
+                .sources
+                .iter()
+                .filter(|s| {
+                    s.selected
+                        && matches!(s.status, SourceStatus::Ok { .. })
+                        && !s.host_file.eligible_for_danger
+                })
+                .collect();
+            if !ineligible.is_empty() {
+                left.push(Line::from(""));
+                left.push(Line::from(Span::styled(
+                    "  Skipped (no strict-config flag for danger flow):",
+                    Style::default().fg(Color::DarkGray),
+                )));
+                for src in ineligible {
+                    left.push(Line::from(format!(
+                        "    · {} ({})",
+                        src.host_file.path.display(),
+                        src.host_file.kind.display_name(),
+                    )));
+                }
+            }
+        }
+    }
+
+    left.push(Line::from(""));
+    left.push(Line::from(format!("  Sockets  : {}", socket_dir.display())));
+    left.push(Line::from(format!(
+        "  Servers  : {} selected",
+        selected_services.len()
+    )));
+    if app.dry_run {
+        left.push(Line::from(""));
+        left.push(Line::from(Span::styled(
+            "  DRY-RUN: no files will be modified.",
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+
+    let body = Paragraph::new(left)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title("Summary"),
+        )
+        .wrap(Wrap { trim: true });
+    f.render_widget(body, columns[0]);
+
+    // Right: action chooser.
+    let actions = [
+        (SummaryAction::Confirm, "Confirm", Color::Green),
+        (SummaryAction::Back, "Back", Color::Cyan),
+        (SummaryAction::Cancel, "Cancel", Color::Red),
+    ];
+    let mut right = vec![
+        Line::from(Span::styled(
+            "Choose action",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    for (action, label, color) in actions {
+        let is_selected = action == app.summary_action;
+        let marker = if is_selected { "▶" } else { " " };
+        let style = if is_selected {
+            Style::default().fg(color).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(color)
+        };
+        right.push(Line::from(vec![
+            Span::raw(format!("  {marker} ")),
+            Span::styled(label.to_string(), style),
+        ]));
+    }
+    right.push(Line::from(""));
+    right.push(Line::from(Span::styled(
+        "Up/Down: choose, Enter: do it",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let panel = Paragraph::new(right)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title("Action"),
+        )
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: true });
+    f.render_widget(panel, columns[1]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 5: Result + tray prompt
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn draw_step5_result(f: &mut Frame, app: &AppState, area: Rect) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .split(area);
+
+    let mut left = vec![Line::from(Span::styled(
+        "Result",
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    left.push(Line::from(""));
+    if let Some(result) = &app.strategy_result {
+        for line in result.lines() {
+            left.push(Line::from(line.to_string()));
+        }
+    } else {
+        left.push(Line::from(Span::styled(
+            "(no result captured — see status bar)",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let body = Paragraph::new(left)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title("Result"),
+        )
+        .wrap(Wrap { trim: true });
+    f.render_widget(body, columns[0]);
+
+    // Right: tray daemon prompt.
+    let actions = [
+        (TrayChoice::StartNow, "Start tray daemon now", Color::Green),
+        (TrayChoice::No, "No, exit", Color::DarkGray),
+    ];
+    let mut right = vec![
+        Line::from(Span::styled(
+            "Tray daemon",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from("Run a multi-service tray monitor"),
+        Line::from("for the sockets you just configured?"),
+        Line::from(""),
+    ];
+    for (action, label, color) in actions {
+        let is_selected = action == app.tray_choice;
+        let marker = if is_selected { "▶" } else { " " };
+        let style = if is_selected {
+            Style::default().fg(color).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(color)
+        };
+        right.push(Line::from(vec![
+            Span::raw(format!("  {marker} ")),
+            Span::styled(label.to_string(), style),
+        ]));
+    }
+    right.push(Line::from(""));
+    right.push(Line::from(Span::styled(
+        "Up/Down: choose, Enter: confirm",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let panel = Paragraph::new(right)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title("Action"),
+        )
+        .wrap(Wrap { trim: true });
+    f.render_widget(panel, columns[1]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn kind_color(kind: HostKind) -> Color {
+    kind_color_value(kind)
+}
+
+fn kind_color_value(kind: HostKind) -> Color {
+    match kind {
+        HostKind::Claude | HostKind::ClaudeDesktop => Color::Yellow,
+        HostKind::Codex => Color::Blue,
+        HostKind::Junie => Color::Green,
+        HostKind::Gemini => Color::Red,
+        HostKind::Cursor => Color::Magenta,
+        HostKind::VSCode => Color::Cyan,
+        HostKind::JetBrains => Color::Green,
+        HostKind::Custom | HostKind::Unknown => Color::DarkGray,
+    }
+}
+
+// Health badge — currently not surfaced on the per-service review (we lean on
+// the source label and pid), but kept around for the Living-Tree status panel.
+#[allow(dead_code)]
+fn health_marker(status: HealthStatus) -> Span<'static> {
+    match status {
+        HealthStatus::Healthy => Span::styled(" ●", Style::default().fg(Color::Green)),
+        HealthStatus::Unhealthy => Span::styled(" ●", Style::default().fg(Color::Red)),
+        HealthStatus::Unknown => Span::styled(" ○", Style::default().fg(Color::DarkGray)),
+    }
 }
