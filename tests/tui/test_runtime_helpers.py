@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -27,6 +28,27 @@ def _run_vetcoders_helper(
         text=True,
         check=False,
     )
+
+
+def _write_fake_loct(fake_bin: Path, score: int, args_file: Path | None = None) -> None:
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    fake_loct = fake_bin / "loct"
+    args_line = (
+        'printf "%s\\n" "$@" > "$LOCT_ARGS_FILE"' if args_file is not None else ":"
+    )
+    fake_loct.write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            {args_line}
+            cat <<'JSON'
+            {{"schema_version":"loctree.prism.v1","total_score":{score},"task_framings":[{{"task":"installer public contract"}}]}}
+            JSON
+            """
+        ),
+        encoding="utf-8",
+    )
+    fake_loct.chmod(0o755)
 
 
 def _install_runtime_probe_helper(helper_root: Path, marker: str) -> None:
@@ -173,30 +195,16 @@ def test_vc_skill_wrapper_help_after_agent_does_not_launch_worker() -> None:
 
 def test_vc_polarize_task_injects_prism_payload(tmp_path: Path) -> None:
     fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    fake_loct = fake_bin / "loct"
     args_file = tmp_path / "loct-args.txt"
     capture_file = tmp_path / "prompt.md"
-    fake_loct.write_text(
-        textwrap.dedent(
-            """\
-            #!/usr/bin/env bash
-            printf '%s\n' "$@" > "$LOCT_ARGS_FILE"
-            cat <<'JSON'
-            {"schema_version":"loctree.prism.v1","total_score":13,"axis_scores":{"spread":3}}
-            JSON
-            """
-        ),
-        encoding="utf-8",
-    )
-    fake_loct.chmod(0o755)
+    _write_fake_loct(fake_bin, 11, args_file)
 
     result = _run_vetcoders_helper(
         HELPER_SCRIPT,
         (
             f'export PATH="{fake_bin}:$PATH"; '
             '_vetcoders_prompt_text() { printf \'%s\' "$3" > "$CAPTURE_FILE"; }; '
-            "vc-polarize codex --task 'marbles versus polarize skills: polarize them'"
+            "vc-polarize codex --task 'marbles versus polarize skills: polarize them' --no-context-corpus"
         ),
         {
             "VIBECRAFTED_ROOT": str(REPO_ROOT),
@@ -218,10 +226,230 @@ def test_vc_polarize_task_injects_prism_payload(tmp_path: Path) -> None:
     prompt = capture_file.read_text(encoding="utf-8")
     assert "Perform the vc-polarize skill on this repository." in prompt
     assert "Polarize task: marbles versus polarize skills: polarize them" in prompt
+    assert "Band: pass (score 11/15)" in prompt
+    assert "Runner action: pass" in prompt
     assert "Prism preflight command: loct prism" in prompt
     assert "--with-aicx" in prompt
     assert '"schema_version":"loctree.prism.v1"' in prompt
-    assert '"total_score":13' in prompt
+    assert '"total_score":11' in prompt
+
+
+def test_polarize_band_abort_low_score(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    _write_fake_loct(fake_bin, 3)
+    capture_file = tmp_path / "prompt.md"
+
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        (
+            f'export PATH="{fake_bin}:$PATH"; '
+            '_vetcoders_prompt_text() { printf launched > "$CAPTURE_FILE"; }; '
+            "vc-polarize codex --task 'too local'"
+        ),
+        {
+            "VIBECRAFTED_ROOT": str(REPO_ROOT),
+            "VIBECRAFTED_HOME": str(tmp_path / "home" / ".vibecrafted"),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "CAPTURE_FILE": str(capture_file),
+        },
+    )
+
+    assert result.returncode != 0
+    assert "below threshold" in result.stderr
+    assert "prism.json" in result.stderr
+    assert not capture_file.exists()
+
+
+def test_polarize_band_memo_mid(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    _write_fake_loct(fake_bin, 7)
+
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        (
+            f'export PATH="{fake_bin}:$PATH"; '
+            "_vetcoders_prompt_text() { printf 'should-not-launch'; return 99; }; "
+            "vc-polarize codex --task 'memo tier concept'"
+        ),
+        {
+            "HOME": str(tmp_path / "home"),
+            "VIBECRAFTED_ROOT": str(REPO_ROOT),
+            "VIBECRAFTED_HOME": str(tmp_path / "home" / ".vibecrafted"),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "band 5..8" in result.stdout
+    assert "No agent dispatched" in result.stdout
+    assert "should-not-launch" not in result.stdout
+
+
+def test_polarize_band_pass_high(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    _write_fake_loct(fake_bin, 11)
+    capture_file = tmp_path / "prompt.md"
+
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        (
+            f'export PATH="{fake_bin}:$PATH"; '
+            '_vetcoders_prompt_text() { printf \'%s\' "$3" > "$CAPTURE_FILE"; printf "session: b63af6c1-dd0e-4d2c-ad31-a52df443f4ad\\n"; }; '
+            "vc-polarize codex --task 'pass tier concept' --no-context-corpus"
+        ),
+        {
+            "VIBECRAFTED_ROOT": str(REPO_ROOT),
+            "VIBECRAFTED_HOME": str(tmp_path / "home" / ".vibecrafted"),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "CAPTURE_FILE": str(capture_file),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    prompt = capture_file.read_text(encoding="utf-8")
+    assert "Band: pass (score 11/15)" in prompt
+
+
+def test_polarize_band_doctrine_max(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    _write_fake_loct(fake_bin, 14)
+    capture_file = tmp_path / "prompt.md"
+
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        (
+            f'export PATH="{fake_bin}:$PATH"; '
+            '_vetcoders_prompt_text() { printf \'%s\' "$3" > "$CAPTURE_FILE"; printf "session: b63af6c1-dd0e-4d2c-ad31-a52df443f4ad\\n"; }; '
+            "vc-polarize codex --task 'doctrine tier concept' --no-context-corpus"
+        ),
+        {
+            "VIBECRAFTED_ROOT": str(REPO_ROOT),
+            "VIBECRAFTED_HOME": str(tmp_path / "home" / ".vibecrafted"),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "CAPTURE_FILE": str(capture_file),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    prompt = capture_file.read_text(encoding="utf-8")
+    assert "Band: doctrine (score 14/15)" in prompt
+
+
+def test_polarize_band_abort_emits_prism_path(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    _write_fake_loct(fake_bin, 3)
+
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        f'export PATH="{fake_bin}:$PATH"; vc-polarize codex --task "reject me"',
+        {
+            "VIBECRAFTED_ROOT": str(REPO_ROOT),
+            "VIBECRAFTED_HOME": str(tmp_path / "home" / ".vibecrafted"),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode != 0
+    prism_paths = list((tmp_path / "home" / ".vibecrafted").rglob("prism.json"))
+    assert prism_paths
+    assert str(prism_paths[0]) in result.stderr
+
+
+def test_polarize_emit_context_pack_pass_band(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_aicx = fake_bin / "aicx"
+    fake_aicx.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            out=""
+            while [[ $# -gt 0 ]]; do
+              if [[ "$1" == "--output" ]]; then
+                shift
+                out="$1"
+              fi
+              shift || true
+            done
+            mkdir -p "$(dirname "$out")"
+            printf '# extracted context\n' > "$out"
+            """
+        ),
+        encoding="utf-8",
+    )
+    fake_aicx.chmod(0o755)
+    prism_json = tmp_path / "prism.json"
+    prism_json.write_text(
+        json.dumps(
+            {
+                "schema_version": "loctree.prism.v1",
+                "total_score": 11,
+                "task_framings": [{"task": "installer public contract"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        (
+            f'export PATH="{fake_bin}:$PATH"; '
+            "_vetcoders_polarize_emit_context_pack "
+            f'codex b63af6c1-dd0e-4d2c-ad31-a52df443f4ad "{prism_json}" run-pack "{REPO_ROOT}" pass "installer public contract"'
+        ),
+        {
+            "HOME": str(tmp_path / "home"),
+            "VIBECRAFTED_ROOT": str(REPO_ROOT),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    corpus_root = tmp_path / "home" / ".aicx" / "context-corpus"
+    index_files = list(corpus_root.rglob("index.jsonl"))
+    assert len(index_files) == 1
+    index_entry = json.loads(index_files[0].read_text(encoding="utf-8").strip())
+    assert index_entry["artifact_family"] == "loct-context-pack"
+    assert index_entry["schema_version"] == "context_corpus.v1"
+    assert index_entry["truth_status.role"] == "example"
+    sidecar_files = list(corpus_root.rglob("sidecars/run-pack_pass.json"))
+    assert len(sidecar_files) == 1
+    sidecar = json.loads(sidecar_files[0].read_text(encoding="utf-8"))
+    assert sidecar["truth_status"]["role"] == "example"
+    assert sidecar["truth_status"]["runtime_authoritative"] is False
+    assert sidecar["truth_status"]["current_head_when_ingested"]
+    assert sidecar["learning_use"]["allowed"] == [
+        "format_examples",
+        "section_order",
+        "keyword_index",
+    ]
+    assert sidecar["learning_use"]["forbidden"] == [
+        "current_code_truth",
+        "implementation_claims",
+        "gate_status",
+    ]
+    assert sidecar["band"] == "pass"
+    assert sidecar["total_score"] == 11
+    assert "installer" in sidecar["keywords"]
+
+
+def test_polarize_emit_context_pack_abort_no_write(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    _write_fake_loct(fake_bin, 3)
+
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        f'export PATH="{fake_bin}:$PATH"; vc-polarize codex --task "abort corpus"',
+        {
+            "HOME": str(tmp_path / "home"),
+            "VIBECRAFTED_ROOT": str(REPO_ROOT),
+            "VIBECRAFTED_HOME": str(tmp_path / "home" / ".vibecrafted"),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode != 0
+    assert not (tmp_path / "home" / ".aicx" / "context-corpus").exists()
 
 
 def test_runtime_core_preserves_origin_org_repo_resolution(tmp_path: Path) -> None:
