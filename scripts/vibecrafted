@@ -1258,19 +1258,23 @@ cmd_init() {
 }
 
 cmd_doctor() {
-  local makefile="" repo_source=""
-  repo_source="$(_repo_source_root 2>/dev/null || true)"
+  # Resolve the installer source tree without going through make.
+  # The Python installer owns the doctor logic; calling it directly
+  # avoids leaking `make: Entering directory` and `make: *** Error 1`
+  # noise into the user-facing output.
+  local source_root="" installer=""
+  source_root="$(_repo_source_root 2>/dev/null || true)"
   for candidate in \
-    "${repo_source:+$repo_source/Makefile}" \
-    "$crafted_tools/Makefile" \
-    "$(_repo_root)/Makefile"; do
-    [[ -f "$candidate" ]] && makefile="$candidate" && break
+    "${source_root:+$source_root/scripts/vetcoders_install.py}" \
+    "$crafted_tools/scripts/vetcoders_install.py" \
+    "$(_repo_root 2>/dev/null)/scripts/vetcoders_install.py"; do
+    [[ -n "$candidate" && -f "$candidate" ]] && installer="$candidate" && break
   done
-  [[ -n "$makefile" ]] || {
-    printf '%b[error]%b Makefile not found. Is 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. installed?\n' "$_red" "$_reset" >&2
+  [[ -n "$installer" ]] || {
+    printf '%b[error]%b Doctor installer not found. Is 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. installed?\n' "$_red" "$_reset" >&2
     return 1
   }
-  make --no-print-directory -C "$(dirname "$makefile")" doctor
+  python3 "$installer" doctor
 }
 
 cmd_dashboard() {
@@ -1376,19 +1380,22 @@ cmd_stats() {
 }
 
 cmd_uninstall() {
-  local makefile="" repo_source=""
-  repo_source="$(_repo_source_root 2>/dev/null || true)"
+  # Bypass make for the same reason as cmd_doctor: prevent the
+  # `make: Entering directory` and `*** Error N` traceback from
+  # bleeding into the user-facing uninstall transcript.
+  local source_root="" installer=""
+  source_root="$(_repo_source_root 2>/dev/null || true)"
   for candidate in \
-    "${repo_source:+$repo_source/Makefile}" \
-    "$crafted_tools/Makefile" \
-    "$(_repo_root)/Makefile"; do
-    [[ -f "$candidate" ]] && makefile="$candidate" && break
+    "${source_root:+$source_root/scripts/vetcoders_install.py}" \
+    "$crafted_tools/scripts/vetcoders_install.py" \
+    "$(_repo_root 2>/dev/null)/scripts/vetcoders_install.py"; do
+    [[ -n "$candidate" && -f "$candidate" ]] && installer="$candidate" && break
   done
-  [[ -n "$makefile" ]] || {
-    printf '%b[error]%b Makefile not found.\n' "$_red" "$_reset" >&2
+  [[ -n "$installer" ]] || {
+    printf '%b[error]%b Uninstall installer not found.\n' "$_red" "$_reset" >&2
     return 1
   }
-  make -C "$(dirname "$makefile")" uninstall
+  python3 "$installer" uninstall
 }
 
 _fetch_channel_version() {

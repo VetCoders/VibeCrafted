@@ -109,6 +109,32 @@ _vetcoders_require_zellij() {
   }
 }
 
+# Zellij needs a real PTY to enable raw mode. When stdin/stdout are pipes
+# (curl|bash, ssh without -t, agent subprocess), zellij panics with an
+# unhelpful Rust traceback. Catch the missing-TTY case early and return a
+# user-actionable message instead.
+_vetcoders_require_tty() {
+  if [[ -t 0 && -t 1 ]]; then
+    return 0
+  fi
+  cat >&2 <<'EOF'
+
+vc-init requires an interactive terminal (TTY) to spawn a zellij session.
+
+Detected: stdin or stdout is not a TTY (pipe, redirect, or non-interactive
+SSH/agent context). Zellij needs a real PTY to switch into raw mode.
+
+To proceed:
+  - Local terminal:        run `vibecrafted init <agent>` directly
+  - SSH:                   add `-t`, e.g. `ssh -t user@host vibecrafted init claude`
+  - Inside another agent:  zellij cannot start from a piped subprocess.
+                           Use `vibecrafted <agent> <mode>` (no zellij wrapper)
+                           or run vc-init in a separate user-attached shell.
+
+EOF
+  return 1
+}
+
 _vetcoders_load_bundled_bin_path
 
 _vetcoders_in_zellij() {
@@ -1957,6 +1983,9 @@ _vetcoders_skill_init() {
     return 1
   }
 
+  # Preflight: zellij wymaga PTY. Bez tego dostaniemy Rust panic
+  # ("could not enable raw mode"). Wcześniej i czytelniej.
+  _vetcoders_require_tty || return 1
   _vetcoders_require_zellij || return 1
 
   runtime="$(_vetcoders_init_runtime "${_vetcoders_contract_runtime:-terminal}")" || return 1
