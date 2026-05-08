@@ -137,7 +137,9 @@ vibecrafted polarize gemini --prompt 'Choose one launch thesis after marbles'
 ```
 
 When `--task` is present, the runner must execute a fresh prism preflight before
-spawning the agent and inject the full payload into the agent startup prompt:
+choosing the execution path. The runner reads `total_score` from the prism JSON,
+maps it to the Loctree prism recommendation band, and only dispatches an agent
+for `pass` and `doctrine` bands:
 
 ```bash
 loct prism --with-aicx --task '<operator task>' --task '<operator task> code truth' --task '<operator task> product truth' --json
@@ -145,6 +147,9 @@ loct prism --with-aicx --task '<operator task>' --task '<operator task> code tru
 
 `--with-aicx` is the default prism mode. Operators may pass `--no-aicx` only
 when they explicitly need a repo-only prism pack.
+
+Operators may pass `--no-context-corpus` to skip optional retention pack
+emission in environments without AICX extraction.
 
 No `--count`. No convergence loop. This is not another marbles engine.
 
@@ -184,10 +189,10 @@ Score each axis from `0` to `3`, total `0..15`:
 
 Bands:
 
-- `0..4`: no corpus entry.
-- `5..8`: local note or Loctree tag.
-- `9..12`: context-corpus entry.
-- `13..15`: canonical doctrine entry plus regression contract.
+- `0..4`: `abort` — stop before agent dispatch and show the prism JSON path.
+- `5..8`: `memo` — emit a local memo and thin context-corpus example only.
+- `9..12`: `pass` — run the full polarize pass with the prism payload injected.
+- `13..15`: `doctrine` — run the full doctrine pass with a regression-contract expectation.
 
 ## Outputs
 
@@ -253,9 +258,18 @@ normal injected report and include these sections inside it.
 
 ## Context Corpus Contract
 
-Prism context packs should be ingested as immutable examples with sidecars.
-Do not rewrite raw Markdown packs and do not mix them into ordinary AICX
-conversation chunks.
+The runner is the producer for prism context-corpus packs. For `pass` and
+`doctrine`, it captures the dispatched agent's `session: <uuid>` stdout line and
+wraps the canonical extractor:
+
+```bash
+aicx extract --agent <agent> --session <uuid> --output <raw-path>
+```
+
+Do not regenerate content from scratch, rewrite raw Markdown packs, or mix them
+into ordinary AICX conversation chunks. For `memo`, the runner writes only a
+thin local memo and sidecar. For `abort`, it writes no context-corpus pack
+because no useful truth was produced.
 
 Suggested retention path:
 
@@ -272,24 +286,23 @@ Sidecars must mark stale-vs-live truth:
 {
   "schema_version": "context_corpus.v1",
   "artifact_family": "loct-context-pack",
-  "external_batch": "vibecrafted-prism-context-20260502",
   "truth_status": {
     "role": "example",
     "runtime_authoritative": false,
-    "stale_against_current_head": true,
+    "stale_against_current_head": false,
     "current_head_when_ingested": "ded1e0b"
   },
   "learning_use": {
-    "allowed": [
-      "format_examples",
-      "section_order",
-      "authority_labeling",
-      "retrieval_tests"
-    ],
+    "allowed": ["format_examples", "section_order", "keyword_index"],
     "forbidden": ["current_code_truth", "implementation_claims", "gate_status"]
-  }
+  },
+  "keywords": ["installer", "contract"],
+  "band": "pass",
+  "total_score": 11
 }
 ```
+
+Memo-band sidecars restrict `learning_use.allowed` to `["format_examples"]`.
 
 Runtime truth must always come from fresh `loct context`, fresh repo reads, and
 relevant gates.
@@ -330,6 +343,7 @@ python3 -m json.tool <sidecar>.json
 ## Failure Modes
 
 - **No prism evidence**: ask for a `loct prism --task ...` pack.
+- **Prism band too low**: abort before agent dispatch and print `vc-polarize aborted: prism score <n>/15 is below threshold. Inspect <path-to-prism.json>`.
 - **Runtime cannot support desired promise**: send back to `vc-workflow` or `vc-marbles`.
 - **Two viable axes remain**: emit decision memo; do not average them.
 - **Public surfaces contradict release truth**: block release handoff.
