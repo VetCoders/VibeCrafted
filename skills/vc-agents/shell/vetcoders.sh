@@ -416,6 +416,10 @@ _vetcoders_prepare_operator_runtime() {
     return 0
   fi
 
+  if [[ -n "${VIBECRAFTED_OPERATOR_SESSION:-}" ]]; then
+    return 0
+  fi
+
   # If spawned by a headless agent, attempt to naturally latch onto the user's active session.
   local guessed_session
   guessed_session="$(_vetcoders_guess_active_zellij_session)"
@@ -1983,9 +1987,6 @@ _vetcoders_skill_init() {
     return 1
   }
 
-  # Preflight: zellij wymaga PTY. Bez tego dostaniemy Rust panic
-  # ("could not enable raw mode"). Wcześniej i czytelniej.
-  _vetcoders_require_tty || return 1
   _vetcoders_require_zellij || return 1
 
   runtime="$(_vetcoders_init_runtime "${_vetcoders_contract_runtime:-terminal}")" || return 1
