@@ -1,7 +1,7 @@
 """iTerm2 Dynamic Profiles generator + runtime installer (experimental).
 
 Source-of-truth lives in ``PROFILE_SPECS`` below: the parent
-``[experimental] [experimental] VetCoders Repo`` profile plus per-host (mesh topology)
+``[experimental] VetCoders Repo`` profile plus per-host (mesh topology)
 and per-repo children. ``build_profiles_document()`` materializes the
 iTerm2-compatible JSON. ``install_profiles()`` writes that JSON to the
 user's ``~/Library/Application Support/iTerm2/DynamicProfiles/``
