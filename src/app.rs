@@ -2,6 +2,8 @@ use crate::config::{AppConfig, path_display};
 use crate::launch::{
     LaunchCommand, LaunchKind, LaunchRequest, LaunchRuntime, build_launch_command,
 };
+use crate::polarize::{PolarizeBand, PolarizeIntent};
+use crate::skills_catalog::{self, SkillAgent, SkillPayload, SkillPayloadKind};
 use crate::state::{ControlPlaneState, RenderedRun, RunKind, render_runs};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -124,6 +126,21 @@ pub enum DeepAction {
     MuxHealth {
         service: String,
     },
+    /// Consumer-side rendering for a polarize prism emitted by Vibecrafted.
+    /// The operator does not score or originate the band; it only surfaces
+    /// the runner's prism payload and suggested action path.
+    PolarizeIntent {
+        band: PolarizeBand,
+        score: u8,
+        run_id: String,
+        prism_path: PathBuf,
+    },
+    /// Launch a first-class Vibecrafted skill entrypoint.
+    SkillLaunch {
+        skill: String,
+        agent: SkillAgent,
+        payload: SkillPayload,
+    },
 }
 
 impl DeepAction {
@@ -144,6 +161,34 @@ impl DeepAction {
             DeepAction::OpenRoot(path) => format!("Open run root: {}", path.to_string_lossy()),
             DeepAction::MuxHealth { service } => {
                 format!("Health-check MCP daemon: rust-mux health --service {service}")
+            }
+            DeepAction::PolarizeIntent {
+                band,
+                score,
+                run_id,
+                prism_path,
+            } => format!(
+                "Inspect polarize intent: {} score {} run {} -> {}",
+                band.label(),
+                score,
+                run_id,
+                prism_path.to_string_lossy()
+            ),
+            DeepAction::SkillLaunch {
+                skill,
+                agent,
+                payload,
+            } => {
+                let payload_label = match payload {
+                    SkillPayload::Prompt(prompt) if !prompt.trim().is_empty() => "prompt",
+                    SkillPayload::File(_) => "file",
+                    SkillPayload::Prompt(_) | SkillPayload::None => "no payload",
+                };
+                format!(
+                    "Launch skill: vibecrafted {} {} ({payload_label})",
+                    skill.trim_start_matches("vc-"),
+                    agent.label()
+                )
             }
         }
     }
@@ -176,6 +221,10 @@ pub struct App {
     /// so the Monitor tab can render MCP daemon health without doing IO
     /// inside the draw path.
     pub mux_summaries: Vec<crate::mux::MuxSummary>,
+    /// Cached polarize prism intents discovered under
+    /// `$VIBECRAFTED_HOME/artifacts/**/polarize/<run_id>/prism.json`.
+    /// Refreshed with the run board so draw code remains pure rendering.
+    pub polarize_intents: Vec<PolarizeIntent>,
 }
 
 impl App {
@@ -206,10 +255,12 @@ impl App {
             artifact_title: String::new(),
             artifact_lines: Vec::new(),
             mux_summaries: Vec::new(),
+            polarize_intents: Vec::new(),
         };
         apply_run_filters(&mut app.runs, app.queue_scope, &app.search_query);
         app.sync_selection();
         app.refresh_mux();
+        app.refresh_polarize();
         Ok(app)
     }
 
@@ -222,6 +273,7 @@ impl App {
         self.runs = runs;
         self.sync_selection();
         self.refresh_mux();
+        self.refresh_polarize();
     }
 
     /// Refresh cached rust-mux status snapshots from the discovered
@@ -229,6 +281,10 @@ impl App {
     /// on the same cadence as the run-state refresh.
     pub fn refresh_mux(&mut self) {
         self.mux_summaries = crate::mux::current_summaries();
+    }
+
+    pub fn refresh_polarize(&mut self) {
+        self.polarize_intents = crate::polarize::current_intents(&self.config.launch_root);
     }
 
     /// Lines for the Monitor tab "MCP daemons" panel. Returns an empty
@@ -259,6 +315,35 @@ impl App {
             };
             lines.push(format!("{marker}{}", summary.summary_line()));
         }
+        lines
+    }
+
+    pub fn polarize_status_lines(&self) -> Vec<String> {
+        if self.polarize_intents.is_empty() {
+            return Vec::new();
+        }
+        let doctrine = self
+            .polarize_intents
+            .iter()
+            .filter(|intent| intent.band == PolarizeBand::Doctrine)
+            .count();
+        let mut lines = Vec::with_capacity(self.polarize_intents.len() + 1);
+        if doctrine == 0 {
+            lines.push(format!(
+                "Polarize intents ({}):",
+                self.polarize_intents.len()
+            ));
+        } else {
+            lines.push(format!(
+                "Polarize intents ({} doctrine):",
+                doctrine
+            ));
+        }
+        lines.extend(
+            self.polarize_intents
+                .iter()
+                .map(|intent| format!("  {} {}", polarize_marker(intent.band), intent.summary_line())),
+        );
         lines
     }
 
@@ -726,7 +811,7 @@ impl App {
         let controls = if self.selected_run().is_some() {
             format!("Controls {}", self.deep_actions().len())
         } else {
-            "Controls -".to_string()
+            format!("Controls {}", self.deep_actions().len())
         };
         [monitor, dispatch, controls]
     }
@@ -780,6 +865,32 @@ impl App {
         for summary in &self.mux_summaries {
             actions.push(DeepAction::MuxHealth {
                 service: summary.display_name.clone(),
+            });
+        }
+        for intent in &self.polarize_intents {
+            actions.push(DeepAction::PolarizeIntent {
+                band: intent.band,
+                score: intent.score,
+                run_id: intent.run_id.clone(),
+                prism_path: intent.prism_path.clone(),
+            });
+        }
+        for entry in skills_catalog::CATALOG {
+            let agent = resolve_skill_agent(entry.default_agent, self.selected_agent());
+            let payload = match entry.accepts {
+                SkillPayloadKind::None => SkillPayload::None,
+                SkillPayloadKind::Optional | SkillPayloadKind::PromptOrFile => {
+                    if self.launch_prompt.trim().is_empty() {
+                        SkillPayload::None
+                    } else {
+                        SkillPayload::Prompt(self.launch_prompt.clone())
+                    }
+                }
+            };
+            actions.push(DeepAction::SkillLaunch {
+                skill: entry.slug.to_string(),
+                agent,
+                payload,
             });
         }
         actions
@@ -868,6 +979,31 @@ impl App {
         Ok(())
     }
 
+    pub fn open_polarize_intent(&mut self, action: &DeepAction) -> anyhow::Result<()> {
+        let DeepAction::PolarizeIntent {
+            band,
+            score,
+            run_id,
+            prism_path,
+        } = action
+        else {
+            return Ok(());
+        };
+        self.artifact_title = format!(
+            "Polarize prism: {} score {} run {}",
+            band.label(),
+            score,
+            run_id
+        );
+        self.artifact_lines = crate::polarize::prism_preview_lines(prism_path)?;
+        self.focus = LaunchFocus::Artifact;
+        self.append_status(format!(
+            "opened polarize prism {}",
+            path_display(prism_path)
+        ));
+        Ok(())
+    }
+
     pub fn artifact_lines(&self) -> Vec<String> {
         let mut lines = vec![self.artifact_title.clone(), String::new()];
         lines.extend(self.artifact_lines.clone());
@@ -899,7 +1035,7 @@ impl App {
         Ok(())
     }
 
-    fn launch_env(&self) -> BTreeMap<String, OsString> {
+    pub(crate) fn launch_env(&self) -> BTreeMap<String, OsString> {
         let mut env = BTreeMap::new();
         env.insert(
             "VIBECRAFTED_ROOT".to_string(),
@@ -1002,6 +1138,22 @@ fn safe_marker_name(run_id: &str) -> String {
             }
         })
         .collect()
+}
+
+fn polarize_marker(band: PolarizeBand) -> &'static str {
+    match band {
+        PolarizeBand::Abort => "!",
+        PolarizeBand::Memo => "-",
+        PolarizeBand::Pass => ">",
+        PolarizeBand::Doctrine => "*",
+    }
+}
+
+fn resolve_skill_agent(default_agent: SkillAgent, selected_agent: &str) -> SkillAgent {
+    match default_agent {
+        SkillAgent::Any => SkillAgent::from_cli_token(selected_agent),
+        concrete => concrete,
+    }
 }
 
 fn artifact_lines(path: &Path, run_root: Option<&str>) -> anyhow::Result<Vec<String>> {

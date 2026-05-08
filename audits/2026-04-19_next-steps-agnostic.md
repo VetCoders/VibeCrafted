@@ -1,11 +1,15 @@
-# Operator TUI: 10-Point Natural Next Steps (Terminal-Agnostic — COMPLETED 2026-04-30)
+# Operator TUI: 10-Point Natural Next Steps (Terminal-Agnostic — COMPLETED 2026-04-30, hardened P.M.)
 
-> **Status: 10/10 done.** Ten terminal-agnostic plan został zrealizowany przez
-> codex 2026-04-29 w commitach `8bc04a9` (queue scope + archive controls),
-> `1d55925` (launch env + failure feedback), `3a3bfbd` (prompt artifact +
-> clipboard ux), następnie domknięty przez stable zellij session naming
-> (`8930d05`) i named-session readiness probe 2026-04-30. Zachowany jako
-> historical evidence trail per `vc-intents` 2026-04-29 verdict.
+> **Status: 10/10 done + readiness contract hardened.** Ten terminal-agnostic
+> plan został zrealizowany przez codex 2026-04-29 w commitach `8bc04a9`
+> (queue scope + archive controls), `1d55925` (launch env + failure feedback),
+> `3a3bfbd` (prompt artifact + clipboard ux), następnie domknięty przez stable
+> zellij session naming (`8930d05`) i named-session readiness probe 2026-04-30.
+> 2026-04-30 P.M. dokleciony przez claude: probe `--config-dir` parity, probe
+> error preservation, hard timeout z child kill, fake-zellij e2e coverage
+> (P1-01 / P2-01 / P2-02 / P2-03 z `2026-04-30_vc-review.md`). Plus rust-mux
+> MCP daemon visibility w Monitor tabie + `MuxHealth` deep action. Zachowany
+> jako historical evidence trail per `vc-intents` 2026-04-29 i 2026-04-30.
 
 Ten plan traktuje `operator-tui` jako niezależne, samodzielne narzędzie, które żyje wewnątrz dowolnego obecnie używanego emulatora terminala (Ghostty, Alacritty, iTerm2, WezTerm). Skupia się na tym, aby TUI było solidnym pomostem do orkiestracji (Zellij + agenci) bez wymuszania konkretnego okna.
 

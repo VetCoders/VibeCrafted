@@ -43,11 +43,53 @@ launcher contract instead of inheriting whatever shell state happened to start
 the console. Terminal and visible launches get a stable zellij session name and
 an immediate readiness probe against `zellij list-sessions --short
 --no-formatting`, so a launch that exits before its named session appears is
-reported as a failure instead of a false success.
+reported as a failure instead of a false success. The probe inherits the same
+`--config-dir` namespace the launch uses, so a repo-local zellij config under
+`<root>/config/zellij/` is healthchecked against the same socket directory the
+launcher actually wrote to. After a 2-second deadline the launch is killed and
+reported as `did not appear within the readiness window`, including any probe
+diagnostic surfaced through `LaunchRunError.probe_error`.
 
 Use `v` to cycle `terminal` / `visible` / `headless` launch modes and `d` on a
 selected run to enter deep controls for attach / resume / report / transcript
 actions.
+
+## MCP daemon visibility (rust-mux)
+
+The console surfaces live status from the
+[`rust-mux`](https://github.com/Loctree/rust-mux) MCP transport multiplexer
+inside the Monitor tab. When `rust-mux` writes JSON status snapshots to its
+`--status-file`, the operator gets a `rust-mux (N)` panel between the stat
+strip and the run table:
+
+```text
+┌─ rust-mux (2) ───────────────────────────────────────────────────────────┐
+│ MCP daemons (1/2 need attention):                                        │
+│   • general-memory: Running clients=1/3 pending=0 queue=0 restarts=0 …  │
+│   ! brave-search: Failed clients=0/0 pending=0 queue=0 restarts=5 …     │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+The panel header turns red when any service is unhealthy or unreadable.
+Healthy rows render with a green `•`, unhealthy / unreadable rows render with
+a red `!`. The Controls tab gains one `Health-check MCP daemon: rust-mux
+health --service <name>` action per known service, available even when no
+agent run is selected (so the operator can health-check the supervisor when
+nothing else is up).
+
+### Discovery
+
+Status files are discovered in this order:
+
+1. `VIBECRAFTED_MUX_STATUS_PATHS` (colon-separated list of explicit paths,
+   missing entries are still surfaced so misconfiguration is visible).
+2. `~/.rmcp_servers/rust_mux/status.json` if present.
+3. Every other `*.json` under `~/.rmcp_servers/rust_mux/`, sorted
+   lexicographically.
+
+The reader mirrors the public `rust_mux::state::StatusSnapshot` schema and
+ignores unknown fields, so a newer rust-mux release that adds fields will not
+break this surface.
 
 ## Run
 

@@ -2,6 +2,8 @@ pub mod app;
 pub mod config;
 pub mod launch;
 pub mod mux;
+pub mod polarize;
+pub mod skills_catalog;
 pub mod state;
 pub mod ui;
 
@@ -24,6 +26,8 @@ use std::time::{Duration, Instant};
 pub use app::{App, AppTab, DeepAction, DispatchFocus, LaunchFocus, QueueScope};
 pub use config::{AppConfig, CliOptions, build_config, parse_args};
 pub use launch::{LaunchCommand, LaunchKind};
+pub use polarize::{PolarizeBand, PolarizeIntent};
+pub use skills_catalog::{SkillAgent, SkillEntry, SkillPayload, SkillPayloadKind};
 
 pub fn run_cli() -> anyhow::Result<()> {
     let options = parse_args()?;
@@ -234,12 +238,10 @@ fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
                     run_selected_deep_control(app)?;
                 }
             },
-            KeyCode::Char('d') if app.selected_run().is_some() => {
+            KeyCode::Char('d') => {
                 app.set_active_tab(AppTab::Controls);
                 if app.deep_actions().is_empty() {
-                    app.append_status(
-                        "No attach/resume/report actions are available for this run.",
-                    );
+                    app.append_status("No operator actions are available.");
                 } else {
                     app.append_status("Controls ready: ↑/↓ select action, Enter runs it.");
                 }
@@ -295,6 +297,12 @@ fn run_selected_deep_control(app: &mut App) -> anyhow::Result<()> {
         }
         return Ok(());
     }
+    if matches!(action, DeepAction::PolarizeIntent { .. }) {
+        if let Err(error) = app.open_polarize_intent(&action) {
+            app.show_error("polarize prism open failed", vec![format!("{error:#}")]);
+        }
+        return Ok(());
+    }
     let command = deep_control_command(app, &action);
     let summary = command.command_line();
     if let Err(error) = suspend_and_run(&command) {
@@ -336,7 +344,22 @@ fn deep_control_command(app: &App, action: &DeepAction) -> LaunchCommand {
             args: vec!["health".into(), "--service".into(), service.clone().into()],
             env: Default::default(),
         },
-        DeepAction::OpenReport(_) | DeepAction::OpenTranscript(_) | DeepAction::OpenRoot(_) => {
+        DeepAction::SkillLaunch {
+            skill,
+            agent,
+            payload,
+        } => crate::skills_catalog::build_skill_launch_command(
+            &app.config.command_deck,
+            skill,
+            *agent,
+            crate::skills_catalog::SkillAgent::from_cli_token(app.selected_agent()),
+            payload,
+            app.launch_env(),
+        ),
+        DeepAction::OpenReport(_)
+        | DeepAction::OpenTranscript(_)
+        | DeepAction::OpenRoot(_)
+        | DeepAction::PolarizeIntent { .. } => {
             unreachable!("artifact actions are handled by the native operator viewer")
         }
     }
@@ -587,6 +610,7 @@ mod tests {
             artifact_title: String::new(),
             artifact_lines: Vec::new(),
             mux_summaries: Vec::new(),
+            polarize_intents: Vec::new(),
         }
     }
 

@@ -19,3 +19,5 @@ target/
 # Agent harness artifacts (Claude Code scheduled task locks, vc-operator dispatch links).
 .claude/
 .vibecrafted/
+/.loctree
+/audits

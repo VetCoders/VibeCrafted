@@ -92,6 +92,7 @@ fn draw_body(frame: &mut Frame, area: Rect, app: &App) {
 
 fn draw_monitor(frame: &mut Frame, area: Rect, app: &App) {
     let mux_lines = app.mux_status_lines();
+    let polarize_lines = app.polarize_status_lines();
     let mux_height = if mux_lines.is_empty() {
         0
     } else {
@@ -100,22 +101,24 @@ fn draw_monitor(frame: &mut Frame, area: Rect, app: &App) {
         // scrolls with `Wrap` past the cap.
         (mux_lines.len() as u16 + 2).clamp(3, 10)
     };
-
-    let rows = if mux_lines.is_empty() {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(5), Constraint::Min(12)])
-            .split(area)
+    let polarize_height = if polarize_lines.is_empty() {
+        0
     } else {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(5),
-                Constraint::Length(mux_height),
-                Constraint::Min(8),
-            ])
-            .split(area)
+        (polarize_lines.len() as u16 + 2).clamp(3, 9)
     };
+
+    let mut constraints = vec![Constraint::Length(5)];
+    if !mux_lines.is_empty() {
+        constraints.push(Constraint::Length(mux_height));
+    }
+    if !polarize_lines.is_empty() {
+        constraints.push(Constraint::Length(polarize_height));
+    }
+    constraints.push(Constraint::Min(8));
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(area);
 
     draw_stat_strip(
         frame,
@@ -165,12 +168,20 @@ fn draw_monitor(frame: &mut Frame, area: Rect, app: &App) {
         ],
     );
 
-    let body_idx = if mux_lines.is_empty() {
-        1
-    } else {
-        draw_mux_panel(frame, rows[1], &mux_lines, app.mux_summaries.len());
-        2
-    };
+    let mut body_idx = 1;
+    if !mux_lines.is_empty() {
+        draw_mux_panel(frame, rows[body_idx], &mux_lines, app.mux_summaries.len());
+        body_idx += 1;
+    }
+    if !polarize_lines.is_empty() {
+        draw_polarize_panel(
+            frame,
+            rows[body_idx],
+            &polarize_lines,
+            app.polarize_intents.len(),
+        );
+        body_idx += 1;
+    }
 
     let body = Layout::default()
         .direction(Direction::Horizontal)
@@ -215,6 +226,46 @@ fn draw_mux_panel(frame: &mut Frame, area: Rect, lines: &[String], total_service
                 Line::from(vec![
                     Span::styled("  • ", Style::default().fg(Color::Green)),
                     Span::raw(rest.to_string()),
+                ])
+            } else {
+                Line::from(raw.clone())
+            }
+        })
+        .collect();
+    let para = Paragraph::new(body_lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(para, area);
+}
+
+fn draw_polarize_panel(frame: &mut Frame, area: Rect, lines: &[String], total_intents: usize) {
+    let has_doctrine = lines.iter().any(|line| line.contains("doctrine"));
+    let title_color = if has_doctrine {
+        Color::Magenta
+    } else {
+        Color::Yellow
+    };
+    let title_text = format!(" polarize ({total_intents}) ");
+    let block = Block::default()
+        .title(Span::styled(
+            title_text,
+            Style::default()
+                .fg(title_color)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL);
+    let body_lines: Vec<Line> = lines
+        .iter()
+        .map(|raw| {
+            if raw.contains(" doctrine ") {
+                Line::from(vec![
+                    Span::styled("* ", Style::default().fg(Color::Magenta)),
+                    Span::raw(raw.trim_start_matches("  * ").to_string()),
+                ])
+            } else if raw.contains(" pass ") {
+                Line::from(vec![
+                    Span::styled("> ", Style::default().fg(Color::Green)),
+                    Span::raw(raw.trim_start_matches("  > ").to_string()),
                 ])
             } else {
                 Line::from(raw.clone())
@@ -313,6 +364,7 @@ fn draw_controls(frame: &mut Frame, area: Rect, app: &App) {
                 crate::app::DeepAction::OpenReport(_)
                     | crate::app::DeepAction::OpenTranscript(_)
                     | crate::app::DeepAction::OpenRoot(_)
+                    | crate::app::DeepAction::PolarizeIntent { .. }
             )
         })
         .count();
@@ -790,6 +842,7 @@ mod tests {
             artifact_title: String::new(),
             artifact_lines: Vec::new(),
             mux_summaries: Vec::new(),
+            polarize_intents: Vec::new(),
         }
     }
 
