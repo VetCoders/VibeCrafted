@@ -185,6 +185,7 @@ pub async fn run_mux_internal_with_status(
     let socket_path = params.socket.clone();
     let cmd = params.cmd.clone();
     let args = params.args.clone();
+    let cwd = params.cwd.clone();
     let env = params.env.clone();
     let max_clients = params.max_clients;
     let tray_enabled = params.tray_enabled;
@@ -310,6 +311,7 @@ pub async fn run_mux_internal_with_status(
             ServerManagerConfig {
                 cmd: cmd.clone(),
                 args: args.clone(),
+                cwd: cwd.clone(),
                 env: env.clone().unwrap_or_default(),
                 lazy_start,
                 restart_backoff,
