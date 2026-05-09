@@ -1,13 +1,8 @@
 uniffi::setup_scaffolding!();
 
-use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use tokio::sync::Mutex;
-use tray_agent::ipc_client::{
-    send_command, ClientKind, IpcEvent, MuxAgentStatus, MuxControlCommand, MuxControlResponse,
-    MuxService,
-};
+use tray_agent::ipc_client::{send_command, ClientKind, MuxControlCommand, MuxControlResponse};
 
 static SOCKET_PATH: OnceLock<PathBuf> = OnceLock::new();
 
@@ -232,7 +227,7 @@ pub async fn restart_service(name: String) -> Result<(), MuxError> {
 }
 
 #[uniffi::export]
-pub async fn get_recent_logs(service: String, lines: u32) -> Result<Vec<String>, MuxError> {
+pub async fn get_recent_logs(service: String, _lines: u32) -> Result<Vec<String>, MuxError> {
     // Actually not defined in MuxControlCommand. Let's return empty or unimplemented.
     Ok(vec![format!(
         "Logs for {} not implemented in backend",
