@@ -1,3 +1,241 @@
 uniffi::setup_scaffolding!();
 
-pub fn placeholder() {}
+use anyhow::Context;
+use std::path::PathBuf;
+use std::sync::OnceLock;
+use tokio::sync::Mutex;
+use tray_agent::ipc_client::{
+    send_command, ClientKind, IpcEvent, MuxAgentStatus, MuxControlCommand, MuxControlResponse,
+    MuxService,
+};
+
+static SOCKET_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum MuxError {
+    #[error("{msg}")]
+    Core { msg: String },
+}
+
+impl From<anyhow::Error> for MuxError {
+    fn from(e: anyhow::Error) -> Self {
+        MuxError::Core {
+            msg: format!("{e:#}"),
+        }
+    }
+}
+
+#[derive(uniffi::Enum)]
+pub enum FfiClientKind {
+    Claude,
+    Codex,
+    Gemini,
+    Cursor,
+    Other { value: String },
+}
+
+impl From<ClientKind> for FfiClientKind {
+    fn from(k: ClientKind) -> Self {
+        match k {
+            ClientKind::Claude => FfiClientKind::Claude,
+            ClientKind::Codex => FfiClientKind::Codex,
+            ClientKind::Gemini => FfiClientKind::Gemini,
+            ClientKind::Cursor => FfiClientKind::Cursor,
+            ClientKind::Other(s) => FfiClientKind::Other { value: s },
+        }
+    }
+}
+
+impl From<FfiClientKind> for ClientKind {
+    fn from(k: FfiClientKind) -> Self {
+        match k {
+            FfiClientKind::Claude => ClientKind::Claude,
+            FfiClientKind::Codex => ClientKind::Codex,
+            FfiClientKind::Gemini => ClientKind::Gemini,
+            FfiClientKind::Cursor => ClientKind::Cursor,
+            FfiClientKind::Other { value } => ClientKind::Other(value),
+        }
+    }
+}
+
+#[derive(uniffi::Record)]
+pub struct FfiServerStatus {
+    pub name: String,
+    pub status: String,
+    pub queue_depth: u32,
+    pub queue_capacity: u32,
+    pub restart_count: u64,
+}
+
+#[derive(uniffi::Record)]
+pub struct FfiRoute {
+    pub client: FfiClientKind,
+    pub service: String,
+    pub state: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct FfiClientConfig {
+    pub kind: FfiClientKind,
+    pub config: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct FfiVerifyResult {
+    pub kind: FfiClientKind,
+    pub ok: bool,
+    pub detail: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct FfiNonMuxEntry {
+    pub name: String,
+}
+
+#[derive(uniffi::Enum)]
+pub enum FfiSubscriberState {
+    Connected,
+    Disconnected,
+}
+
+// ═══════════════════════════════════════════════════════════
+// Engine
+// ═══════════════════════════════════════════════════════════
+
+#[uniffi::export]
+pub fn init_runtime(socket_path: String) -> Result<(), MuxError> {
+    SOCKET_PATH
+        .set(PathBuf::from(socket_path))
+        .map_err(|_| MuxError::Core {
+            msg: "Already initialized".to_string(),
+        })?;
+    Ok(())
+}
+
+fn get_socket_path() -> Result<PathBuf, MuxError> {
+    SOCKET_PATH.get().cloned().ok_or_else(|| MuxError::Core {
+        msg: "Runtime not initialized".to_string(),
+    })
+}
+
+#[uniffi::export(callback_interface)]
+pub trait EventCallback: Send + Sync {
+    fn on_event(&self, event_json: String);
+    fn on_error(&self, err: String);
+}
+
+#[uniffi::export]
+pub async fn subscribe_events(callback: Box<dyn EventCallback>) -> Result<(), MuxError> {
+    let socket = get_socket_path()?;
+    // We launch a background task to stream events to avoid blocking or issues with returning streams.
+    tokio::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+        let stream_res = tokio::net::UnixStream::connect(&socket).await;
+        if let Err(e) = stream_res {
+            callback.on_error(e.to_string());
+            return;
+        }
+        let stream = stream_res.unwrap();
+        let (reader, mut writer) = stream.into_split();
+        let command = MuxControlCommand::Subscribe;
+        let request = tray_agent::ipc_client::MuxControlRequest::new(1, command);
+        let encoded = serde_json::to_string(&request).unwrap() + "\n";
+
+        use tokio::io::AsyncWriteExt;
+        if let Err(e) = writer.write_all(encoded.as_bytes()).await {
+            callback.on_error(e.to_string());
+            return;
+        }
+
+        let mut lines = tokio::io::BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            callback.on_event(line);
+        }
+        callback.on_error("Stream closed".to_string());
+    });
+    Ok(())
+}
+
+#[uniffi::export]
+pub async fn get_server_status() -> Result<Vec<FfiServerStatus>, MuxError> {
+    let socket = get_socket_path()?;
+    let res = send_command(&socket, &MuxControlCommand::Diagnostics).await?;
+    if let MuxControlResponse::Diagnostics { snapshot, .. } = res {
+        Ok(snapshot
+            .services
+            .into_iter()
+            .map(|s| FfiServerStatus {
+                name: s.name,
+                status: format!("{:?}", s.status),
+                queue_depth: s.queue_depth as u32,
+                queue_capacity: s.queue_capacity as u32,
+                restart_count: s.restart_count,
+            })
+            .collect())
+    } else {
+        Err(MuxError::Core {
+            msg: "Unexpected response".into(),
+        })
+    }
+}
+
+#[uniffi::export]
+pub async fn get_routes() -> Result<Vec<FfiRoute>, MuxError> {
+    let socket = get_socket_path()?;
+    let res = send_command(&socket, &MuxControlCommand::RouteSnapshot).await?;
+    if let MuxControlResponse::RouteSnapshot { snapshot, .. } = res {
+        Ok(snapshot
+            .routes
+            .into_iter()
+            .map(|r| FfiRoute {
+                client: r.client.into(),
+                service: r.service,
+                state: r.state,
+            })
+            .collect())
+    } else {
+        Err(MuxError::Core {
+            msg: "Unexpected response".into(),
+        })
+    }
+}
+
+#[uniffi::export]
+pub async fn verify_client(kind: FfiClientKind) -> Result<FfiVerifyResult, MuxError> {
+    let socket = get_socket_path()?;
+    let ckind: ClientKind = kind.into();
+    let res = send_command(
+        &socket,
+        &MuxControlCommand::Verify {
+            client_kind: ckind.clone(),
+        },
+    )
+    .await?;
+    if let MuxControlResponse::Verify { result, .. } = res {
+        Ok(FfiVerifyResult {
+            kind: result.kind.into(),
+            ok: result.ok,
+            detail: result.detail,
+        })
+    } else {
+        Err(MuxError::Core {
+            msg: "Unexpected response".into(),
+        })
+    }
+}
+
+#[uniffi::export]
+pub async fn restart_service(name: String) -> Result<(), MuxError> {
+    let socket = get_socket_path()?;
+    let _res = send_command(&socket, &MuxControlCommand::RestartService { name }).await?;
+    Ok(())
+}
+
+#[uniffi::export]
+pub async fn get_recent_logs(service: String, lines: u32) -> Result<Vec<String>, MuxError> {
+    // Actually not defined in MuxControlCommand. Let's return empty or unimplemented.
+    Ok(vec![format!(
+        "Logs for {} not implemented in backend",
+        service
+    )])
+}

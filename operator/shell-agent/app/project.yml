@@ -1,53 +1,29 @@
 name: Vibecrafted
 options:
   bundleIdPrefix: io.vetcoders
-  deploymentTarget:
-    macOS: "14.0"
-  xcodeVersion: "16.0"
-  createIntermediateGroups: true
-
-settings:
-  base:
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
-    SWIFT_VERSION: "6.0"
-
 targets:
   Vibecrafted:
     type: application
     platform: macOS
+    deploymentTarget: "14.0"
     sources:
       - path: Vibecrafted
-        excludes:
-          - "Bridge/vibecrafted_shell_ffiFFI.h"
-          - "Bridge/vibecrafted_shell_ffiFFI.modulemap"
+    info:
+      properties:
+        LSUIElement: false
+        CFBundleExecutable: Vibecrafted
+        CFBundleDisplayName: Vibecrafted
+        CFBundleName: Vibecrafted
+        CFBundleIdentifier: io.vetcoders.vibecrafted
+        NSPrincipalClass: NSApplication
+    dependencies:
+      - framework: ../../target/release/libshell_agent_ffi.dylib
+        embed: true
+    settings:
+      CODE_SIGN_IDENTITY: ""
+      CODE_SIGNING_REQUIRED: NO
+      CODE_SIGNING_ALLOWED: NO
     preBuildScripts:
       - name: "Build Rust FFI"
         script: |
-          cd "$PROJECT_DIR/../.." && cargo build -p vibecrafted-shell-ffi --release
-          cargo run -p vibecrafted-uniffi-bindgen -- generate --library target/release/libvibecrafted_shell_ffi.dylib --language swift --out-dir shell-agent/app/Vibecrafted/Bridge/ || true
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.vetcoders.vibecrafted
-        INFOPLIST_GENERATION_MODE: GeneratedFile
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: 1
-        GENERATE_INFOPLIST_FILE: true
-        INFOPLIST_KEY_NSPrincipalClass: NSApplication
-        INFOPLIST_KEY_LSUIElement: NO
-        INFOPLIST_KEY_CFBundleExecutable: Vibecrafted
-        SWIFT_OBJC_BRIDGING_HEADER: "Vibecrafted/Bridge/vibecrafted_shell_ffiFFI.h"
-        CODE_SIGN_IDENTITY: "-"
-        CODE_SIGN_STYLE: Manual
-        OTHER_LDFLAGS:
-          - "$(PROJECT_DIR)/../../target/release/libvibecrafted_shell_ffi.a"
-          - "-framework"
-          - "Security"
-          - "-framework"
-          - "SystemConfiguration"
-        HEADER_SEARCH_PATHS:
-          - "$(PROJECT_DIR)/Vibecrafted/Bridge"
-      configs:
-        Release:
-          SWIFT_OPTIMIZATION_LEVEL: "-O"
-          GCC_OPTIMIZATION_LEVEL: "s"
-          SWIFT_COMPILATION_MODE: wholemodule
+          bash ${SRCROOT}/../scripts/build-rust.sh || true

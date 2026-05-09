@@ -23,16 +23,22 @@ clean:
 	cargo clean
 
 bindings:
-	@echo "TODO(T4): generate UniFFI bindings for the macOS shell agent."
+	cargo build -p shell-agent-ffi --release
+	cargo run -p uniffi-bindgen -- generate --library target/release/libshell_agent_ffi.dylib --language swift --out-dir shell-agent/app/Vibecrafted/Bridge/
 
 xcode:
-	@echo "TODO(T4): generate or open the Xcode project."
+	cd shell-agent/app && xcodegen generate
 
-app:
-	@echo "TODO(T4): build the macOS app target."
+app: bindings xcode
+	xcodebuild -project shell-agent/app/Vibecrafted.xcodeproj -scheme Vibecrafted -configuration Debug -derivedDataPath shell-agent/app/build/DerivedData build
 
 dmg:
-	@echo "TODO(T4): package the macOS app as a DMG."
+	# TODO: T6 follow-up to implement build-dmg.sh
+	# bash shell-agent/scripts/build-dmg.sh
+
+dmg-signed:
+	# TODO: T6 follow-up to implement build-dmg.sh with signing
+	# SIGN=1 bash shell-agent/scripts/build-dmg.sh
 
 help:
 	@printf '%s\n' 'targets: gates fmt fmt-check lint test check workspace-check clean bindings xcode app dmg'
