@@ -24,10 +24,11 @@ echo "=== [1/5] Rust release build ==="
 cargo build -p vibecrafted-shell-ffi --release
 
 echo "=== [2/5] Swift bindings ==="
-cargo run -p uniffi-bindgen -- generate \
-    --library ../../target/release/libvibecrafted_shell_ffi.dylib \
+cd uniffi-bindgen && cargo run -- generate \
+    --library ../../../target/release/libvibecrafted_shell_ffi.dylib \
     --language swift \
-    --out-dir app/Vibecrafted/Bridge/
+    --out-dir ../app/Vibecrafted/Bridge/
+cd ..
 
 echo "=== [3/5] Xcode build (Release) ==="
 cd app && xcodegen generate 2>/dev/null && cd ..

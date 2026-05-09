@@ -24,7 +24,7 @@ targets:
       - name: "Build Rust FFI"
         script: |
           cd "$PROJECT_DIR/../.." && cargo build -p vibecrafted-shell-ffi --release
-          cargo run -p uniffi-bindgen -- generate --library shell-agent/target/release/libvibecrafted_shell_ffi.dylib --language swift --out-dir shell-agent/app/Vibecrafted/Bridge/ || true
+          cargo run -p vibecrafted-uniffi-bindgen -- generate --library target/release/libvibecrafted_shell_ffi.dylib --language swift --out-dir shell-agent/app/Vibecrafted/Bridge/ || true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.vetcoders.vibecrafted
