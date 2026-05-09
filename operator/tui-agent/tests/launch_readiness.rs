@@ -206,6 +206,16 @@ fn probe_failure_surfaces_in_launch_error() {
         probe_error.contains("probe config not found"),
         "probe stderr should be surfaced verbatim: {probe_error}"
     );
+    let deadline_probe = error
+        .probe_error_at_deadline
+        .clone()
+        .expect("deadline kill must preserve the last probe diagnostic");
+    assert!(
+        deadline_probe.contains("killed after 2000ms")
+            && deadline_probe.contains("last probe error:")
+            && deadline_probe.contains("probe config not found"),
+        "deadline diagnostic should include kill timing and last probe error: {deadline_probe}"
+    );
     // Detail lines render the probe diagnostic in the operator overlay.
     let detail = error.detail_lines("zellij ...".to_string());
     assert!(
@@ -214,5 +224,12 @@ fn probe_failure_surfaces_in_launch_error() {
             .any(|line| line.starts_with("readiness probe:")
                 && line.contains("probe config not found")),
         "probe error must show in the overlay detail block: {detail:?}"
+    );
+    assert!(
+        detail
+            .iter()
+            .any(|line| line.starts_with("readiness timeout probe:")
+                && line.contains("probe config not found")),
+        "deadline probe error must show in the overlay detail block: {detail:?}"
     );
 }
