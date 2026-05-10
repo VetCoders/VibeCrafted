@@ -1220,8 +1220,8 @@ fn tab_labels_surface_monitor_dispatch_and_controls_context() {
     assert_eq!(labels[2], format!("Controls {}", CATALOG.len()));
 }
 
-#[test]
-fn queue_scope_and_search_filter_the_visible_run_list() {
+#[tokio::test]
+async fn queue_scope_and_search_filter_the_visible_run_list() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     fs::create_dir_all(root.join("runs")).unwrap();

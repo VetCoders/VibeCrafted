@@ -754,3 +754,133 @@ impl MuxSubscriber {
         Self { handle, state, rx }
     }
 }
+
+#[cfg(test)]
+mod subscriber_tests {
+    use super::*;
+    use rust_mux::ipc::{IpcEvent, MuxControlResponse};
+    use std::sync::Arc;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+    use tokio::net::UnixListener;
+
+    #[tokio::test(start_paused = true)]
+    async fn connects_and_subscribes() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("mux.sock");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+
+        let summaries = Arc::new(RwLock::new(vec![]));
+        let sub = MuxSubscriber::start(socket_path.clone(), summaries);
+
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buf = String::new();
+        tokio::io::BufReader::new(&mut stream)
+            .read_line(&mut buf)
+            .await
+            .unwrap();
+
+        assert!(buf.contains("Subscribe"));
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+            if *sub.state.read().unwrap() == SubscriberState::Connected {
+                break;
+            }
+        }
+        assert_eq!(*sub.state.read().unwrap(), SubscriberState::Connected);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reconnects_on_disconnect() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("mux.sock");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+
+        let summaries = Arc::new(RwLock::new(vec![]));
+        let sub = MuxSubscriber::start(socket_path.clone(), summaries);
+
+        {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = String::new();
+            tokio::io::BufReader::new(&mut stream)
+                .read_line(&mut buf)
+                .await
+                .unwrap();
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(*sub.state.read().unwrap(), SubscriberState::Connected);
+            // Drop stream
+        }
+
+        tokio::time::advance(std::time::Duration::from_secs(2)).await;
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buf = String::new();
+        tokio::io::BufReader::new(&mut stream)
+            .read_line(&mut buf)
+            .await
+            .unwrap();
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(*sub.state.read().unwrap(), SubscriberState::Connected);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn falls_back_to_polling_after_10_attempts() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("mux.sock"); // No listener
+
+        let summaries = Arc::new(RwLock::new(vec![]));
+        let sub = MuxSubscriber::start(socket_path.clone(), summaries);
+
+        // Advance enough time to trigger all 10 attempts + exponential backoffs
+        for _ in 0..15 {
+            tokio::time::advance(std::time::Duration::from_secs(40)).await;
+            tokio::task::yield_now().await;
+            if *sub.state.read().unwrap() == SubscriberState::Polling {
+                break;
+            }
+        }
+
+        assert_eq!(*sub.state.read().unwrap(), SubscriberState::Polling);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn forwards_events_to_rx_channel() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("mux.sock");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+
+        let summaries = Arc::new(RwLock::new(vec![]));
+        let sub = MuxSubscriber::start(socket_path.clone(), summaries);
+
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buf = String::new();
+        tokio::io::BufReader::new(&mut stream)
+            .read_line(&mut buf)
+            .await
+            .unwrap();
+
+        let evt = IpcEvent::StateChange {
+            service: "test".into(),
+            from: "Init".into(),
+            to: "Running".into(),
+        };
+        let resp = MuxControlResponse::Event(evt.clone());
+        let payload = format!("{}\n", serde_json::to_string(&resp).unwrap());
+        stream.write_all(payload.as_bytes()).await.unwrap();
+
+        // Wait for it to be received without blocking the single-threaded tokio executor
+        let mut received = None;
+        for _ in 0..20 {
+            tokio::task::yield_now().await;
+            if let Ok(e) = sub.rx.try_recv() {
+                received = Some(e);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        assert_eq!(received, Some(evt));
+    }
+}

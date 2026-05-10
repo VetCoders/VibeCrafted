@@ -74,6 +74,18 @@ fn run_app(config: AppConfig) -> anyhow::Result<()> {
             while watch_rx.try_recv().is_ok() {
                 watched_change = true;
             }
+            let mut events = Vec::new();
+            if let Some(sub) = &app.mux_subscriber {
+                while let Ok(event) = sub.rx.try_recv() {
+                    events.push(event);
+                }
+            }
+            if !events.is_empty() {
+                for event in events {
+                    app.handle_ipc_event(event);
+                }
+                watched_change = true;
+            }
             if watched_change {
                 app.refresh();
                 last_tick = Instant::now();
