@@ -126,11 +126,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = CE13A064BDAD522E149B07DD /* Build configuration list for PBXNativeTarget "Vibecrafted" */;
 			buildPhases = (
-				80F542BE7AAC1F9A358F5919 /* Build Rust FFI */,
 				3FAD01166F3AB65C7E6A005F /* Sources */,
 				5C09F58E39B5124D10F145E3 /* Resources */,
 				015CE8C17BD0DD3E250BC1B0 /* Frameworks */,
 				B5CE407F90D607E9182E30A6 /* Embed Frameworks */,
+				B1AC2505E58398D692EF0A46 /* Build Rust binaries */,
 			);
 			buildRules = (
 			);
@@ -188,7 +188,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		80F542BE7AAC1F9A358F5919 /* Build Rust FFI */ = {
+		B1AC2505E58398D692EF0A46 /* Build Rust binaries */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -197,14 +197,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Build Rust FFI";
+			name = "Build Rust binaries";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "bash ${SRCROOT}/../scripts/build-rust.sh || true\n";
+			shellPath = /bin/bash;
+			shellScript = "bash $SRCROOT/../scripts/build-rust-binaries.sh || true\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -244,6 +244,9 @@
 					"$(PROJECT_DIR)/Vibecrafted/Bridge",
 				);
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
+				INFOPLIST_KEY_CFBundleExecutable = Vibecrafted;
+				INFOPLIST_KEY_CFBundleName = Vibecrafted;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = NO;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -340,6 +343,9 @@
 					"$(PROJECT_DIR)/Vibecrafted/Bridge",
 				);
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
+				INFOPLIST_KEY_CFBundleExecutable = Vibecrafted;
+				INFOPLIST_KEY_CFBundleName = Vibecrafted;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = NO;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (

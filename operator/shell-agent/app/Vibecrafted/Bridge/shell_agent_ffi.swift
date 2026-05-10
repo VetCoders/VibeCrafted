@@ -803,8 +803,8 @@ public enum FfiClientKind: Equatable, Hashable {
     case claude
     case codex
     case gemini
-    case cursor
-    case other(value: String
+    case junie
+    case generic(name: String
     )
 
 
@@ -831,9 +831,9 @@ public struct FfiConverterTypeFfiClientKind: FfiConverterRustBuffer {
         
         case 3: return .gemini
         
-        case 4: return .cursor
+        case 4: return .junie
         
-        case 5: return .other(value: try FfiConverterString.read(from: &buf)
+        case 5: return .generic(name: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -856,13 +856,13 @@ public struct FfiConverterTypeFfiClientKind: FfiConverterRustBuffer {
             writeInt(&buf, Int32(3))
         
         
-        case .cursor:
+        case .junie:
             writeInt(&buf, Int32(4))
         
         
-        case let .other(value):
+        case let .generic(name):
             writeInt(&buf, Int32(5))
-            FfiConverterString.write(value, into: &buf)
+            FfiConverterString.write(name, into: &buf)
             
         }
     }
