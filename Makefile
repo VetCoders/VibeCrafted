@@ -8,8 +8,9 @@ INSTALLER_DIR := scripts/installer
 SHELL_INSTALLER := skills/vc-agents/scripts/install-shell.sh
 SOURCE   := $(CURDIR)
 BRANCH   ?= main
+VERSION_FILE := VERSION
 
-.PHONY: help vibecrafted gui-install wizard wizard-dev check test install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall
 
 help:
 	@printf "\n"
@@ -35,12 +36,20 @@ help:
 	@printf "  \033[32m◇\033[0m  make bundle-check  \033[2mFail if the committed marketplace bundle drifted from repo truth\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test          \033[2mRun installer + marketplace pytest gates\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
+	@printf "  \033[32m◇\033[0m  make version-show  \033[2mShow VERSION and release tag state\033[0m\n"
+	@printf "  \033[32m↟\033[0m  make version-bump VERSION=X \033[2mBump VERSION; X={patch|minor|major|x.y.z}\033[0m\n"
 	@printf "\n"
 	@printf "  \033[33m◆\033[0m  make migrate       \033[2mMigrate .ai-agents/ to $$VIBECRAFTED_ROOT/.vibecrafted/artifacts/\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make migrate-dry   \033[2mPreview migration (dry run)\033[0m\n"
 	@printf "\n"
 	@printf "  \033[31m✕\033[0m  make uninstall     \033[2mRemove skills + helpers\033[0m\n"
 	@printf "  \033[31m↺\033[0m  make restore       \033[2mUndo last install/uninstall\033[0m\n"
+	@printf "\n"
+	@printf "  \033[2m── experimental ────────────────────────\033[0m\n"
+	@printf "  \033[33m◇\033[0m  make iterm-plugin           \033[2mInstall iTerm2 Dynamic Profiles (alongside, idempotent)\033[0m\n"
+	@printf "  \033[33m◇\033[0m  make iterm-plugin-refresh   \033[2mOverwrite installed file (creates .bak)\033[0m\n"
+	@printf "  \033[33m◇\033[0m  make iterm-plugin-show      \033[2mPrint generated JSON to stdout\033[0m\n"
+	@printf "  \033[33m◇\033[0m  make iterm-plugin-uninstall \033[2mRemove the installed file\033[0m\n"
 	@printf "\n"
 	@printf "  ╭─────────────────────────────────────────╮\n"
 	@printf "  │ Vibecrafted with AI Agents by VetCoders │\n"
@@ -56,32 +65,45 @@ vibecrafted: init-hooks
 	uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
 
 # BUNDLE_DIR accepts an external prebuilt Svelte site/dist tree
-# (e.g. from the sibling vibecrafted-io repo). When empty, the GUI
-# installer falls back to its built-in inline HTML.
+# (e.g. from the sibling vibecrafted-io repo). When empty, `make wizard`
+# first tries to build and serve the sibling site checkout so the local
+# control plane matches the branded install surface; otherwise it falls
+# back to the built-in inline HTML.
 BUNDLE_DIR ?=
 
 wizard: init-hooks
-	@$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"$(if $(BUNDLE_DIR), --bundle-dir "$(BUNDLE_DIR)")
-
-gui-install: wizard
-
-# Development helper: auto-detects the sibling vibecrafted-io checkout,
-# rebuilds the Svelte bundle, and launches the wizard served by the
-# local HTTP server. Use when iterating on the LiveInstaller component.
-wizard-dev: init-hooks
-	@site_repo=""; \
+	@if [ -n "$(BUNDLE_DIR)" ]; then \
+		echo "[wizard] Launching wizard with explicit bundle $(BUNDLE_DIR)"; \
+		$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)" --bundle-dir "$(BUNDLE_DIR)"; \
+		exit 0; \
+	fi; \
+	if [ -n "$$VIBECRAFTED_SITE_BUNDLE" ]; then \
+		echo "[wizard] Using VIBECRAFTED_SITE_BUNDLE=$$VIBECRAFTED_SITE_BUNDLE"; \
+		$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"; \
+		exit 0; \
+	fi; \
+	site_repo=""; \
 	for p in "$(CURDIR)/../vc-runtime/vibecrafted-io" "$(CURDIR)/../vibecrafted-io" "$$HOME/Libraxis/vc-runtime/vibecrafted-io"; do \
 		if [ -d "$$p/site" ]; then site_repo="$$p"; break; fi; \
 	done; \
 	if [ -z "$$site_repo" ]; then \
-		echo "[wizard-dev] vibecrafted-io sibling not found — falling back to inline HTML"; \
+		echo "[wizard] vibecrafted-io sibling not found — falling back to inline HTML"; \
 		$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"; \
 		exit 0; \
 	fi; \
-	echo "[wizard-dev] Building Svelte site at $$site_repo"; \
-	(cd "$$site_repo/site" && pnpm install --frozen-lockfile=false && pnpm run build) || { echo "[wizard-dev] site build failed"; exit 1; }; \
-	echo "[wizard-dev] Launching wizard with bundle from $$site_repo/site/dist"; \
+	echo "[wizard] Building branded install surface at $$site_repo/site"; \
+	if [ ! -d "$$site_repo/site/node_modules" ]; then \
+		(cd "$$site_repo/site" && pnpm install --frozen-lockfile=false) || { echo "[wizard] site dependency install failed — falling back to inline HTML"; $(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"; exit 0; }; \
+	fi; \
+	(cd "$$site_repo/site" && pnpm run build) || { echo "[wizard] site build failed — falling back to inline HTML"; $(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)"; exit 0; }; \
+	echo "[wizard] Launching wizard with bundle from $$site_repo/site/dist"; \
 	$(PYTHON) $(GUI_INSTALLER) --source "$(SOURCE)" --bundle-dir "$$site_repo/site/dist"
+
+gui-install: wizard
+
+# Development helper preserved as an explicit alias for LiveInstaller work.
+# `make wizard` already rebuilds the sibling site when it is available.
+wizard-dev: wizard
 
 install: init-hooks
 	@if ! command -v uv >/dev/null 2>&1; then \
@@ -130,8 +152,39 @@ bundle-check:
 		exit 1; \
 	fi
 
+version version-show:
+	@version="$$(sed -n '1p' "$(VERSION_FILE)" 2>/dev/null | tr -d '[:space:]')"; \
+	if [ -z "$$version" ]; then echo "VERSION file missing or empty: $(VERSION_FILE)" >&2; exit 1; fi; \
+	printf "version: %s\n" "$$version"; \
+	printf "tag: v%s\n" "$$version"; \
+	if git rev-parse --verify "refs/tags/v$$version" >/dev/null 2>&1; then \
+		echo "tag-state: exists"; \
+	else \
+		echo "tag-state: missing"; \
+	fi
+
+version-bump:
+ifeq ($(origin VERSION),command line)
+	@$(PYTHON) scripts/version_bump.py "$(VERSION)" --file "$(VERSION_FILE)"
+else
+	@echo "VERSION is required. Usage: make version-bump VERSION={patch|minor|major|x.y.z}" >&2 && exit 1
+endif
+
+bump-patch:
+	@$(MAKE) version-bump VERSION=patch
+
+bump-minor:
+	@$(MAKE) version-bump VERSION=minor
+
+bump-major:
+	@$(MAKE) version-bump VERSION=major
+
 semgrep:
-	@semgrep scan --config auto --error --quiet --exclude-rule html.security.audit.missing-integrity.missing-integrity .
+	@if command -v semgrep >/dev/null 2>&1; then \
+		semgrep scan --config auto --error --quiet --exclude-rule html.security.audit.missing-integrity.missing-integrity .; \
+	else \
+		uvx semgrep scan --config auto --error --quiet --exclude-rule html.security.audit.missing-integrity.missing-integrity .; \
+	fi
 
 test:
 	@if command -v uv >/dev/null 2>&1; then \
@@ -167,6 +220,18 @@ migrate-dry:
 check:
 	@$(PYTHON) scripts/check_shell.py
 	@echo "Check complete."
+
+iterm-plugin:
+	@uv run --project vibecrafted-core --quiet python -m vibecrafted_core.iterm2_profiles install
+
+iterm-plugin-refresh:
+	@uv run --project vibecrafted-core --quiet python -m vibecrafted_core.iterm2_profiles refresh
+
+iterm-plugin-show:
+	@uv run --project vibecrafted-core --quiet python -m vibecrafted_core.iterm2_profiles show
+
+iterm-plugin-uninstall:
+	@uv run --project vibecrafted-core --quiet python -m vibecrafted_core.iterm2_profiles uninstall
 
 init-hooks:
 	@if git rev-parse --git-dir >/dev/null 2>&1; then \

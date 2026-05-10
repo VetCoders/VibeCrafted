@@ -13,6 +13,10 @@ spawn_operator_session_name_for_run_id() {
   local run_id="${1:-}"
   local base
   base="$(spawn_session_base_name)"
+  if [[ "${VIBECRAFTED_ZELLIJ_GROUP_BY_CWD:-1}" != "0" ]]; then
+    printf '%s\n' "$base"
+    return 0
+  fi
   if [[ -n "$run_id" ]]; then
     printf '%s-%s\n' "$base" "$run_id"
   else
@@ -63,6 +67,59 @@ spawn_marbles_state_dir() {
   printf '%s/marbles/%s\n' "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}" "$run_id"
 }
 
+spawn_archive_marbles_state_dir() {
+  local run_id="$1"
+  local status="${2:-archived}"
+  local state_dir target_date target_parent target_dir state_file
+
+  [[ -n "$run_id" ]] || return 1
+  state_dir="$(spawn_marbles_state_dir "$run_id")"
+  [[ -d "$state_dir" ]] || return 0
+
+  target_date="$(date -u +%F)"
+  target_parent="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/marbles/_archived/$target_date"
+  target_dir="$target_parent/$run_id"
+  [[ ! -e "$target_dir" ]] || return 1
+
+  mkdir -p "$target_parent"
+  mv "$state_dir" "$target_dir"
+
+  state_file="$target_dir/state.json"
+  if [[ -f "$state_file" ]] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$state_file" "$status" "$state_dir" "$target_dir" <<'PY' || true
+import datetime
+import json
+import sys
+
+state_path, status, archived_from, target_dir = sys.argv[1:5]
+archived_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+try:
+    with open(state_path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+except Exception:
+    payload = {}
+
+previous_status = payload.get("status", "")
+payload["previous_status"] = previous_status
+payload["status"] = status
+payload["archived_from"] = archived_from
+payload["archived_at"] = archived_at
+payload["updated_at"] = archived_at
+for key in ("plan", "god_plan", "ancestor_plan"):
+    value = payload.get(key)
+    if isinstance(value, str) and value.startswith(archived_from + "/"):
+        payload[key] = target_dir + value[len(archived_from):]
+
+with open(state_path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, indent=2)
+    handle.write("\n")
+PY
+  fi
+
+  printf '%s\n' "$target_dir"
+}
+
 spawn_marbles_child_plan_path() {
   local store_dir="$1"
   local ancestor_plan="$2"
@@ -93,9 +150,11 @@ spawn_marbles_write_child_plan() {
 - If the substrate is too poisoned to operate on, return control to the operator/runtime layer. Do not solve substrate invalidity by moving sideways.
 
 ## Exit Contract
-- **COMMIT**: mandatory. One commit when done.
 - **REPORT**: mandatory. Write to the report path given at the end of this prompt.
-- **SCOPE**: do your work, commit, report, stop.
+  Filesystem artifact (report.md + meta.json + transcript.log) is the closure marker.
+- **COMMIT**: only if you produced staged changes that match the dispatched scope.
+  NO empty commits. NO `--allow-empty`. NO chore stamps.
+- **SCOPE**: do your work, write report, optionally commit if real changes, stop.
 ROUND_CONTRACT
 }
 
@@ -161,18 +220,39 @@ spawn_prepare_paths() {
   SPAWN_PLAN_DIR="$store_base/plans"
   SPAWN_REPORT_DIR="$store_base/reports"
   SPAWN_TMP_DIR="$store_base/tmp"
-  SPAWN_BASE="$SPAWN_REPORT_DIR/${SPAWN_TS}_${SPAWN_SLUG}_${agent}"
-  SPAWN_REPORT="${SPAWN_BASE}.md"
-  SPAWN_TRANSCRIPT="${SPAWN_BASE}.transcript.log"
-  SPAWN_META="${SPAWN_BASE}.meta.json"
-  # Include run_id in launcher filename — even with second-resolution timestamps,
-  # two spawns can still race inside the same second. run_id carries a PID suffix
-  # so it is globally unique per dispatch and guarantees no append collisions.
-  SPAWN_LAUNCHER="$SPAWN_TMP_DIR/${SPAWN_TS}_${SPAWN_RUN_ID}_${SPAWN_SLUG}_${agent}_launch.sh"
-  mkdir -p "$store_base/plans" "$SPAWN_REPORT_DIR" "$SPAWN_TMP_DIR"
+  SPAWN_LOG_DIR="$SPAWN_REPORT_DIR"
+
+  local research_run_dir_abs="" store_base_abs=""
+  if [[ -n "${VIBECRAFTED_RESEARCH_RUN_DIR:-}" ]]; then
+    research_run_dir_abs="$(spawn_abspath "$VIBECRAFTED_RESEARCH_RUN_DIR" 2>/dev/null || true)"
+    store_base_abs="$(spawn_abspath "$store_base" 2>/dev/null || true)"
+  fi
+
+  if [[ -n "$research_run_dir_abs" ]] \
+    && [[ "$research_run_dir_abs" == "$store_base_abs" ]] \
+    && [[ "${SPAWN_SKILL_NAME:-}" == "research" || "${SPAWN_SKILL_CODE:-}" == "rsch" ]]; then
+    SPAWN_LOG_DIR="$store_base/logs"
+    SPAWN_BASE="$SPAWN_REPORT_DIR/${agent}"
+    SPAWN_REPORT="$SPAWN_REPORT_DIR/${agent}.md"
+    SPAWN_TRANSCRIPT="$SPAWN_LOG_DIR/${agent}.transcript.log"
+    SPAWN_META="$SPAWN_LOG_DIR/${agent}.meta.json"
+    SPAWN_LAUNCHER="$SPAWN_TMP_DIR/${agent}_launch.sh"
+    mkdir -p "$SPAWN_PLAN_DIR" "$SPAWN_REPORT_DIR" "$SPAWN_LOG_DIR" "$SPAWN_TMP_DIR"
+  else
+    SPAWN_BASE="$SPAWN_REPORT_DIR/${SPAWN_TS}_${SPAWN_SLUG}_${agent}"
+    SPAWN_REPORT="${SPAWN_BASE}.md"
+    SPAWN_TRANSCRIPT="${SPAWN_BASE}.transcript.log"
+    SPAWN_META="${SPAWN_BASE}.meta.json"
+    # Include run_id in launcher filename — even with second-resolution timestamps,
+    # two spawns can still race inside the same second. run_id carries a PID suffix
+    # so it is globally unique per dispatch and guarantees no append collisions.
+    SPAWN_LAUNCHER="$SPAWN_TMP_DIR/${SPAWN_TS}_${SPAWN_RUN_ID}_${SPAWN_SLUG}_${agent}_launch.sh"
+    mkdir -p "$SPAWN_PLAN_DIR" "$SPAWN_REPORT_DIR" "$SPAWN_TMP_DIR"
+  fi
+
   spawn_link_repo_artifacts "$store_base" "$SPAWN_ROOT"
   export SPAWN_ROOT SPAWN_PLAN SPAWN_SLUG SPAWN_TS SPAWN_AGENT SPAWN_PROMPT_ID SPAWN_RUN_ID SPAWN_RUN_LOCK SPAWN_SKILL_CODE SPAWN_SKILL_NAME SPAWN_LOOP_NR
-  export SPAWN_PLAN_DIR SPAWN_REPORT_DIR SPAWN_TMP_DIR SPAWN_BASE SPAWN_REPORT SPAWN_TRANSCRIPT SPAWN_META SPAWN_LAUNCHER
+  export SPAWN_PLAN_DIR SPAWN_REPORT_DIR SPAWN_TMP_DIR SPAWN_LOG_DIR SPAWN_BASE SPAWN_REPORT SPAWN_TRANSCRIPT SPAWN_META SPAWN_LAUNCHER
 }
 
 spawn_scan_active() {

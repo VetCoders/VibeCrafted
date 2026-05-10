@@ -102,6 +102,19 @@ def test_print_doctor_surfaces_simple_and_release_paths(capsys, tmp_path: Path) 
     assert "START_HERE.md" in output
 
 
+def test_print_doctor_failure_hint_uses_vibecrafted_not_old_brand(
+    capsys, tmp_path: Path
+) -> None:
+    findings = [installer.DoctorFinding("fail", "store", "missing")]
+
+    exit_code = installer.print_doctor(findings, guide_path=tmp_path / "START_HERE.md")
+
+    assert exit_code == 1
+    output = capsys.readouterr().out
+    assert "vibecrafted doctor --fix-rc --fix-launchers" in output
+    assert "vetcoders install" not in output
+
+
 def test_run_doctor_includes_dashboard_smoke(tmp_path: Path, monkeypatch) -> None:
     """Doctor checks that 'vibecrafted dashboard ls' subcommand is functional."""
     home = tmp_path / "home"
@@ -168,6 +181,80 @@ def test_run_doctor_includes_dashboard_smoke(tmp_path: Path, monkeypatch) -> Non
 
     assert "dashboard-smoke" in indexed
     assert indexed["dashboard-smoke"].level == "ok"
+
+
+def test_run_doctor_uses_bundled_zellij_when_not_on_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    store_path = crafted_home / "skills"
+    zellij = crafted_home / "bin" / "zellij"
+
+    store_path.mkdir(parents=True)
+    zellij.parent.mkdir(parents=True)
+    _write_executable(
+        zellij,
+        '#!/usr/bin/env bash\nif [[ "$1" == "--version" ]]; then echo \'zellij 0.test\'; else exit 0; fi\n',
+    )
+
+    state = installer.InstallState(framework_version="1.5.0")
+    state.save(store_path)
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("VIBECRAFTED_HOME", str(crafted_home))
+    monkeypatch.setattr(installer, "FOUNDATIONS", [])
+    monkeypatch.setattr(installer.shutil, "which", lambda name: None)
+
+    findings = installer.run_doctor(store_path, state)
+    indexed = {finding.component: finding for finding in findings}
+
+    assert indexed["zellij"].level == "ok"
+    assert str(zellij) in indexed["zellij"].message
+
+
+def test_run_doctor_accepts_gemini_help_when_version_flag_exits_nonzero(
+    tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    store_path = crafted_home / "skills"
+    fake_bin = tmp_path / "bin"
+    gemini = fake_bin / "gemini"
+
+    store_path.mkdir(parents=True)
+    fake_bin.mkdir()
+    _write_executable(
+        gemini,
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                'case "${1:-}" in',
+                "  --help) echo 'gemini help'; exit 0 ;;",
+                "  *) exit 1 ;;",
+                "esac",
+            ]
+        )
+        + "\n",
+    )
+
+    state = installer.InstallState(framework_version="1.5.0")
+    state.save(store_path)
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("VIBECRAFTED_HOME", str(crafted_home))
+    monkeypatch.setattr(installer, "FOUNDATIONS", [])
+    monkeypatch.setattr(
+        installer.shutil,
+        "which",
+        lambda name: str(gemini) if name == "gemini" else None,
+    )
+
+    findings = installer.run_doctor(store_path, state)
+    indexed = {finding.component: finding for finding in findings}
+
+    assert indexed["agent-stream:gemini"].level == "ok"
+    assert "version flag unavailable" in indexed["agent-stream:gemini"].message
 
 
 def test_run_doctor_finds_launchers_outside_local_bin(
@@ -401,7 +488,7 @@ def test_run_doctor_spawn_e2e_supplies_full_meta_arguments(
     assert indexed["spawn-e2e"].level == "ok"
 
 
-def test_cmd_doctor_fix_rc_repairs_legacy_shell_lines(
+def test_cmd_doctor_fix_rc_repairs_compat_shell_lines(
     tmp_path: Path, monkeypatch
 ) -> None:
     home = tmp_path / "home"
@@ -410,13 +497,13 @@ def test_cmd_doctor_fix_rc_repairs_legacy_shell_lines(
     store_path = crafted_home / "skills"
     launcher_bin = home / ".local" / "bin"
     helper_dir = config_home / "vetcoders"
-    legacy_helper_dir = config_home / "zsh"
+    compat_helper_dir = config_home / "zsh"
     zshrc = home / ".zshrc"
 
     store_path.mkdir(parents=True)
     launcher_bin.mkdir(parents=True)
     helper_dir.mkdir(parents=True)
-    legacy_helper_dir.mkdir(parents=True)
+    compat_helper_dir.mkdir(parents=True)
 
     helper_file = helper_dir / "vc-skills.sh"
     helper_file.write_text(
@@ -430,8 +517,8 @@ def test_cmd_doctor_fix_rc_repairs_legacy_shell_lines(
         + "\n",
         encoding="utf-8",
     )
-    (legacy_helper_dir / "vc-skills.zsh").write_text(
-        "# legacy helper\n", encoding="utf-8"
+    (compat_helper_dir / "vc-skills.zsh").write_text(
+        "# compat helper\n", encoding="utf-8"
     )
     _write_executable(
         launcher_bin / "vibecrafted",

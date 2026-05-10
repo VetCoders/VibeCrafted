@@ -202,12 +202,13 @@ Early convergence: if P0=0, P1=0, P2=0 → loop stops before count exhausted.
 ```
 NEVER change branches during marbles.
 NEVER create branches in the user's repo-root.
+NEVER create, switch to, or move to a git worktree.
 ```
 
 The branch is the operator's decision. If the agent believes the branch is wrong,
 it stops and returns control to the operator/runtime layer with a substrate
 failure. Parallel agents depend on branch stability, and a worker must not solve
-substrate invalidity by moving sideways.
+substrate invalidity by moving sideways into a worktree, clone, or side lane.
 
 **Violation consequences:** Concurrent agents on the same living tree lose coherence.
 Commits land on wrong branches. Merge conflicts proliferate. The operator loses trust.
@@ -268,7 +269,7 @@ If gate fails, commit message says `Gate: fail` and next round starts with the r
 ```
 $VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/
 ├── plans/                    # Original task plans
-├── reports/                  # implement/workflow reports (legacy: justdo/workflow)
+├── reports/                  # run reports outside marbles loops
 ├── marbles/
 │   ├── plans/                # Per-loop plan copies (L1, L2, ...)
 │   └── reports/              # Per-loop reports + CONVERGENCE.md
@@ -378,4 +379,4 @@ Full timeline: 181 entries, 5 hours, 1 session.
 
 ---
 
-_Vibecrafted with AI Agents by VetCoders (c)2024-2026 VetCoders_
+_𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents by VetCoders (c)2024-2026 LibraxisAI_

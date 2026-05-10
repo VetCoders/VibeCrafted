@@ -19,9 +19,30 @@ CODEX_STREAM_FILTER = (
 )
 
 
+# Strip ambient env vars that affect spawn-routing decisions before each
+# test script runs. Without this, tests that source common.sh inherit the
+# parent shell's ZELLIJ / VIBECRAFTED_* state — and when pytest itself is
+# launched from inside a marbles-spawned zellij session whose name happens
+# to match the test's _expected_operator_session(run_id), the routing
+# guard in spawn_in_operator_session collapses to in-session pane routing
+# instead of the asserted new-tab path.
+_ENV_SANITIZE = """
+unset ZELLIJ ZELLIJ_PANE_ID ZELLIJ_SESSION_NAME ZELLIJ_TAB_NAME ZELLIJ_CONFIG_DIR
+unset VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION VIBECRAFTED_PANE_SEQ VIBECRAFTED_MARBLES_TAB_NAME
+unset VIBECRAFTED_OPERATOR_SESSION VIBECRAFTED_RUN_ID VIBECRAFTED_RUN_LOCK
+unset VIBECRAFTED_SKILL_CODE VIBECRAFTED_SKILL_NAME VIBECRAFTED_LOOP_NR
+unset VIBECRAFTED_ZELLIJ_CLOSE_AGENT_PANES VIBECRAFTED_ZELLIJ_KEEP_AGENT_PANES VIBECRAFTED_INLINE_STARTUP_WATCH
+unset VIBECRAFTED_SPAWN_STAGGER VIBECRAFTED_SPAWN_STAGGER_SECONDS
+unset SPAWN_LOOP_NR SPAWN_META SPAWN_TRANSCRIPT SPAWN_REPORT SPAWN_ROOT
+unset SPAWN_RUN_ID SPAWN_RUN_LOCK SPAWN_AGENT SPAWN_SKILL_CODE SPAWN_SKILL_NAME
+unset SPAWN_PROMPT_ID
+export VIBECRAFTED_SPAWN_STAGGER_SECONDS=0
+"""
+
+
 def _bash(script: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["bash", "-lc", script],
+        ["bash", "-lc", _ENV_SANITIZE + script],
         check=True,
         cwd=REPO_ROOT,
         capture_output=True,
@@ -33,7 +54,35 @@ def _expected_operator_session(run_id: str | None = None) -> str:
     base = (
         re.sub(r"[^a-z0-9]+", "-", REPO_ROOT.name.lower()).strip("-") or "vibecrafted"
     )
+    return base
+
+
+def _legacy_expected_operator_session(run_id: str | None = None) -> str:
+    base = (
+        re.sub(r"[^a-z0-9]+", "-", REPO_ROOT.name.lower()).strip("-") or "vibecrafted"
+    )
     return f"{base}-{run_id}" if run_id else base
+
+
+def test_operator_session_groups_spawns_from_same_directory() -> None:
+    base = _expected_operator_session()
+    legacy_a = _legacy_expected_operator_session("agnt-111111-111")
+    legacy_b = _legacy_expected_operator_session("agnt-222222-222")
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+
+        spawn_operator_session_name_for_run_id "agnt-111111-111"
+        spawn_operator_session_name_for_run_id "agnt-222222-222"
+
+        VIBECRAFTED_ZELLIJ_GROUP_BY_CWD=0 spawn_operator_session_name_for_run_id "agnt-111111-111"
+        VIBECRAFTED_ZELLIJ_GROUP_BY_CWD=0 spawn_operator_session_name_for_run_id "agnt-222222-222"
+        '''
+    )
+
+    assert result.stdout.splitlines() == [base, base, legacy_a, legacy_b]
 
 
 def _split_zellij_calls(payload: str) -> list[list[str]]:
@@ -49,6 +98,34 @@ def _split_zellij_calls(payload: str) -> list[list[str]]:
     if current:
         calls.append(current)
     return calls
+
+
+def _read_json_or_none(path: Path) -> dict | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+        if not text.strip():
+            return None
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+
+def _wait_for_meta_payload(
+    artifacts_root: Path, pattern: str, timeout: float = 20.0
+) -> tuple[Path | None, dict | None]:
+    deadline = time.time() + timeout
+    latest_meta: Path | None = None
+    while time.time() < deadline:
+        meta_files = sorted(artifacts_root.rglob(pattern))
+        if meta_files:
+            latest_meta = meta_files[0]
+            payload = _read_json_or_none(latest_meta)
+            if payload and payload.get("status") in {"completed", "failed"}:
+                return latest_meta, payload
+        time.sleep(0.1)
+    if latest_meta is None:
+        return None, None
+    return latest_meta, _read_json_or_none(latest_meta)
 
 
 def test_runtime_prompt_guards_report_path_from_bare_slash(tmp_path: Path) -> None:
@@ -93,6 +170,186 @@ def test_runtime_prompt_includes_vc_agents_worker_charter(tmp_path: Path) -> Non
     assert "Do NOT invoke vc-agents" in payload
     assert "do not reinterpret it" in payload
     assert "record the boundary clearly in your report" in payload
+    assert "**REPORT**: mandatory" in payload
+    assert "**COMMIT**:" in payload
+    assert "NO empty commits" in payload
+    assert "`--allow-empty`" in payload
+    assert "If you have nothing to stage, do not commit" in payload
+
+
+def test_spawn_clean_model_normalizes_placeholders_and_passes_real_values(
+    tmp_path: Path,
+) -> None:
+    # Single source of truth for the placeholder-model filter. Marbles
+    # dispatch sites (marbles_spawn.sh, marbles_next.sh L1 and L2+) all
+    # route through this helper so adding a new placeholder token here
+    # propagates everywhere.
+    out_file = tmp_path / "out.txt"
+    proc = _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        {{
+          printf 'empty=[%s]\n' "$(spawn_clean_model "")"
+          printf 'pending=[%s]\n' "$(spawn_clean_model "pending")"
+          printf 'unknown=[%s]\n' "$(spawn_clean_model "unknown")"
+          printf 'null=[%s]\n' "$(spawn_clean_model "null")"
+          printf 'real=[%s]\n' "$(spawn_clean_model "claude-opus-4-7")"
+          printf 'sonnet=[%s]\n' "$(spawn_clean_model "claude-sonnet-4-6")"
+          printf 'no_arg=[%s]\n' "$(spawn_clean_model)"
+          printf 'mixed=[%s]\n' "$(spawn_clean_model "Pending")"
+        }} > "{out_file}"
+        '''
+    )
+    assert proc.returncode == 0
+    payload = out_file.read_text(encoding="utf-8")
+    assert "empty=[]" in payload
+    assert "pending=[]" in payload
+    assert "unknown=[]" in payload
+    assert "null=[]" in payload
+    assert "no_arg=[]" in payload
+    assert "real=[claude-opus-4-7]" in payload
+    assert "sonnet=[claude-sonnet-4-6]" in payload
+    # Case-sensitive: only lowercase tokens are placeholders. Capitalized
+    # variants pass through so the helper does not silently swallow real
+    # model names that happen to share a prefix.
+    assert "mixed=[Pending]" in payload
+
+
+def test_marbles_dispatch_sites_route_placeholder_filter_through_helper() -> None:
+    # Lock convergence: the three legacy `pending|unknown|null` chains in
+    # marbles_spawn.sh and marbles_next.sh have been collapsed into a single
+    # spawn_clean_model() helper. If a future change reintroduces the
+    # inline chain, this test fires before the regression ships.
+    spawn_text = (
+        REPO_ROOT / "skills" / "vc-agents" / "scripts" / "marbles_spawn.sh"
+    ).read_text(encoding="utf-8")
+    next_text = (
+        REPO_ROOT / "skills" / "vc-agents" / "scripts" / "marbles_next.sh"
+    ).read_text(encoding="utf-8")
+    util_text = (
+        REPO_ROOT / "skills" / "vc-agents" / "scripts" / "lib" / "util.sh"
+    ).read_text(encoding="utf-8")
+
+    # Helper exists in exactly one place.
+    assert "spawn_clean_model()" in util_text
+    assert spawn_text.count('!= "pending"') == 0
+    assert next_text.count('!= "pending"') == 0
+    # Both dispatch sites call the helper.
+    assert 'spawn_clean_model "$ancestor_model"' in spawn_text
+    assert 'spawn_clean_model "$loop_model"' in next_text
+    # No leftover inline `pending|unknown|null` case branches outside the helper.
+    assert next_text.count("pending|unknown|null") == 0
+
+
+def test_research_runtime_prompt_forbids_commits_and_source_mutation(
+    tmp_path: Path,
+) -> None:
+    source_file = tmp_path / "source.md"
+    runtime_file = tmp_path / "runtime.md"
+    report_path = tmp_path / "report.md"
+    source_file.write_text("# Research prompt\n", encoding="utf-8")
+
+    _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_RUN_ID="rsch-123"
+        export SPAWN_PROMPT_ID="prompt-123"
+        export SPAWN_SKILL_NAME="research"
+        export SPAWN_SKILL_CODE="rsch"
+        spawn_build_runtime_prompt "{source_file}" "{runtime_file}" "{report_path}" codex
+        '''
+    )
+
+    payload = runtime_file.read_text(encoding="utf-8")
+    assert "## Research Safety Contract" in payload
+    assert "**GIT WRITES forbidden**" in payload
+    assert "do not stage, commit, amend" in payload
+    assert "**SOURCE MUTATION**: forbidden" in payload
+    assert "Do not edit repo source files" in payload
+    assert "Working tree must be" in payload
+    assert "unchanged at the end of the run" in payload
+    assert "**COMMIT**: mandatory. One commit when done." not in payload
+
+
+def test_codex_research_prompt_uses_clean_research_payload(
+    tmp_path: Path,
+) -> None:
+    source_file = tmp_path / "source.md"
+    runtime_file = tmp_path / "runtime.md"
+    report_path = tmp_path / "report.md"
+    source_file.write_text(
+        "\n".join(
+            [
+                "---",
+                "run_id: rsch-123",
+                "skill: vc-research",
+                "status: in-progress",
+                "---",
+                "",
+                "# Research Prompt",
+                "",
+                "Question: How should clean worker prompts behave?",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_RUN_ID="rsch-123"
+        export SPAWN_PROMPT_ID="prompt-123"
+        export SPAWN_SKILL_NAME="research"
+        spawn_build_runtime_prompt "{source_file}" "{runtime_file}" "{report_path}" codex
+        '''
+    )
+
+    payload = runtime_file.read_text(encoding="utf-8")
+    assert "# Research Prompt" in payload
+    assert "Question: How should clean worker prompts behave?" in payload
+    assert "## Codex Report Write Contract" in payload
+    assert "`codex exec --output-last-message`" in payload
+    assert "write the COMPLETE markdown report to the exact `Report path`" in payload
+    assert "using a shell command such as a heredoc" in payload
+    assert "must not be the only place where the report exists" in payload
+    assert "skill: vc-research" not in payload
+    assert "Perform the vc-research skill" not in payload
+    assert "## VC Agents Worker Charter" not in payload
+    assert "Do NOT invoke vc-agents" not in payload
+    assert "Codex Research Report Capture Contract" not in payload
+    assert "triple-agent research swarm" not in payload.lower()
+    assert "delegate" not in payload.lower()
+
+
+def test_codex_implement_prompt_does_not_get_research_capture_contract(
+    tmp_path: Path,
+) -> None:
+    source_file = tmp_path / "source.md"
+    runtime_file = tmp_path / "runtime.md"
+    report_path = tmp_path / "report.md"
+    source_file.write_text("# Implement Prompt\n", encoding="utf-8")
+
+    _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_RUN_ID="impl-123"
+        export SPAWN_PROMPT_ID="prompt-123"
+        export SPAWN_SKILL_NAME="implement"
+        spawn_build_runtime_prompt "{source_file}" "{runtime_file}" "{report_path}" codex
+        '''
+    )
+
+    payload = runtime_file.read_text(encoding="utf-8")
+    assert "## Codex Research Report Capture Contract" not in payload
+    assert (
+        "final assistant message MUST be the complete markdown report verbatim"
+        not in payload
+    )
 
 
 def test_generated_launcher_runs_from_spawn_root(tmp_path: Path) -> None:
@@ -275,6 +532,43 @@ def test_spawn_watch_startup_can_probe_without_echoing_transcript(
     assert "Working..." not in result.stdout
 
 
+def test_spawn_finish_meta_does_not_parse_codex_core_session_error_as_id(
+    tmp_path: Path,
+) -> None:
+    meta = tmp_path / "meta.json"
+    report = tmp_path / "report.md"
+    transcript = tmp_path / "trace.log"
+    launcher = tmp_path / "launcher.sh"
+    plan = tmp_path / "plan.md"
+
+    transcript.write_text(
+        "\n".join(
+            [
+                "2026-05-08T19:51:31.928244Z ERROR codex_core::session: failed to record rollout items: thread 019e0905-1eb8-7890-a73a-74bbb2171341 not found",
+                "[21:51:32] session: 019e09051eb87890a73a74bbb2171341",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_AGENT="codex"
+        export SPAWN_PROMPT_ID="prompt-123"
+        export SPAWN_RUN_ID="run-123"
+        export SPAWN_SKILL_CODE="impl"
+        spawn_write_meta "{meta}" "launching" "codex" "implement" "{tmp_path}" "{plan}" "{report}" "{transcript}" "{launcher}"
+        spawn_finish_meta "{meta}" "completed" "0"
+        '''
+    )
+
+    payload = json.loads(meta.read_text(encoding="utf-8"))
+    assert payload["session_id"] == "019e09051eb87890a73a74bbb2171341"
+
+
 def test_codex_stream_filter_handles_structured_turn_failed_payload() -> None:
     payload = (
         '{"type":"turn.failed","error":{"message":"stream exploded","code":"EPIPE"}}\n'
@@ -297,7 +591,6 @@ def test_codex_stream_bridge_tolerates_turn_abort_and_malformed_json(
     tmp_path: Path,
 ) -> None:
     transcript = tmp_path / "trace.log"
-    raw = tmp_path / "trace.raw.jsonl"
     payload = "\n".join(
         [
             '{"type":"thread.started","thread_id":"fake-session-001"}',
@@ -312,8 +605,6 @@ def test_codex_stream_bridge_tolerates_turn_abort_and_malformed_json(
             str(CODEX_STREAM_BRIDGE),
             "--transcript",
             str(transcript),
-            "--raw",
-            str(raw),
         ],
         check=True,
         cwd=REPO_ROOT,
@@ -323,11 +614,9 @@ def test_codex_stream_bridge_tolerates_turn_abort_and_malformed_json(
     )
 
     transcript_text = transcript.read_text(encoding="utf-8")
-    raw_text = raw.read_text(encoding="utf-8")
     assert "session: fake-session-001" in transcript_text
     assert "refresh token already used" in transcript_text
     assert '{"type":"item.completed"' in transcript_text
-    assert payload in raw_text
 
 
 def test_codex_spawn_marks_meta_failed_when_codex_emits_non_json_auth_error(
@@ -393,19 +682,13 @@ def test_codex_spawn_marks_meta_failed_when_codex_emits_non_json_auth_error(
     assert "Agent launched." in result.stdout
     assert "Await:" in result.stdout
 
-    meta_files: list[Path] = []
-    deadline = time.time() + 5
     artifacts_root = crafted_home / "artifacts"
-    while time.time() < deadline:
-        meta_files = list(artifacts_root.rglob("*_plan_codex.meta.json"))
-        if meta_files:
-            payload = json.loads(meta_files[0].read_text(encoding="utf-8"))
-            if payload.get("status") in {"completed", "failed"}:
-                break
-        time.sleep(0.1)
+    meta_file, meta_payload = _wait_for_meta_payload(
+        artifacts_root, "*_plan_codex.meta.json"
+    )
 
-    assert meta_files, "codex spawn did not write meta.json"
-    meta_payload = json.loads(meta_files[0].read_text(encoding="utf-8"))
+    assert meta_file is not None, "codex spawn did not write meta.json"
+    assert meta_payload is not None, "codex spawn did not finish writing meta.json"
     assert meta_payload["status"] == "failed"
     assert meta_payload["exit_code"] == 17
 
@@ -421,12 +704,218 @@ def test_codex_spawn_marks_meta_failed_when_codex_emits_non_json_auth_error(
         "Codex failed before writing a standalone report file."
         in report_file.read_text(encoding="utf-8")
     )
-    transcript_file = meta_files[0].with_name(
-        meta_files[0].name.replace(".meta.json", ".transcript.log")
+    transcript_file = meta_file.with_name(
+        meta_file.name.replace(".meta.json", ".transcript.log")
     )
     assert "refresh token was already used" in transcript_file.read_text(
         encoding="utf-8"
     )
+
+
+def test_codex_spawn_preserves_standalone_report_when_last_message_is_handoff(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    fake_bin = tmp_path / "bin"
+    plan = tmp_path / "research-plan.md"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    plan.write_text("# Research Plan\n", encoding="utf-8")
+
+    fake_codex = fake_bin / "codex"
+    fake_codex.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'last_message=""',
+                "while [[ $# -gt 0 ]]; do",
+                '  case "$1" in',
+                '    --output-last-message) shift; last_message="${1:-}" ;;',
+                "  esac",
+                "  shift || true",
+                "done",
+                'prompt="$(cat)"',
+                'report_path="$(printf "%s\\n" "$prompt" | sed -n \'s/^Report path: //p\' | tail -n 1)"',
+                '[[ -n "$report_path" ]] || exit 22',
+                'mkdir -p "$(dirname "$report_path")"',
+                'cat > "$report_path" <<EOF_REPORT',
+                "---",
+                "agent: codex",
+                "status: completed",
+                "---",
+                "",
+                "# Full Research Report",
+                "",
+                "This is the durable report body.",
+                "EOF_REPORT",
+                'if [[ -n "$last_message" ]]; then',
+                '  mkdir -p "$(dirname "$last_message")"',
+                '  cat > "$last_message" <<EOF_LAST',
+                "Done. Report saved at: $report_path",
+                "EOF_LAST",
+                "fi",
+                'printf \'{"type":"thread.started","thread_id":"fake-session-standalone"}\\n\'',
+                'printf \'{"type":"item.completed","item":{"type":"agent_message","text":"structured report was streamed earlier"}}\\n\'',
+                'printf \'{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}\\n\'',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "VIBECRAFTED_HOME": str(crafted_home),
+        "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        "VIBECRAFTED_INLINE_STARTUP_WATCH": "0",
+        "VIBECRAFTED_SKILL_CODE": "rsch",
+        "VIBECRAFTED_SKILL_NAME": "research",
+    }
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(CODEX_SPAWN_SH),
+            "--mode",
+            "research",
+            "--runtime",
+            "headless",
+            "--root",
+            str(REPO_ROOT),
+            str(plan),
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Agent launched." in result.stdout
+
+    artifacts_root = crafted_home / "artifacts"
+    meta_file, meta_payload = _wait_for_meta_payload(
+        artifacts_root, "*_research-plan_codex.meta.json"
+    )
+
+    assert meta_file is not None, "codex spawn did not write research meta.json"
+    assert meta_payload is not None, "codex spawn did not finish writing meta.json"
+    assert meta_payload["status"] == "completed"
+
+    report_file = Path(meta_payload["report"])
+    report_text = report_file.read_text(encoding="utf-8")
+    assert "# Full Research Report" in report_text
+    assert "This is the durable report body." in report_text
+    assert "Done. Report saved at" not in report_text
+
+    last_message_file = Path(meta_payload["transcript"]).with_suffix(".last-message.md")
+    assert last_message_file.exists()
+    assert "Done. Report saved at" in last_message_file.read_text(encoding="utf-8")
+
+
+def test_codex_research_does_not_copy_pointer_last_message_as_report(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    fake_bin = tmp_path / "bin"
+    plan = tmp_path / "research-plan.md"
+
+    home.mkdir()
+    fake_bin.mkdir()
+    plan.write_text("# Research Plan\n", encoding="utf-8")
+
+    fake_codex = fake_bin / "codex"
+    fake_codex.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'last_message=""',
+                "while [[ $# -gt 0 ]]; do",
+                '  case "$1" in',
+                '    --output-last-message) shift; last_message="${1:-}" ;;',
+                "  esac",
+                "  shift || true",
+                "done",
+                "cat >/dev/null",
+                'if [[ -n "$last_message" ]]; then',
+                '  mkdir -p "$(dirname "$last_message")"',
+                '  cat > "$last_message" <<EOF_LAST',
+                "Done. Report saved at: /tmp/research/codex.md",
+                "EOF_LAST",
+                "fi",
+                'printf \'{"type":"thread.started","thread_id":"fake-session-pointer"}\\n\'',
+                'printf \'{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}\\n\'',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "VIBECRAFTED_HOME": str(crafted_home),
+        "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        "VIBECRAFTED_INLINE_STARTUP_WATCH": "0",
+        "VIBECRAFTED_SKILL_CODE": "rsch",
+        "VIBECRAFTED_SKILL_NAME": "research",
+    }
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(CODEX_SPAWN_SH),
+            "--mode",
+            "research",
+            "--runtime",
+            "headless",
+            "--root",
+            str(REPO_ROOT),
+            str(plan),
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Agent launched." in result.stdout
+
+    artifacts_root = crafted_home / "artifacts"
+    meta_file, meta_payload = _wait_for_meta_payload(
+        artifacts_root, "*_research-plan_codex.meta.json"
+    )
+
+    assert meta_file is not None, "codex spawn did not write research meta.json"
+    assert meta_payload is not None, "codex spawn did not finish writing meta.json"
+    assert meta_payload["status"] == "failed"
+    assert meta_payload["exit_code"] == 65
+
+    report_file = Path(meta_payload["report"])
+    deadline = time.time() + 5
+    report_text = ""
+    while time.time() < deadline:
+        if report_file.exists():
+            report_text = report_file.read_text(encoding="utf-8")
+            if "Codex failed before writing a standalone report file." in report_text:
+                break
+        time.sleep(0.1)
+    assert report_file.exists()
+    assert "Codex failed before writing a standalone report file." in report_text
+    assert "Done. Report saved at" not in report_text
+
+    last_message_file = Path(meta_payload["transcript"]).with_suffix(".last-message.md")
+    assert last_message_file.exists()
+    assert "Done. Report saved at" in last_message_file.read_text(encoding="utf-8")
 
 
 def test_claude_spawn_marks_meta_failed_when_stream_has_no_json(
@@ -485,19 +974,13 @@ def test_claude_spawn_marks_meta_failed_when_stream_has_no_json(
     assert "Agent launched." in result.stdout
     assert "Await:" in result.stdout
 
-    meta_files: list[Path] = []
-    deadline = time.time() + 5
     artifacts_root = crafted_home / "artifacts"
-    while time.time() < deadline:
-        meta_files = list(artifacts_root.rglob("*_plan_claude.meta.json"))
-        if meta_files:
-            payload = json.loads(meta_files[0].read_text(encoding="utf-8"))
-            if payload.get("status") in {"completed", "failed"}:
-                break
-        time.sleep(0.1)
+    meta_file, meta_payload = _wait_for_meta_payload(
+        artifacts_root, "*_plan_claude.meta.json"
+    )
 
-    assert meta_files, "claude spawn did not write meta.json"
-    meta_payload = json.loads(meta_files[0].read_text(encoding="utf-8"))
+    assert meta_file is not None, "claude spawn did not write meta.json"
+    assert meta_payload is not None, "claude spawn did not finish writing meta.json"
     assert meta_payload["status"] == "failed"
     assert meta_payload["exit_code"] != 0
 
@@ -530,6 +1013,47 @@ def test_generated_launcher_includes_startup_watch(tmp_path: Path) -> None:
         in body
     )
     assert 'wait "$startup_watch_pid"' in body
+
+
+def test_research_launcher_blocks_git_write_operations(tmp_path: Path) -> None:
+    launcher = tmp_path / "launch.sh"
+    meta = tmp_path / "meta.json"
+    report = tmp_path / "report.txt"
+    transcript = tmp_path / "trace.log"
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'''
+            set -euo pipefail
+            source "{COMMON_SH}"
+            export SPAWN_ROOT="{tmp_path}"
+            export SPAWN_AGENT="codex"
+            export SPAWN_PROMPT_ID="prompt-123"
+            export SPAWN_RUN_ID="rsch-014520-002"
+            export SPAWN_LOOP_NR="0"
+            export SPAWN_SKILL_CODE="rsch"
+            export SPAWN_SKILL_NAME="research"
+            export VIBECRAFTED_INLINE_STARTUP_WATCH=0
+            cmd='git commit --allow-empty -m blocked'
+            spawn_write_meta "{meta}" "launching" "codex" "research" "{tmp_path}" "{launcher}" "{report}" "{transcript}" "{launcher}"
+            spawn_generate_launcher "{launcher}" "{meta}" "{report}" "{transcript}" "{COMMON_SH}" "$cmd"
+            chmod +x "{launcher}"
+            bash "{launcher}"
+            ''',
+        ],
+        check=False,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 126
+    assert "vibecrafted research mode blocks git write operation: git commit" in (
+        result.stderr + result.stdout
+    )
+    assert json.loads(meta.read_text(encoding="utf-8"))["status"] == "failed"
 
 
 def test_spawn_in_zellij_pane_honors_requested_direction(tmp_path: Path) -> None:
@@ -701,6 +1225,104 @@ PY'
     assert failure_payload["exit_code"] == 23
 
 
+def test_gc_marks_dead_launcher_pid_as_ghost(tmp_path: Path) -> None:
+    meta = tmp_path / "dead.meta.json"
+    report = tmp_path / "report.md"
+    transcript = tmp_path / "trace.log"
+
+    _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_ROOT="{tmp_path}"
+        export SPAWN_AGENT="codex"
+        export SPAWN_PROMPT_ID="prompt-123"
+        export SPAWN_RUN_ID="impl-010203-999"
+        export SPAWN_SKILL_CODE="impl"
+        spawn_write_meta "{meta}" "running" "codex" "implement" "{tmp_path}" "{tmp_path / "plan.md"}" "{report}" "{transcript}" "{tmp_path / "launcher.sh"}"
+        python3 - <<'PY'
+import json
+from pathlib import Path
+path = Path("{meta}")
+payload = json.loads(path.read_text(encoding="utf-8"))
+payload["launcher_pid"] = 999999999
+payload["liveness"] = "pid_alive"
+path.write_text(json.dumps(payload), encoding="utf-8")
+PY
+        spawn_gc_dead_runs "{tmp_path}"
+        '''
+    )
+
+    payload = json.loads(meta.read_text(encoding="utf-8"))
+    assert payload["status"] == "ghost"
+    assert payload["liveness"] == "pid_dead"
+    assert payload["ghost_reason"] == "launcher_pid dead at reap"
+
+
+def test_gc_marks_live_meta_without_pid_as_unknown_schema(tmp_path: Path) -> None:
+    meta = tmp_path / "older.meta.json"
+    report = tmp_path / "report.md"
+    transcript = tmp_path / "trace.log"
+
+    _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_ROOT="{tmp_path}"
+        export SPAWN_AGENT="claude"
+        export SPAWN_PROMPT_ID="prompt-123"
+        export SPAWN_RUN_ID="impl-010203-998"
+        export SPAWN_SKILL_CODE="impl"
+        spawn_write_meta "{meta}" "running" "claude" "implement" "{tmp_path}" "{tmp_path / "plan.md"}" "{report}" "{transcript}" "{tmp_path / "launcher.sh"}"
+        spawn_gc_dead_runs "{tmp_path}"
+        '''
+    )
+
+    payload = json.loads(meta.read_text(encoding="utf-8"))
+    assert payload["status"] == "running"
+    assert payload["liveness"] == "unknown_legacy"
+    assert payload["liveness_reason"] == "live status without launcher_pid"
+
+
+def test_operator_intervention_is_run_scoped_auditable_jsonl(
+    tmp_path: Path,
+) -> None:
+    meta = tmp_path / "agent.meta.json"
+    report = tmp_path / "report.md"
+    transcript = tmp_path / "trace.log"
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_ROOT="{tmp_path}"
+        export SPAWN_AGENT="codex"
+        export SPAWN_PROMPT_ID="prompt-123"
+        export SPAWN_RUN_ID="impl-010203-997"
+        export SPAWN_SKILL_CODE="impl"
+        spawn_write_meta "{meta}" "running" "codex" "implement" "{tmp_path}" "{tmp_path / "plan.md"}" "{report}" "{transcript}" "{tmp_path / "launcher.sh"}"
+        spawn_append_operator_intervention "{meta}" "Please narrow the next pass to liveness tests." "operator"
+        '''
+    )
+
+    intervention_path = Path(result.stdout.strip().splitlines()[-1])
+    payload = json.loads(meta.read_text(encoding="utf-8"))
+    events = [
+        json.loads(line)
+        for line in intervention_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+    assert payload["intervention_path"] == str(intervention_path)
+    assert payload["intervention_count"] == 1
+    assert events[0]["schema"] == "vibecrafted.operator_intervention.v1"
+    assert events[0]["run_id"] == "impl-010203-997"
+    assert events[0]["consumer_contract"] == "compatible-watchers-and-bridges-only"
+    transcript_text = transcript.read_text(encoding="utf-8")
+    assert "operator intervention" in transcript_text
+    assert "run_id=impl-010203-997" in transcript_text
+
+
 def test_spawn_prepare_paths_generates_real_run_context_when_missing(
     tmp_path: Path,
 ) -> None:
@@ -789,7 +1411,7 @@ def test_spawn_in_operator_session_targets_named_session(tmp_path: Path) -> None
     # the routing guard forces a new-tab to avoid landing in a stale operator tab.
     assert "new-tab" in payload
     assert "--name" in payload
-    assert "workflow" in payload
+    assert run_id in payload
 
 
 def test_spawn_in_operator_session_suppresses_zellij_tab_number_output(
@@ -915,7 +1537,79 @@ def test_spawn_in_zellij_pane_marbles_tab_suppresses_tab_number_output(
     assert calls[1][:2] == ["action", "new-pane"]
     assert "--tab-id" in calls[1]
     assert "7" in calls[1]
+    assert "--stacked" in calls[1]
+    assert "--close-on-exit" in calls[1]
     assert not any("go-to-tab-name" in call for call in calls)
+
+
+def test_spawn_in_zellij_pane_marbles_tab_can_keep_agent_panes_for_forensics(
+    tmp_path: Path,
+) -> None:
+    run_id = "marb-014520"
+    operator_session = _expected_operator_session(run_id)
+    launcher = tmp_path / "launch.sh"
+    launcher.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    launcher.chmod(0o755)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture_file = tmp_path / "zellij-calls.txt"
+    zellij = fake_bin / "zellij"
+    zellij.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "{",
+                '  printf -- "--CALL--\\n"',
+                '  printf "%s\\n" "$@"',
+                '} >> "$CAPTURE_FILE"',
+                'if [[ "${1:-}" == "action" && "${2:-}" == "list-tabs" ]]; then',
+                '  printf \'[{"name":"marbles","tab_id":7}]\\n\'',
+                "  exit 0",
+                "fi",
+                'if [[ "${1:-}" == "action" && "${2:-}" == "new-pane" ]]; then',
+                '  printf "terminal_13\\n"',
+                "  exit 0",
+                "fi",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    zellij.chmod(0o755)
+
+    subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'''
+            set -euo pipefail
+            export PATH="{fake_bin}:$PATH"
+            export CAPTURE_FILE="{capture_file}"
+            export ZELLIJ=1
+            export ZELLIJ_PANE_ID=terminal_1
+            export ZELLIJ_SESSION_NAME="{operator_session}"
+            export VIBECRAFTED_RUN_ID="{run_id}"
+            export VIBECRAFTED_OPERATOR_SESSION="{operator_session}"
+            export VIBECRAFTED_MARBLES_TAB_NAME="marbles"
+            export VIBECRAFTED_ZELLIJ_KEEP_AGENT_PANES=1
+            export SPAWN_ROOT="{tmp_path}"
+            export SPAWN_LOOP_NR=1
+            source "{COMMON_SH}"
+            spawn_in_zellij_pane "{launcher}" "workflow"
+            ''',
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    calls = _split_zellij_calls(capture_file.read_text(encoding="utf-8"))
+    assert calls[1][:2] == ["action", "new-pane"]
+    assert "--stacked" in calls[1]
+    assert "--close-on-exit" not in calls[1]
 
 
 def test_spawn_probe_uses_active_tab_and_restores_focus(tmp_path: Path) -> None:
@@ -997,7 +1691,7 @@ def test_spawn_probe_uses_active_tab_and_restores_focus(tmp_path: Path) -> None:
     assert any(call[:3] == ["action", "focus-pane-id", "terminal_42"] for call in calls)
 
 
-def test_spawn_in_operator_session_new_tab_opens_monitor_and_disables_inline_watch(
+def test_spawn_in_operator_session_new_tab_uses_run_tab_without_startup_monitor(
     tmp_path: Path,
 ) -> None:
     run_id = "rsch-014520"
@@ -1054,37 +1748,164 @@ def test_spawn_in_operator_session_new_tab_opens_monitor_and_disables_inline_wat
     calls = _split_zellij_calls(capture_file.read_text(encoding="utf-8"))
     assert len(calls) == 2
 
-    monitor_call, workflow_call = calls
-    assert monitor_call[:4] == ["--session", operator_session, "action", "new-pane"]
-    assert "--name" in monitor_call
-    assert "startup-monitor" in monitor_call
-    assert "--direction" in monitor_call
-    assert "down" in monitor_call
-
+    list_tabs_call, workflow_call = calls
+    assert list_tabs_call[:5] == [
+        "--session",
+        operator_session,
+        "action",
+        "list-tabs",
+        "--json",
+    ]
     assert workflow_call[:4] == ["--session", operator_session, "action", "new-tab"]
     assert "--name" in workflow_call
-    assert "workflow" in workflow_call
-
-    monitor_cmd = Path(monitor_call[monitor_call.index("--") + 1]).read_text(
-        encoding="utf-8"
-    )
-    assert "; exit" in monitor_cmd
-    monitor_script_match = re.search(
-        r"(/[^'\"\s]*vc-startup-monitor\.[^'\"\s]*)", monitor_cmd
-    )
-    assert monitor_script_match is not None
-    monitor_script = Path(monitor_script_match.group(1))
-    assert monitor_script.parent == expected_tmp_root
-    monitor_body = monitor_script.read_text(encoding="utf-8")
-    assert "trap 'rm -f \"$0\"' EXIT" not in monitor_body
-    assert (
-        "Your vibecrafted session %s invoked the %s run that landed in %s %s."
-        in monitor_body
-    )
-    assert "spawn_watch_startup" in monitor_body
+    assert run_id in workflow_call
+    assert "workflow" not in workflow_call[workflow_call.index("--name") + 1]
+    assert not any("startup-monitor" in arg for call in calls for arg in call)
 
     workflow_script = Path(workflow_call[workflow_call.index("--") + 1])
     assert workflow_script.parent == expected_tmp_root
     workflow_cmd = workflow_script.read_text(encoding="utf-8")
-    assert "VIBECRAFTED_INLINE_STARTUP_WATCH=0" in workflow_cmd
+    assert "VIBECRAFTED_INLINE_STARTUP_WATCH=0" not in workflow_cmd
     assert str(launcher) in workflow_cmd
+
+
+def test_spawn_in_operator_session_existing_run_tab_stacks_and_restores_focus(
+    tmp_path: Path,
+) -> None:
+    run_id = "ownr-014520"
+    operator_session = _expected_operator_session(run_id)
+    expected_tmp_root = tmp_path / ".vibecrafted" / "tmp"
+    launcher = tmp_path / "launch.sh"
+    launcher.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    launcher.chmod(0o755)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture_file = tmp_path / "zellij-calls.txt"
+    zellij = fake_bin / "zellij"
+    zellij.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "{",
+                '  printf -- "--CALL--\\n"',
+                '  printf "%s\\n" "$@"',
+                '} >> "$CAPTURE_FILE"',
+                'if [[ "${1:-}" == "--session" && "${3:-}" == "action" && "${4:-}" == "list-tabs" ]]; then',
+                f'  printf \'[{{"name":"operator","tab_id":2}},{{"name":"{run_id}","tab_id":7}}]\\n\'',
+                "  exit 0",
+                "fi",
+                'if [[ "${1:-}" == "--session" && "${3:-}" == "action" && "${4:-}" == "current-tab-info" ]]; then',
+                "  printf '{\"tab_id\":2}\\n'",
+                "  exit 0",
+                "fi",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    zellij.chmod(0o755)
+
+    _bash(
+        f'''
+        set -euo pipefail
+        export PATH="{fake_bin}:$PATH"
+        export CAPTURE_FILE="{capture_file}"
+        export VIBECRAFTED_RUN_ID="{run_id}"
+        export VIBECRAFTED_OPERATOR_SESSION="{operator_session}"
+        export SPAWN_ROOT="{tmp_path}"
+        source "{COMMON_SH}"
+        spawn_in_operator_session "{launcher}" "ownership-codex"
+        '''
+    )
+
+    calls = _split_zellij_calls(capture_file.read_text(encoding="utf-8"))
+    assert len(calls) == 4
+    assert calls[0][:5] == [
+        "--session",
+        operator_session,
+        "action",
+        "list-tabs",
+        "--json",
+    ]
+    assert calls[1][:5] == [
+        "--session",
+        operator_session,
+        "action",
+        "current-tab-info",
+        "--json",
+    ]
+
+    pane_call = calls[2]
+    assert pane_call[:4] == ["--session", operator_session, "action", "new-pane"]
+    assert "--tab-id" in pane_call
+    assert "7" in pane_call
+    assert "--stacked" in pane_call
+    assert "--close-on-exit" in pane_call
+    assert "--name" in pane_call
+    assert "ownership-codex" in pane_call
+    assert not any(
+        call[:4] == ["--session", operator_session, "action", "new-tab"]
+        for call in calls
+    )
+    assert not any("startup-monitor" in arg for call in calls for arg in call)
+
+    workflow_script = Path(pane_call[pane_call.index("--") + 1])
+    assert workflow_script.parent == expected_tmp_root
+    workflow_cmd = workflow_script.read_text(encoding="utf-8")
+    assert "VIBECRAFTED_INLINE_STARTUP_WATCH=0" not in workflow_cmd
+    assert str(launcher) in workflow_cmd
+
+    assert calls[3][:5] == [
+        "--session",
+        operator_session,
+        "action",
+        "go-to-tab-by-id",
+        "2",
+    ]
+
+
+def test_zellij_launch_slot_serializes_parallel_spawns(tmp_path: Path) -> None:
+    lock_root = tmp_path / "locks"
+    done_file = tmp_path / "done"
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        export TMPDIR="{lock_root}"
+        export VIBECRAFTED_SPAWN_STAGGER_SECONDS=0.2
+        source "{COMMON_SH}"
+        (
+          lock="$(spawn_acquire_zellij_launch_slot session-a)"
+          printf 'first-acquired\n' >> "{done_file}"
+          sleep 0.4
+          spawn_release_zellij_launch_slot "$lock"
+        ) &
+        first_pid=$!
+        sleep 0.05
+        start=$(python3 - <<'PY'
+import time
+print(time.time())
+PY
+)
+        lock="$(spawn_acquire_zellij_launch_slot session-a)"
+        end=$(python3 - <<'PY'
+import time
+print(time.time())
+PY
+)
+        spawn_release_zellij_launch_slot "$lock"
+        wait "$first_pid"
+        python3 - "$start" "$end" <<'PY'
+import sys
+start = float(sys.argv[1])
+end = float(sys.argv[2])
+if end - start < 0.25:
+    raise SystemExit(f"slot was not serialized long enough: {{end - start:.3f}}s")
+PY
+        '''
+    )
+
+    assert result.stderr == ""
+    assert done_file.read_text(encoding="utf-8") == "first-acquired\n"

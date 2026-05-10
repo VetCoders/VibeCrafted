@@ -5,470 +5,137 @@
 # These are shell functions, not standalone binaries. Non-interactive callers
 # should use an interactive shell so $HOME/.zshrc sources this file; fall back
 # to `bash -ic` on bash-only systems.
-
-_vetcoders_spawn_home() {
-  local tool="$1"
-  local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
-  local crafted_store="$crafted_home/skills/vc-agents"
-  local current_store="$crafted_home/tools/vibecrafted-current/skills/vc-agents"
-  local repo_root
-  repo_root="${VIBECRAFTED_ROOT:-$(_vetcoders_repo_root)}"
-  if [[ -d "$repo_root/skills/vc-agents" && -f "$repo_root/VERSION" && -f "$repo_root/scripts/vibecrafted" ]]; then
-    printf '%s/skills/vc-agents' "$repo_root"
-    return 0
-  fi
-
-  if [[ -d "$current_store" ]]; then
-    printf '%s' "$current_store"
-    return 0
-  fi
-
-  if [[ -d "$crafted_store" ]]; then
-    printf '%s' "$crafted_store"
-    return 0
-  fi
-
-  local legacy_store="$HOME/.agents/skills/vc-agents"
-  if [[ -d "$legacy_store" ]]; then
-    printf '%s' "$legacy_store"
-    return 0
-  fi
-
-  printf '%s' "$crafted_store"
+# Compatibility loader for central runtime helpers.
+# Keep this file intentionally small so the skill tree remains a wrapper.
+_vetcoders_script_dir() {
+  local script_path="${BASH_SOURCE[0]:-$0}"
+  local current_dir
+  current_dir="$(cd "$(dirname "$script_path")" && pwd)"
+  printf '%s\n' "$current_dir"
 }
 
-_vetcoders_spawn_script() {
-  local tool="$1"
-  local script_name="$2"
-  local base
-  base="$(_vetcoders_spawn_home "$tool")"
-  [[ -f "$base/scripts/$script_name" ]] || {
-    echo "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. spawn script not found: $base/scripts/$script_name" >&2
-    return 1
-  }
-  printf '%s/scripts/%s' "$base" "$script_name"
-}
+_vetcoders_runtime_repo_root() {
+  local cursor
+  cursor="$(_vetcoders_script_dir)"
 
-_vetcoders_repo_root() {
-  git rev-parse --show-toplevel 2>/dev/null || pwd
-}
-
-_vetcoders_org_repo() {
-  local root="${1:-$(_vetcoders_repo_root)}"
-  local org_repo=""
-  org_repo="$(cd "$root" && git remote get-url origin 2>/dev/null | sed -E 's|.*[:/]([^/]+)/([^/.]+)(\.git)?$|\1/\2|' || true)"
-  if [[ -n "$org_repo" ]]; then
-    printf '%s\n' "$org_repo"
-  else
-    printf '%s\n' "$(basename "$root")"
-  fi
-}
-
-_vetcoders_store_dir() {
-  local root="${1:-$(_vetcoders_repo_root)}"
-  local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
-  local date_dir
-  date_dir="$(date +%Y_%m%d)"
-  printf '%s/artifacts/%s/%s\n' "$crafted_home" "$(_vetcoders_org_repo "$root")" "$date_dir"
-}
-
-_vetcoders_tmp_dir() {
-  local root="${1:-$(_vetcoders_repo_root)}"
-  local dir
-  dir="$(_vetcoders_store_dir "$root")/tmp"
-  mkdir -p "$dir"
-  printf '%s\n' "$dir"
-}
-
-_vetcoders_tmp_script_path() {
-  local prefix="$1"
-  local root="${2:-$(_vetcoders_repo_root)}"
-  local dir stamp context
-
-  dir="$(_vetcoders_tmp_dir "$root")" || return 1
-  stamp="$(_vetcoders_spawn_timestamp)"
-  context="${VIBECRAFTED_RUN_ID:-${VIBECRAFTED_SKILL_CODE:-$(_vetcoders_session_base_name)}}"
-  context="$(printf '%s' "$context" | tr -cs '[:alnum:]._-' '-')"
-  context="${context#-}"
-  context="${context%-}"
-  [[ -n "$context" ]] || context="session"
-
-  mktemp "${dir%/}/${prefix}.${stamp}_${context}.XXXXXX"
-}
-
-_vetcoders_find_meta_for_run_id() {
-  local reports_dir="$1"
-  local target_run_id="$2"
-  python3 - "$reports_dir" "$target_run_id" <<'PY'
-import json
-import os
-import sys
-
-reports_dir, target_run_id = sys.argv[1:3]
-if not os.path.isdir(reports_dir):
-    sys.exit(0)
-
-for name in sorted(os.listdir(reports_dir)):
-    if not name.endswith(".meta.json"):
-        continue
-    path = os.path.join(reports_dir, name)
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            payload = json.load(fh)
-    except Exception:
-        continue
-    if payload.get("run_id") == target_run_id:
-        print(path)
-        break
-PY
-}
-
-_vetcoders_marbles_tail_delay() {
-  printf '%s\n' "${VIBECRAFTED_MARBLES_TAIL_DELAY:-5}"
-}
-
-_vetcoders_tail_marbles_l1_transcript() {
-  local root="$1"
-  local marbles_run_id="$2"
-  local reports_dir loop_run_id meta_path transcript_path delay_s
-
-  reports_dir="$(_vetcoders_store_dir "$root")/marbles/reports"
-  loop_run_id="${marbles_run_id}-001"
-  delay_s="$(_vetcoders_marbles_tail_delay)"
-
-  # Only sleep if there is a reports dir to poll — skip the delay entirely
-  # on headless/test paths where the meta file will never appear.
-  [[ -d "$reports_dir" ]] || return 0
-  sleep "$delay_s"
-
-  meta_path="$(_vetcoders_find_meta_for_run_id "$reports_dir" "$loop_run_id" 2>/dev/null || true)"
-  [[ -n "$meta_path" && -f "$meta_path" ]] || return 0
-
-  transcript_path="$(
-    python3 - "$meta_path" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as fh:
-    payload = json.load(fh)
-print(payload.get("transcript") or "", end="")
-PY
-  )"
-  [[ -n "$transcript_path" && -f "$transcript_path" ]] || return 0
-
-  printf '\n--- marbles L1 transcript tail (%s) ---\n' "$transcript_path"
-  tail -n 15 "$transcript_path" 2>/dev/null || true
-}
-
-_vetcoders_session_base_name() {
-  local root base
-  root="$(_vetcoders_session_scope_root)"
-  base="$(basename "$root" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//')"
-  [[ -n "$base" ]] || base="vibecrafted"
-  printf '%s\n' "$base"
-}
-
-_vetcoders_zellij_session_scope() {
-  case "${VIBECRAFTED_ZELLIJ_SESSION_SCOPE:-repo}" in
-    folder) printf 'folder\n' ;;
-    repo|*) printf 'repo\n' ;;
-  esac
-}
-
-_vetcoders_session_scope_root() {
-  case "$(_vetcoders_zellij_session_scope)" in
-    folder)
-      pwd -P
-      ;;
-    *)
-      _vetcoders_repo_root
-      ;;
-  esac
-}
-
-_vetcoders_zellij_session_max_length() {
-  printf '24\n'
-}
-
-_vetcoders_short_hash() {
-  local value="$1"
-  local hash=""
-  hash="$(printf '%s' "$value" | shasum -a 256 2>/dev/null || printf '%s' "$value" | sha256sum 2>/dev/null)" || return 1
-  hash="${hash%% *}"
-  printf '%.4s\n' "$hash"
-}
-
-_vetcoders_compact_session_name() {
-  local full_name="$1"
-  local preserved_tail="${2:-}"
-  local max_len hash prefix_len prefix compact
-
-  max_len="$(_vetcoders_zellij_session_max_length)"
-  if (( ${#full_name} <= max_len )); then
-    printf '%s\n' "$full_name"
-    return 0
-  fi
-
-  hash="$(_vetcoders_short_hash "$full_name" 2>/dev/null || true)"
-  [[ -n "$hash" ]] || hash="sess"
-
-  if [[ -n "$preserved_tail" ]]; then
-    prefix_len=$(( max_len - ${#preserved_tail} - ${#hash} - 2 ))
-    if (( prefix_len > 0 )); then
-      prefix="${full_name:0:prefix_len}"
-      prefix="${prefix%-}"
-      [[ -n "$prefix" ]] || prefix="${hash:0:1}"
-      compact="${prefix}-${hash}-${preserved_tail}"
-      if (( ${#compact} <= max_len )); then
-        printf '%s\n' "$compact"
-        return 0
-      fi
+  while [[ "$cursor" != "/" && -n "$cursor" ]]; do
+    if [[ -f "$cursor/VERSION" && -f "$cursor/scripts/vibecrafted" ]]; then
+      printf '%s\n' "$cursor"
+      return 0
     fi
-  fi
-
-  prefix_len=$(( max_len - ${#hash} - 1 ))
-  (( prefix_len > 0 )) || prefix_len=1
-  prefix="${full_name:0:prefix_len}"
-  prefix="${prefix%-}"
-  [[ -n "$prefix" ]] || prefix="${hash:0:1}"
-  compact="${prefix}-${hash}"
-  printf '%.24s\n' "$compact"
-}
-
-_vetcoders_operator_session_name_for_run_id() {
-  local run_id="${1:-}"
-  local base
-  base="$(_vetcoders_session_base_name)"
-  if [[ -n "$run_id" ]]; then
-    _vetcoders_compact_session_name "${base}-${run_id}" "$run_id"
-  else
-    _vetcoders_compact_session_name "$base"
-  fi
-}
-
-_vetcoders_expected_run_lock_path() {
-  local run_id="${1:-}"
-  local root="${2:-$(_vetcoders_repo_root)}"
-  [[ -n "$run_id" ]] || return 1
-  printf '%s/locks/%s/%s.lock\n' \
-    "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}" \
-    "$(_vetcoders_org_repo "$root")" \
-    "$run_id"
-}
-
-_vetcoders_normalize_ambient_context() {
-  local run_id lock expected_lock operator_session expected_session
-
-  run_id="${VIBECRAFTED_RUN_ID:-}"
-  lock="${VIBECRAFTED_RUN_LOCK:-}"
-  operator_session="${VIBECRAFTED_OPERATOR_SESSION:-}"
-
-  [[ -n "$run_id" ]] || {
-    unset VIBECRAFTED_RUN_LOCK VIBECRAFTED_SKILL_CODE VIBECRAFTED_SKILL_NAME
-    return 0
-  }
-
-  [[ -n "$lock" ]] || return 0
-
-  expected_lock="$(_vetcoders_expected_run_lock_path "$run_id" 2>/dev/null || true)"
-  if [[ -n "$expected_lock" && "$lock" == "$expected_lock" && -f "$lock" ]]; then
-    return 0
-  fi
-
-  expected_session="$(_vetcoders_operator_session_name_for_run_id "$run_id")"
-  unset VIBECRAFTED_RUN_LOCK VIBECRAFTED_SKILL_CODE VIBECRAFTED_SKILL_NAME
-
-  if [[ "$(basename "$lock")" != "${run_id}.lock" ]]; then
-    if [[ -n "$operator_session" && "$operator_session" != "$expected_session" ]]; then
-      unset VIBECRAFTED_OPERATOR_SESSION
-    fi
-    return 0
-  fi
-
-  unset VIBECRAFTED_RUN_ID
-  if [[ -n "$operator_session" ]]; then
-    unset VIBECRAFTED_OPERATOR_SESSION
-  fi
-}
-
-_vetcoders_skill_prefix() {
-  local name="${1:-}"
-  case "$name" in
-    agents) printf 'agnt\n' ;;
-    decorate) printf 'deco\n' ;;
-    delegate) printf 'delg\n' ;;
-    dou) printf 'vdou\n' ;;
-    followup) printf 'fwup\n' ;;
-    hydrate) printf 'hydr\n' ;;
-    implement|prompt) printf 'impl\n' ;;
-    init) printf 'init\n' ;;
-    justdo) printf 'just\n' ;;
-    marbles) printf 'marb\n' ;;
-    partner) printf 'prtn\n' ;;
-    plan) printf 'plan\n' ;;
-    prune) printf 'prun\n' ;;
-    release) printf 'rels\n' ;;
-    research) printf 'rsch\n' ;;
-    review) printf 'rvew\n' ;;
-    scaffold) printf 'scaf\n' ;;
-    workflow) printf 'wflw\n' ;;
-    *)
-      if [[ -n "$name" ]]; then
-        printf '%.4s\n' "$name"
-      else
-        printf 'impl\n'
-      fi
-      ;;
-  esac
-}
-
-_vetcoders_generate_run_id() {
-  local prefix="$1"
-  # PID suffix defuses same-second collisions when parallel spawns race.
-  # Format stays "prefix-HHMMSS-..." so existing regex matchers keep working.
-  printf '%s-%s-%s\n' "$prefix" "$(date +%H%M%S)" "$$"
-}
-
-_vetcoders_spawn_timestamp() {
-  if [[ -n "${VIBECRAFTED_SPAWN_TS:-}" ]]; then
-    printf '%s\n' "${VIBECRAFTED_SPAWN_TS}"
-  else
-    date +%Y%m%d_%H%M
-  fi
-}
-
-_vetcoders_marbles_store_dir() {
-  local root="$1"
-  if cd "$root" && git remote get-url origin >/dev/null 2>&1; then
-    printf '%s/marbles\n' "$(_vetcoders_store_dir "$root")"
-  else
-    printf '%s/.vibecrafted/marbles\n' "$root"
-  fi
-}
-
-_vetcoders_marbles_l1_report_path() {
-  local root="$1"
-  local stamp="$2"
-  local tool="$3"
-  printf '%s/reports/%s_marbles-ancestor_L1_%s.md\n' \
-    "$(_vetcoders_marbles_store_dir "$root")" \
-    "$stamp" \
-    "$tool"
-}
-
-_vetcoders_has_ambient_spawn_context() {
-  [[ -n "${SPAWN_AGENT:-}" ]] || return 1
-  [[ -n "${SPAWN_RUN_ID:-}" ]] || return 1
-  [[ -n "${VIBECRAFTED_RUN_ID:-}" ]] || return 1
-  [[ "${SPAWN_RUN_ID}" == "${VIBECRAFTED_RUN_ID}" ]] || return 1
-  [[ -z "${VIBECRAFTED_OPERATOR_SESSION:-}" ]] || return 1
-  _vetcoders_in_zellij && return 1
-  return 0
-}
-
-_vetcoders_effective_run_id() {
-  _vetcoders_normalize_ambient_context
-  _vetcoders_has_ambient_spawn_context && return 1
-  [[ -n "${VIBECRAFTED_RUN_ID:-}" ]] || return 1
-  printf '%s\n' "${VIBECRAFTED_RUN_ID}"
-}
-
-_vetcoders_effective_run_lock() {
-  _vetcoders_normalize_ambient_context
-  _vetcoders_has_ambient_spawn_context && return 1
-  [[ -n "${VIBECRAFTED_RUN_LOCK:-}" ]] || return 1
-  printf '%s\n' "${VIBECRAFTED_RUN_LOCK}"
-}
-
-_vetcoders_effective_skill_name() {
-  _vetcoders_normalize_ambient_context
-  _vetcoders_has_ambient_spawn_context && return 1
-  [[ -n "${VIBECRAFTED_SKILL_NAME:-}" ]] || return 1
-  printf '%s\n' "${VIBECRAFTED_SKILL_NAME}"
-}
-
-_vetcoders_effective_skill_code() {
-  _vetcoders_normalize_ambient_context
-  _vetcoders_has_ambient_spawn_context && return 1
-  [[ -n "${VIBECRAFTED_SKILL_CODE:-}" ]] || return 1
-  printf '%s\n' "${VIBECRAFTED_SKILL_CODE}"
-}
-
-_vetcoders_create_run_lock() {
-  local run_id="$1"
-  local agent="$2"
-  local skill="$3"
-  local root="$4"
-  local org_repo lock_dir lock_file
-  org_repo="$(_vetcoders_org_repo "$root")"
-  lock_dir="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/locks/$org_repo"
-  mkdir -p "$lock_dir"
-  lock_file="$lock_dir/${run_id}.lock"
-  cat > "$lock_file" <<LOCK
-run_id=$run_id
-agent=$agent
-skill=$skill
-root=$root
-started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-status=running
-LOCK
-  printf '%s\n' "$lock_file"
-}
-
-_vetcoders_spawn_root_arg() {
-  local arg
-  while [[ $# -gt 0 ]]; do
-    arg="$1"
-    shift
-    case "$arg" in
-      --root)
-        [[ $# -gt 0 ]] || break
-        printf '%s\n' "$1"
-        return 0
-        ;;
-    esac
+    cursor="$(cd "$cursor/.." && pwd)"
   done
+
   return 1
 }
 
-_vetcoders_ensure_run_context() {
-  local tool="$1"
-  local mode="$2"
-  local root="${3:-$(_vetcoders_repo_root)}"
-  local skill_name
-  local skill_code
-  local run_id
-  local lock_file
-
-  skill_name="$(_vetcoders_effective_skill_name 2>/dev/null || true)"
-  [[ -n "$skill_name" ]] || skill_name="$mode"
-  skill_code="$(_vetcoders_effective_skill_code 2>/dev/null || true)"
-  run_id="$(_vetcoders_effective_run_id 2>/dev/null || true)"
-  lock_file="$(_vetcoders_effective_run_lock 2>/dev/null || true)"
-
-  [[ -n "$skill_code" ]] || skill_code="$(_vetcoders_skill_prefix "$skill_name")"
-  [[ -n "${VIBECRAFTED_SKILL_NAME:-}" ]] || export VIBECRAFTED_SKILL_NAME="$skill_name"
-  export VIBECRAFTED_SKILL_CODE="$skill_code"
-
-  # Preserve the first run_id created for this workflow so prompts, locks,
-  # operator sessions, and spawned workers stay traceable as one run.
-  if [[ -z "$run_id" ]]; then
-    run_id="$(_vetcoders_generate_run_id "$skill_code")"
+_vetcoders_runtime_helper_candidates() {
+  if [[ -n "${VIBECRAFTED_ROOT:-}" ]]; then
+    printf '%s/runtime/helpers/vetcoders-runtime-core.sh\n' "${VIBECRAFTED_ROOT}"
   fi
-  export VIBECRAFTED_RUN_ID="$run_id"
-
-  if [[ -z "$lock_file" || ! -f "$lock_file" ]]; then
-    lock_file="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/locks/$(_vetcoders_org_repo "$root")/${run_id}.lock"
+  local repo_root
+  repo_root="$(_vetcoders_runtime_repo_root 2>/dev/null || true)"
+  if [[ -n "$repo_root" ]]; then
+    printf '%s/runtime/helpers/vetcoders-runtime-core.sh\n' "$repo_root"
   fi
-  if [[ ! -f "$lock_file" ]]; then
-    lock_file="$(_vetcoders_create_run_lock "$run_id" "$tool" "$skill_name" "$root")"
-  fi
-  export VIBECRAFTED_RUN_LOCK="$lock_file"
+  printf '%s/tools/vibecrafted-current/runtime/helpers/vetcoders-runtime-core.sh\n' "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
 }
 
+_vetcoders_source_runtime_helpers() {
+  local helper
+  while IFS= read -r helper; do
+    [[ -n "$helper" && -r "$helper" ]] || continue
+    # shellcheck disable=SC1090
+    source "$helper"
+    return 0
+  done < <(_vetcoders_runtime_helper_candidates)
+
+  printf '%s\n' "Missing vetcoders runtime helpers in:" >&2
+  _vetcoders_runtime_helper_candidates >&2
+  return 1
+}
+
+_vetcoders_runtime_source_status=0
+_vetcoders_source_runtime_helpers || {
+  _vetcoders_runtime_source_status=$?
+  unset -f _vetcoders_script_dir \
+    _vetcoders_runtime_repo_root \
+    _vetcoders_runtime_helper_candidates \
+    _vetcoders_source_runtime_helpers
+  if (return 0 2>/dev/null); then
+    return "${_vetcoders_runtime_source_status}"
+  fi
+  exit "${_vetcoders_runtime_source_status}"
+}
+unset -f _vetcoders_script_dir \
+  _vetcoders_runtime_repo_root \
+  _vetcoders_runtime_helper_candidates \
+  _vetcoders_source_runtime_helpers
+unset _vetcoders_runtime_source_status
 _vetcoders_default_runtime() {
   printf '%s\n' "${VETCODERS_SPAWN_RUNTIME:-terminal}"
 }
+
+_vetcoders_prepend_path_dir() {
+  local dir="${1:-}"
+  [[ -n "$dir" && -d "$dir" ]] || return 0
+  case ":${PATH:-}:" in
+    *":$dir:"*) ;;
+    *) export PATH="$dir${PATH:+:$PATH}" ;;
+  esac
+}
+
+_vetcoders_load_bundled_bin_path() {
+  local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
+  _vetcoders_prepend_path_dir "$crafted_home/bin"
+  if [[ "$crafted_home" != "$HOME/.vibecrafted" ]]; then
+    _vetcoders_prepend_path_dir "$HOME/.vibecrafted/bin"
+  fi
+}
+
+_vetcoders_zellij_missing_message() {
+  local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
+  echo "zellij is required for the Vibecrafted operator runtime." >&2
+  echo "If this is a fresh install, run:" >&2
+  echo "  export PATH=\"$crafted_home/bin:\$PATH\"" >&2
+  echo "Then retry the command. Expected bundled binary: $crafted_home/bin/zellij" >&2
+}
+
+_vetcoders_require_zellij() {
+  _vetcoders_load_bundled_bin_path
+  command -v zellij >/dev/null 2>&1 || {
+    _vetcoders_zellij_missing_message
+    return 1
+  }
+}
+
+# Zellij needs a real PTY to enable raw mode. When stdin/stdout are pipes
+# (curl|bash, ssh without -t, agent subprocess), zellij panics with an
+# unhelpful Rust traceback. Catch the missing-TTY case early and return a
+# user-actionable message instead.
+_vetcoders_require_tty() {
+  if [[ -t 0 && -t 1 ]]; then
+    return 0
+  fi
+  cat >&2 <<'EOF'
+
+vc-init requires an interactive terminal (TTY) to spawn a zellij session.
+
+Detected: stdin or stdout is not a TTY (pipe, redirect, or non-interactive
+SSH/agent context). Zellij needs a real PTY to switch into raw mode.
+
+To proceed:
+  - Local terminal:        run `vibecrafted init <agent>` directly
+  - SSH:                   add `-t`, e.g. `ssh -t user@host vibecrafted init claude`
+  - Inside another agent:  zellij cannot start from a piped subprocess.
+                           Use `vibecrafted <agent> <mode>` (no zellij wrapper)
+                           or run vc-init in a separate user-attached shell.
+
+EOF
+  return 1
+}
+
+_vetcoders_load_bundled_bin_path
 
 _vetcoders_in_zellij() {
   # ZELLIJ=0 is a valid pane index inside zellij — do NOT treat as false.
@@ -649,10 +316,7 @@ _vetcoders_ensure_zellij_session() {
   local layout_file="$2"
   shift 2
 
-  command -v zellij >/dev/null 2>&1 || {
-    echo "zellij is required." >&2
-    return 1
-  }
+  _vetcoders_require_zellij || return 1
 
   local inside_zellij=0
   # Align with spawn_in_zellij_context: ZELLIJ_PANE_ID or ZELLIJ being set
@@ -747,7 +411,12 @@ _vetcoders_prepare_operator_runtime() {
 
   # If we are already inside a Zellij session, naturally attach to it.
   if _vetcoders_in_zellij; then
-    export VIBECRAFTED_OPERATOR_SESSION="$(_vetcoders_current_zellij_session_name)"
+    VIBECRAFTED_OPERATOR_SESSION="$(_vetcoders_current_zellij_session_name)"
+    export VIBECRAFTED_OPERATOR_SESSION
+    return 0
+  fi
+
+  if [[ -n "${VIBECRAFTED_OPERATOR_SESSION:-}" ]]; then
     return 0
   fi
 
@@ -773,10 +442,10 @@ _vetcoders_prepare_operator_runtime() {
       ;;
     dead)
       zellij kill-session "$session_name" 2>/dev/null || true
-      command_text="zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
+      command_text="zellij attach \"$session_name\" 2>/dev/null || zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
       ;;
     *)
-      command_text="zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
+      command_text="zellij attach \"$session_name\" 2>/dev/null || zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
       ;;
   esac
   if _vetcoders_open_iterm_command "$command_text"; then
@@ -797,9 +466,18 @@ _vetcoders_spawn_into_operator_session() {
   local command_text="$2"
   local session_name="${VIBECRAFTED_OPERATOR_SESSION:-$(_vetcoders_operator_session_name)}"
   local root_dir="${_vetcoders_contract_root:-$(_vetcoders_repo_root)}"
+  local layout_file state
   local cmd_script
 
-  command -v zellij >/dev/null 2>&1 || return 1
+  _vetcoders_require_zellij || return 1
+  if ! _vetcoders_in_zellij && [[ -z "${VIBECRAFTED_OPERATOR_SESSION:-}" ]]; then
+    layout_file="$(_vetcoders_operator_layout_file 2>/dev/null || true)"
+    state="$(_vetcoders_zellij_session_state "$session_name")"
+    if [[ "$state" != "live" ]]; then
+      _vetcoders_ensure_zellij_session "$session_name" "$layout_file" || return 1
+      export VIBECRAFTED_OPERATOR_SESSION="$session_name"
+    fi
+  fi
   # zellij rejects inline command args carrying shell-quoted multibyte
   # prompt content (printf '%q' + Polish UTF-8). Store the wrapper under the
   # vibecrafted artifact tree so it survives resurrect/attach and leaves a
@@ -1039,6 +717,7 @@ _vetcoders_dashboard_layout_name() {
   case "$requested" in
     ""|dashboard|mc|mission-control|vc-dashboard) printf 'dashboard\n' ;;
     marbles|vc-marbles) printf 'marbles\n' ;;
+    polarize|vc-polarize) printf 'polarize\n' ;;
     workflow|vc-workflow) printf 'workflow\n' ;;
     research|vc-research) printf 'research\n' ;;
     operator|vibecrafted) printf 'operator\n' ;;
@@ -1208,12 +887,15 @@ _vetcoders_prompt_file() {
 _vetcoders_contract_reset() {
   _vetcoders_contract_prompt=""
   _vetcoders_contract_file=""
+  _vetcoders_contract_task=""
   _vetcoders_contract_session=""
   _vetcoders_contract_count=""
   _vetcoders_contract_depth=""
   _vetcoders_contract_runtime=""
   _vetcoders_contract_root=""
   _vetcoders_contract_tail=""
+  _vetcoders_contract_no_aicx=""
+  _vetcoders_contract_no_context_corpus=""
 }
 
 _vetcoders_append_tail() {
@@ -1237,10 +919,21 @@ _vetcoders_parse_contract() {
         _vetcoders_contract_prompt="$*"
         break
         ;;
-      -f|--file|--task)
+      -f|--file)
         shift
         [[ $# -gt 0 ]] || { echo "Missing value for --file" >&2; return 1; }
         _vetcoders_contract_file="$1"
+        ;;
+      --task)
+        shift
+        [[ $# -gt 0 ]] || { echo "Missing value for --task" >&2; return 1; }
+        _vetcoders_contract_task="$1"
+        ;;
+      --no-aicx)
+        _vetcoders_contract_no_aicx=1
+        ;;
+      --no-context-corpus)
+        _vetcoders_contract_no_context_corpus=1
         ;;
       --session)
         shift
@@ -1396,6 +1089,339 @@ _vetcoders_compose_skill_prompt() {
   printf '%s\n' "$base"
 }
 
+_vetcoders_polarize_prism_axes() {
+  local task="$1"
+  printf '%s\n' "$task"
+  printf '%s\n' "$task code truth"
+  printf '%s\n' "$task product truth"
+}
+
+_vetcoders_polarize_prism_command_text() {
+  local root="$1"
+  local task="$2"
+  local no_aicx="${3:-}"
+  local args=(loct prism --project "$root")
+  if [[ "$no_aicx" == "1" ]]; then
+    args+=(--no-aicx)
+  else
+    args+=(--with-aicx)
+  fi
+  while IFS= read -r axis; do
+    [[ -n "$axis" ]] || continue
+    args+=(--task "$axis")
+  done < <(_vetcoders_polarize_prism_axes "$task")
+  args+=(--json)
+  _vetcoders_shell_quote_join "${args[@]}"
+}
+
+_vetcoders_write_polarize_prism_payload() {
+  local root="$1"
+  local run_id="$2"
+  local task="$3"
+  local no_aicx="${4:-}"
+  local out_dir payload_file command_file
+  local -a prism_args
+
+  command -v loct >/dev/null 2>&1 || {
+    echo "vc-polarize requires loct for prism preflight; loct not found on PATH." >&2
+    return 1
+  }
+
+  out_dir="$(_vetcoders_store_dir "$root")/polarize/$run_id"
+  mkdir -p "$out_dir"
+  payload_file="$out_dir/prism.json"
+  command_file="$out_dir/prism.command.txt"
+
+  prism_args=(prism --project "$root")
+  if [[ "$no_aicx" == "1" ]]; then
+    prism_args+=(--no-aicx)
+  else
+    prism_args+=(--with-aicx)
+  fi
+  while IFS= read -r axis; do
+    [[ -n "$axis" ]] || continue
+    prism_args+=(--task "$axis")
+  done < <(_vetcoders_polarize_prism_axes "$task")
+  prism_args+=(--json)
+
+  printf '%s\n' "$(_vetcoders_polarize_prism_command_text "$root" "$task" "$no_aicx")" > "$command_file"
+  (cd "$root" && loct "${prism_args[@]}") > "$payload_file" || {
+    echo "vc-polarize prism preflight failed. Command: $(cat "$command_file")" >&2
+    return 1
+  }
+
+  printf '%s\n' "$payload_file"
+}
+
+_vetcoders_polarize_score() {
+  local prism_json="$1"
+  python3 - "$prism_json" <<'PY'
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(int(data.get("total_score", 0)))
+PY
+}
+
+_vetcoders_polarize_band_select() {
+  local prism_json="$1"
+  python3 - "$prism_json" <<'PY'
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+band_action = str(data.get("band_action", "")).strip().lower()
+if band_action in {"abort", "memo", "pass", "doctrine"}:
+    print(band_action)
+    raise SystemExit(0)
+score = int(data.get("total_score", 0))
+if score < 5:
+    print("abort")
+elif score < 9:
+    print("memo")
+elif score < 13:
+    print("pass")
+else:
+    print("doctrine")
+PY
+}
+
+_vetcoders_polarize_band_range() {
+  case "${1:-}" in
+    abort) printf '0..4\n' ;;
+    memo) printf '5..8\n' ;;
+    pass) printf '9..12\n' ;;
+    doctrine) printf '13..15\n' ;;
+    *) printf 'unknown\n' ;;
+  esac
+}
+
+_vetcoders_capture_session_uuid() {
+  local agent_log="$1"
+  [[ -r "$agent_log" ]] || return 0
+  grep -oE 'session: [0-9a-f-]{36}' "$agent_log" | tail -n1 | awk '{print $2}'
+}
+
+_vetcoders_write_polarize_memo() {
+  local prism_json="$1"
+  local run_id="$2"
+  local root="$3"
+  local task="${4:-}"
+  local band="${5:-memo}"
+  local score memo_file
+
+  score="$(_vetcoders_polarize_score "$prism_json")" || return 1
+  memo_file="$(_vetcoders_store_dir "$root")/polarize/$run_id/memo.md"
+  mkdir -p "$(dirname "$memo_file")"
+  {
+    printf '# vc-polarize memo\n\n'
+    printf 'Run: %s\n' "$run_id"
+    printf 'Band: %s (score %s/15)\n' "$band" "$score"
+    [[ -z "$task" ]] || printf 'Task: %s\n' "$task"
+    printf 'Prism payload: %s\n\n' "$prism_json"
+    printf 'Runner action: memo only. No full polarize agent pass was dispatched.\n'
+  } > "$memo_file"
+  printf '%s\n' "$memo_file"
+}
+
+_vetcoders_polarize_emit_context_pack() {
+  local agent="$1"
+  local session_uuid="$2"
+  local prism_json="$3"
+  local run_id="$4"
+  local target_repo="$5"
+  local band="$6"
+  local task="${7:-}"
+  local org_repo org repo date pack_dir slug raw_path sidecar_path
+
+  org_repo="$(_vetcoders_org_repo "$target_repo" 2>/dev/null || true)"
+  if [[ "$org_repo" == */* ]]; then
+    org="${org_repo%%/*}"
+    repo="${org_repo##*/}"
+  else
+    org="local"
+    repo="$(basename "$target_repo")"
+  fi
+
+  date="$(date +%Y_%m%d)"
+  pack_dir="$HOME/.aicx/context-corpus/$org/$repo/$date/loct-context-pack/$run_id"
+  slug="${run_id}_${band}"
+  raw_path="$pack_dir/raw/${slug}.md"
+  sidecar_path="$pack_dir/sidecars/${slug}.json"
+  mkdir -p "$pack_dir/raw" "$pack_dir/sidecars"
+
+  if [[ "$band" == "memo" ]]; then
+    local memo_file
+    memo_file="$(_vetcoders_write_polarize_memo "$prism_json" "$run_id" "$target_repo" "$task" "$band")" || return 0
+    cp "$memo_file" "$raw_path" || return 0
+  else
+    [[ -n "$session_uuid" ]] || {
+      printf 'vc-polarize: no session UUID found; skipping context-pack emission.\n' >&2
+      return 0
+    }
+    command -v aicx >/dev/null 2>&1 || {
+      printf 'vc-polarize: aicx not found; skipping context-pack emission. Use --no-context-corpus to silence this optional step.\n' >&2
+      return 0
+    }
+    aicx extract --agent "$agent" --session "$session_uuid" --output "$raw_path" || {
+      printf 'vc-polarize: aicx extract failed for session %s; skipping context-pack emission.\n' "$session_uuid" >&2
+      return 0
+    }
+  fi
+
+  python3 - "$prism_json" "$sidecar_path" "$band" "$target_repo" "$slug" "$raw_path" "$task" <<'PY'
+import hashlib
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+prism_path, sidecar_path, band, target_repo, slug, raw_path, task = sys.argv[1:]
+prism = json.loads(pathlib.Path(prism_path).read_text(encoding="utf-8"))
+try:
+    head = subprocess.check_output(
+        ["git", "-C", target_repo, "rev-parse", "HEAD"],
+        text=True,
+        stderr=subprocess.DEVNULL,
+    ).strip()
+except Exception:
+    head = "unknown"
+
+terms = []
+for framing in prism.get("task_framings", []):
+    value = framing.get("task", "")
+    terms.extend(re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]*", value.lower()))
+terms.extend(re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]*", task.lower()))
+keywords = sorted(set(terms)) or ["polarize"]
+allowed = ["format_examples"] if band == "memo" else [
+    "format_examples",
+    "section_order",
+    "keyword_index",
+]
+raw_bytes = pathlib.Path(raw_path).read_bytes()
+sidecar = {
+    "schema_version": "context_corpus.v1",
+    "artifact_family": "loct-context-pack",
+    "truth_status": {
+        "role": "example",
+        "runtime_authoritative": False,
+        "stale_against_current_head": False,
+        "current_head_when_ingested": head,
+    },
+    "learning_use": {
+        "allowed": allowed,
+        "forbidden": ["current_code_truth", "implementation_claims", "gate_status"],
+    },
+    "keywords": keywords,
+    "band": band,
+    "total_score": prism.get("total_score"),
+    "slug": slug,
+    "content_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+}
+sidecar_file = pathlib.Path(sidecar_path)
+sidecar_file.write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+index_entry = {
+    "id": slug,
+    "path": f"raw/{slug}.md",
+    "artifact_family": "loct-context-pack",
+    "schema_version": "context_corpus.v1",
+    "truth_status.role": "example",
+    "keywords": keywords,
+    "band": band,
+}
+idx_path = sidecar_file.parent.parent / "index.jsonl"
+with idx_path.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps(index_entry, sort_keys=True) + "\n")
+PY
+}
+
+_vetcoders_compose_polarize_prompt() {
+  local prompt_text="${1:-}"
+  local file_path="${2:-}"
+  local task="${3:-}"
+  local payload_file="${4:-}"
+  local prism_command="${5:-}"
+  local band="${6:-}"
+  local score="${7:-}"
+  local base payload_body
+
+  base="$(_vetcoders_compose_skill_prompt "polarize" "$prompt_text" "$file_path")" || return 1
+  if [[ -n "$task" ]]; then
+    base+=$'\n\n'
+    base+="Polarize task: $task"
+  fi
+  if [[ -n "$band" && -n "$score" ]]; then
+    base+=$'\n'
+    base+="Band: $band (score $score/15)"
+    base+=$'\n'
+    base+="Runner action: $band"
+  fi
+  if [[ -n "$payload_file" ]]; then
+    payload_body="$(cat "$payload_file")"
+    base+=$'\n\n'
+    base+="Prism preflight command: $prism_command"
+    base+=$'\n'
+    base+="Prism payload file: $payload_file"
+    base+=$'\n\n'
+    base+="The full prism payload is injected below. Treat it as the starting evidence pack, then verify live runtime truth before editing."
+    base+=$'\n\n```json\n'
+    base+="$payload_body"
+    base+=$'\n```'
+  fi
+
+  printf '%s\n' "$base"
+}
+
+_vetcoders_research_file_body() {
+  local file_path="$1"
+
+  python3 - "$file_path" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+lines = text.splitlines(keepends=True)
+
+if lines and lines[0].strip() == "---":
+    body_start = None
+    for idx, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            body_start = idx + 1
+            break
+    if body_start is not None:
+        text = "".join(lines[body_start:]).lstrip("\n")
+
+print(text, end="")
+PY
+}
+
+_vetcoders_compose_research_worker_prompt() {
+  local prompt_text="${1:-}"
+  local file_path="${2:-}"
+  local combined="$prompt_text"
+
+  if [[ -n "$file_path" ]]; then
+    _vetcoders_require_file "$file_path" || return 1
+    local abs_file
+    abs_file="$(cd "$(dirname "$file_path")" && pwd)/$(basename "$file_path")"
+    local file_body
+    file_body="$(_vetcoders_research_file_body "$file_path")" || return 1
+    if [[ -n "$combined" ]]; then
+      combined+=$'\n\n'
+    fi
+    combined+="Research plan file: $abs_file"
+    combined+=$'\n\n'
+    combined+="$file_body"
+  fi
+
+  printf '%s\n' "$combined"
+}
+
 _vetcoders_init_runtime() {
   local runtime="${1:-terminal}"
   case "$runtime" in
@@ -1453,7 +1479,8 @@ _vetcoders_spawn_plan() {
   local plan_file="$3"
   shift 3
   local script root arg prev_arg=""
-  local runtime="$(_vetcoders_default_runtime)"
+  local runtime
+  runtime="$(_vetcoders_default_runtime)"
   for arg in "$@"; do
     if [[ "$prev_arg" == "--runtime" ]]; then
       runtime="$arg"
@@ -1486,6 +1513,31 @@ _vetcoders_prompt() {
   local prompt_file
   prompt_file="$(_vetcoders_prompt_file "$tool" "$@")" || return 1
   _vetcoders_spawn_plan "$tool" "$mode" "$prompt_file" --runtime "$(_vetcoders_default_runtime)"
+}
+
+_vetcoders_dispatch_skill_prompt() {
+  local tool="$1"
+  local skill="$2"
+  local skill_code="$3"
+  local loop_nr="$4"
+  local run_id="$5"
+  local run_lock="$6"
+  local prompt="$7"
+  shift 7
+
+  (
+    # shellcheck disable=SC2030
+    export VIBECRAFTED_RUN_ID="$run_id"
+    # shellcheck disable=SC2030
+    export VIBECRAFTED_RUN_LOCK="$run_lock"
+    # shellcheck disable=SC2030
+    export VIBECRAFTED_SKILL_CODE="$skill_code"
+    # shellcheck disable=SC2030
+    export VIBECRAFTED_LOOP_NR="$loop_nr"
+    # shellcheck disable=SC2030
+    export VIBECRAFTED_SKILL_NAME="$skill"
+    _vetcoders_prompt_text "$tool" implement "$prompt" "$@"
+  )
 }
 
 _vetcoders_observe() {
@@ -1596,6 +1648,7 @@ _vetcoders_skill() {
   local tool="$1"
   local skill="$2"
   shift 2
+  # shellcheck disable=SC2031
   local loop_nr="${VIBECRAFTED_LOOP_NR:-0}"
   local inherited_run_id
   local inherited_run_lock
@@ -1614,8 +1667,6 @@ _vetcoders_skill() {
     echo "--session is only supported by vibecrafted resume." >&2
     return 1
   }
-  local prompt
-  prompt="$(_vetcoders_compose_skill_prompt "$skill" "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1
   local skill_code root run_id run_lock
   skill_code="$(_vetcoders_skill_prefix "$skill")"
   root="${_vetcoders_contract_root:-$(_vetcoders_repo_root)}"
@@ -1625,20 +1676,65 @@ _vetcoders_skill() {
   if [[ -z "$run_lock" || ! -f "$run_lock" ]]; then
     run_lock="$(_vetcoders_create_run_lock "$run_id" "$tool" "$skill" "$root")" || return 1
   fi
+  local prompt prism_payload prism_command prism_band prism_score memo_file
+  if [[ "$skill" == "polarize" && -n "$_vetcoders_contract_task" ]]; then
+    prism_payload="$(_vetcoders_write_polarize_prism_payload "$root" "$run_id" "$_vetcoders_contract_task" "$_vetcoders_contract_no_aicx")" || return 1
+    prism_command="$(_vetcoders_polarize_prism_command_text "$root" "$_vetcoders_contract_task" "$_vetcoders_contract_no_aicx")"
+    prism_band="$(_vetcoders_polarize_band_select "$prism_payload")" || return 1
+    prism_score="$(_vetcoders_polarize_score "$prism_payload")" || return 1
+    case "$prism_band" in
+      abort)
+        printf 'vc-polarize aborted: prism score %s/15 is below threshold. Inspect %s\n' "$prism_score" "$prism_payload" >&2
+        return 12
+        ;;
+      memo)
+        memo_file="$(_vetcoders_write_polarize_memo "$prism_payload" "$run_id" "$root" "$_vetcoders_contract_task" "$prism_band")" || return 1
+        if [[ -z "$_vetcoders_contract_no_context_corpus" ]]; then
+          _vetcoders_polarize_emit_context_pack "$tool" "" "$prism_payload" "$run_id" "$root" "$prism_band" "$_vetcoders_contract_task"
+        else
+          printf 'vc-polarize: --no-context-corpus set; skipped context-corpus emission.\n' >&2
+        fi
+        printf 'vc-polarize: emitted local memo (band %s, score %s/15). No agent dispatched. Memo: %s\n' "$(_vetcoders_polarize_band_range "$prism_band")" "$prism_score" "$memo_file"
+        return 0
+        ;;
+      pass|doctrine)
+        prompt="$(_vetcoders_compose_polarize_prompt "$_vetcoders_contract_prompt" "$_vetcoders_contract_file" "$_vetcoders_contract_task" "$prism_payload" "$prism_command" "$prism_band" "$prism_score")" || return 1
+        ;;
+      *)
+        printf 'vc-polarize: unknown prism band %s from %s\n' "$prism_band" "$prism_payload" >&2
+        return 1
+        ;;
+    esac
+  else
+    if [[ -n "$_vetcoders_contract_task" ]]; then
+      if [[ -n "$_vetcoders_contract_prompt" ]]; then
+        _vetcoders_contract_prompt+=$'\n\n'
+      fi
+      _vetcoders_contract_prompt+="Task: $_vetcoders_contract_task"
+    fi
+    prompt="$(_vetcoders_compose_skill_prompt "$skill" "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1
+  fi
   local spawn_args=(--runtime "$(_vetcoders_effective_runtime)")
   [[ -n "$_vetcoders_contract_root" ]] && spawn_args+=(--root "$_vetcoders_contract_root")
-  (
-    # shellcheck disable=SC2030
-    export VIBECRAFTED_RUN_ID="$run_id"
-    # shellcheck disable=SC2030
-    export VIBECRAFTED_RUN_LOCK="$run_lock"
-    # shellcheck disable=SC2030
-    export VIBECRAFTED_SKILL_CODE="$skill_code"
-    export VIBECRAFTED_LOOP_NR="$loop_nr"
-    # shellcheck disable=SC2030
-    export VIBECRAFTED_SKILL_NAME="$skill"
-    _vetcoders_prompt_text "$tool" implement "$prompt" "${spawn_args[@]}"
-  )
+  if [[ "$skill" == "polarize" && "$prism_band" =~ ^(pass|doctrine)$ ]]; then
+    local dispatch_output dispatch_status agent_log session_uuid
+    agent_log="$(_vetcoders_store_dir "$root")/polarize/$run_id/${tool}.stdout.log"
+    mkdir -p "$(dirname "$agent_log")"
+    dispatch_output="$(_vetcoders_dispatch_skill_prompt "$tool" "$skill" "$skill_code" "$loop_nr" "$run_id" "$run_lock" "$prompt" "${spawn_args[@]}")"
+    dispatch_status=$?
+    printf '%s\n' "$dispatch_output"
+    printf '%s\n' "$dispatch_output" > "$agent_log"
+    [[ "$dispatch_status" -eq 0 ]] || return "$dispatch_status"
+    if [[ -z "$_vetcoders_contract_no_context_corpus" ]]; then
+      session_uuid="$(_vetcoders_capture_session_uuid "$agent_log")"
+      _vetcoders_polarize_emit_context_pack "$tool" "$session_uuid" "$prism_payload" "$run_id" "$root" "$prism_band" "$_vetcoders_contract_task"
+    else
+      printf 'vc-polarize: --no-context-corpus set; skipped context-corpus emission.\n' >&2
+    fi
+    return 0
+  fi
+
+  _vetcoders_dispatch_skill_prompt "$tool" "$skill" "$skill_code" "$loop_nr" "$run_id" "$run_lock" "$prompt" "${spawn_args[@]}"
 }
 
 _vetcoders_skill_entry() {
@@ -1655,6 +1751,7 @@ _vetcoders_research_launcher_path() {
   local run_id="$4"
   local run_lock="$5"
   local runtime="$6"
+  local run_dir="$7"
   local script output launcher
 
   script="$(_vetcoders_spawn_script "$tool" "${tool}_spawn.sh")" || return 1
@@ -1664,7 +1761,11 @@ _vetcoders_research_launcher_path() {
       VIBECRAFTED_RUN_LOCK="$run_lock" \
       VIBECRAFTED_SKILL_CODE="rsch" \
       VIBECRAFTED_SKILL_NAME="research" \
-      bash "$script" --dry-run --mode implement --runtime "$runtime" --root "$root" "$prompt_file" 2>&1
+      VIBECRAFTED_RESEARCH_MODE="1" \
+      VIBECRAFTED_STORE_DIR="$run_dir" \
+      VIBECRAFTED_STORE_ROOT="$root" \
+      VIBECRAFTED_RESEARCH_RUN_DIR="$run_dir" \
+      bash "$script" --dry-run --mode research --runtime "$runtime" --root "$root" "$prompt_file" 2>&1
   )" || {
     printf '%s\n' "$output" >&2
     return 1
@@ -1746,7 +1847,7 @@ HELP
 _vetcoders_research() {
   local first_arg="${1:-}"
   local inherited_run_id inherited_run_lock
-  local prompt root run_id run_lock runtime prompt_file layout_file
+  local prompt root run_id run_lock runtime run_dir prompt_file layout_file summary_file
   local claude_launcher codex_launcher gemini_launcher
   local claude_cmd codex_cmd gemini_cmd session_name
 
@@ -1786,10 +1887,9 @@ _vetcoders_research() {
     return 1
   }
 
-  prompt="$(_vetcoders_compose_skill_prompt "research" "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1
+  prompt="$(_vetcoders_compose_research_worker_prompt "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1
   root="${_vetcoders_contract_root:-$(_vetcoders_repo_root)}"
   runtime="$(_vetcoders_effective_runtime)"
-  prompt_file="$(_vetcoders_prompt_file "research" "$prompt")" || return 1
 
   inherited_run_id="$(_vetcoders_effective_run_id 2>/dev/null || true)"
   inherited_run_lock="$(_vetcoders_effective_run_lock 2>/dev/null || true)"
@@ -1800,9 +1900,14 @@ _vetcoders_research() {
     run_lock="$(_vetcoders_create_run_lock "$run_id" "swarm" "research" "$root")" || return 1
   fi
 
-  claude_launcher="$(_vetcoders_research_launcher_path claude "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime")" || return 1
-  codex_launcher="$(_vetcoders_research_launcher_path codex "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime")" || return 1
-  gemini_launcher="$(_vetcoders_research_launcher_path gemini "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime")" || return 1
+  run_dir="$(_vetcoders_research_run_dir "$root" "$run_id")"
+  mkdir -p "$run_dir/plans" "$run_dir/reports" "$run_dir/logs" "$run_dir/tmp"
+  prompt_file="$(_vetcoders_research_prompt_file "$run_dir" "$prompt")" || return 1
+
+  claude_launcher="$(_vetcoders_research_launcher_path claude "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime" "$run_dir")" || return 1
+  codex_launcher="$(_vetcoders_research_launcher_path codex "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime" "$run_dir")" || return 1
+  gemini_launcher="$(_vetcoders_research_launcher_path gemini "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime" "$run_dir")" || return 1
+  summary_file="$(_vetcoders_write_research_summary "$run_dir" "$run_id" "$root" "$prompt_file" "$claude_launcher" "$codex_launcher" "$gemini_launcher")" || return 1
 
   if [[ "$runtime" =~ ^(terminal|visible)$ ]]; then
     _vetcoders_prepare_operator_runtime "$runtime" || return 1
@@ -1817,10 +1922,10 @@ _vetcoders_research() {
       return 1
     }
 
-    claude_cmd="$(_vetcoders_tmp_script_path "vc-research-claude" "$root")"
-    codex_cmd="$(_vetcoders_tmp_script_path "vc-research-codex" "$root")"
-    gemini_cmd="$(_vetcoders_tmp_script_path "vc-research-gemini" "$root")"
-    layout_file="$(_vetcoders_tmp_script_path "vc-research-layout" "$root").kdl"
+    claude_cmd="$run_dir/tmp/claude_cmd.sh"
+    codex_cmd="$run_dir/tmp/codex_cmd.sh"
+    gemini_cmd="$run_dir/tmp/gemini_cmd.sh"
+    layout_file="$run_dir/tmp/research.kdl"
 
     _vetcoders_write_command_script "$claude_cmd" "bash $(_vetcoders_shell_quote "$claude_launcher")" || return 1
     _vetcoders_write_command_script "$codex_cmd" "bash $(_vetcoders_shell_quote "$codex_launcher")" || return 1
@@ -1836,8 +1941,19 @@ _vetcoders_research() {
     export VIBECRAFTED_SKILL_CODE="rsch"
     # shellcheck disable=SC2031
     export VIBECRAFTED_SKILL_NAME="research"
+    # shellcheck disable=SC2031
+    export VIBECRAFTED_RESEARCH_MODE="1"
+    # shellcheck disable=SC2031
+    export VIBECRAFTED_STORE_DIR="$run_dir"
+    # shellcheck disable=SC2031
+    export VIBECRAFTED_STORE_ROOT="$root"
+    # shellcheck disable=SC2031
+    export VIBECRAFTED_RESEARCH_RUN_DIR="$run_dir"
     zellij --session "$session_name" action new-tab --layout "$layout_file" >/dev/null
     printf 'Research swarm launched in shared tab (run_id=%s).\n' "$run_id"
+    printf '  run dir: %s\n' "$run_dir"
+    printf '  reports: %s\n' "$run_dir/reports"
+    printf '  summary: %s\n' "$summary_file"
     _vetcoders_await "" --describe "$claude_launcher" "$codex_launcher" "$gemini_launcher" || true
     printf '\nAwait:\n\n'
     printf 'vc-research-await --run-id %s\n' "$run_id"
@@ -1845,6 +1961,9 @@ _vetcoders_research() {
   fi
 
   printf 'Research swarm prepared (run_id=%s), but runtime %s does not use the shared zellij layout.\n' "$run_id" "$runtime"
+  printf 'Run directory: %s\n' "$run_dir"
+  printf 'Reports: %s\n' "$run_dir/reports"
+  printf 'Summary: %s\n' "$summary_file"
   printf 'Launchers:\n'
   printf '  claude: %s\n' "$claude_launcher"
   printf '  codex:  %s\n' "$codex_launcher"
@@ -1872,10 +1991,7 @@ _vetcoders_skill_init() {
     return 1
   }
 
-  command -v zellij >/dev/null 2>&1 || {
-    echo "vc-init requires zellij so the operator session can be attached or created." >&2
-    return 1
-  }
+  _vetcoders_require_zellij || return 1
 
   runtime="$(_vetcoders_init_runtime "${_vetcoders_contract_runtime:-terminal}")" || return 1
   init_prompt="$(_vetcoders_compose_init_prompt "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1
@@ -1904,6 +2020,13 @@ _vetcoders_marbles() {
     echo "--session is only supported by vibecrafted resume." >&2
     return 1
   }
+  if [[ -n "$_vetcoders_contract_task" ]]; then
+    [[ -z "$_vetcoders_contract_file" ]] || {
+      echo "Marbles accepts one file source: use either --task or --file, not both." >&2
+      return 1
+    }
+    _vetcoders_contract_file="$_vetcoders_contract_task"
+  fi
 
   local source_count=0
   [[ -n "$_vetcoders_contract_depth" ]] && ((source_count+=1))
@@ -1965,7 +2088,8 @@ _vetcoders_marbles() {
   # Temp script keeps zellij args ASCII-safe (no inline UTF-8 prompt bytes).
   if [[ "$runtime" =~ ^(terminal|visible)$ ]] && _vetcoders_in_zellij && command -v zellij >/dev/null 2>&1; then
     local cmd_script marbles_tab_name
-    export VIBECRAFTED_OPERATOR_SESSION="$(_vetcoders_current_zellij_session_name)"
+    VIBECRAFTED_OPERATOR_SESSION="$(_vetcoders_current_zellij_session_name)"
+    export VIBECRAFTED_OPERATOR_SESSION
     marbles_tab_name="marbles-${marbles_run_id}"
     export VIBECRAFTED_MARBLES_TAB_NAME="$marbles_tab_name"
     marbles_env+=(VIBECRAFTED_MARBLES_TAB_NAME="$marbles_tab_name")
@@ -1982,17 +2106,24 @@ _vetcoders_marbles() {
       --name "$marbles_run_id" \
       --cwd "$root_dir" \
       -- "$cmd_script" >/dev/null || return 1
+
+    printf 'Marbles run launched in zellij tab: %s\n' "$marbles_tab_name"
+    printf '  run_id:  %s\n' "$marbles_run_id"
+    printf '  inspect: vc-marbles inspect %s\n' "$marbles_run_id"
       
     if [[ -n "$original_tab" ]]; then
       zellij action go-to-tab-name "$original_tab" >/dev/null 2>&1 || true
     fi
     
-    _vetcoders_tail_marbles_l1_transcript "$root_dir" "$marbles_run_id"
+    _vetcoders_marbles_emit_probe "$root_dir" "$marbles_run_id" "launched"
   elif [[ "$runtime" =~ ^(terminal|visible)$ ]]; then
     _vetcoders_prepare_operator_runtime "$runtime" || return 1
     if [[ -n "${VIBECRAFTED_OPERATOR_SESSION:-}" ]]; then
       _vetcoders_spawn_into_operator_session "marbles" "$marbles_cmd" || return 1
-      _vetcoders_tail_marbles_l1_transcript "$root_dir" "$marbles_run_id"
+      printf 'Marbles run launched in operator session: %s\n' "$VIBECRAFTED_OPERATOR_SESSION"
+      printf '  run_id:  %s\n' "$marbles_run_id"
+      printf '  inspect: vc-marbles inspect %s\n' "$marbles_run_id"
+      _vetcoders_marbles_emit_probe "$root_dir" "$marbles_run_id" "launched"
     else
       env "${marbles_env[@]}" bash "$script" "${marbles_args[@]}"
     fi
@@ -2148,6 +2279,10 @@ codex-skill-partner() { _vetcoders_skill_entry codex partner "$@"; }
 claude-skill-partner() { _vetcoders_skill_entry claude partner "$@"; }
 gemini-skill-partner() { _vetcoders_skill_entry gemini partner "$@"; }
 
+codex-skill-polarize() { _vetcoders_skill_entry codex polarize "$@"; }
+claude-skill-polarize() { _vetcoders_skill_entry claude polarize "$@"; }
+gemini-skill-polarize() { _vetcoders_skill_entry gemini polarize "$@"; }
+
 codex-skill-prune() { _vetcoders_skill_entry codex prune "$@"; }
 claude-skill-prune() { _vetcoders_skill_entry claude prune "$@"; }
 gemini-skill-prune() { _vetcoders_skill_entry gemini prune "$@"; }
@@ -2182,6 +2317,11 @@ _vetcoders_skill_wrapper_usage() {
       ;;
     marbles)
       printf 'Usage: vc-marbles <claude|codex|gemini> [--prompt <text>|--file <path>|--depth <n>] [--count <n>]\n' >&2
+      printf '       vc-marbles <pause|stop|resume|session|inspect|delete|gc> [args]\n' >&2
+      ;;
+    polarize)
+      printf 'Usage: vc-polarize <claude|codex|gemini> --task <text> [--prompt <text>] [--file <path>] [--no-aicx] [--no-context-corpus]\n' >&2
+      printf '       vc-polarize <claude|codex|gemini> [--prompt <text>] [--file <path>]\n' >&2
       ;;
     *)
       printf 'Usage: vc-%s <claude|codex|gemini> [--prompt <text>] [--file <path>]\n' "$skill" >&2
@@ -2194,11 +2334,26 @@ _vetcoders_has_agent() {
   [[ "$candidate" == "claude" || "$candidate" == "codex" || "$candidate" == "gemini" ]]
 }
 
+_vetcoders_is_help_flag() {
+  local candidate="${1:-}"
+  [[ "$candidate" == "help" || "$candidate" == "-h" || "$candidate" == "--help" ]]
+}
+
 _vetcoders_skill_wrapper() {
   local skill="$1"
   shift || true
 
   local tool="${1:-}"
+  if [[ "$skill" == "marbles" ]]; then
+    case "$tool" in
+      pause|stop|resume|session|inspect|delete|gc)
+        shift || true
+        "marbles-$tool" "$@"
+        return
+        ;;
+    esac
+  fi
+
   [[ -n "$tool" ]] || {
     _vetcoders_skill_wrapper_usage "$skill"
     return 1
@@ -2209,6 +2364,11 @@ _vetcoders_skill_wrapper() {
     return 1
   }
   shift || true
+
+  if _vetcoders_is_help_flag "${1:-}"; then
+    _vetcoders_skill_wrapper_usage "$skill"
+    return 0
+  fi
 
   case "$skill" in
     init) _vetcoders_skill_init "$tool" "$@" ;;
@@ -2230,6 +2390,7 @@ vc-implement() { _vetcoders_skill_wrapper justdo "$@"; }
 vc-marbles() { _vetcoders_skill_wrapper marbles "$@"; }
 vc-ownership() { _vetcoders_skill_wrapper ownership "$@"; }
 vc-partner() { _vetcoders_skill_wrapper partner "$@"; }
+vc-polarize() { _vetcoders_skill_wrapper polarize "$@"; }
 vc-prune() { _vetcoders_skill_wrapper prune "$@"; }
 vc-release() { _vetcoders_skill_wrapper release "$@"; }
 vc-review() { _vetcoders_skill_wrapper review "$@"; }
@@ -2241,19 +2402,19 @@ vc-help() {
   cat <<'HELP'
 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. Framework — Skills & Helpers
 
-Pipeline:  scaffold → init → workflow → followup → marbles → dou → decorate → hydrate → release
-Modes:     partner (collaborative) | implement (autonomous, alias: justdo)
+Pipeline:  scaffold → init → workflow → implement → followup → marbles → dou → decorate → hydrate → release
+Modes:     partner (shared steering) | ownership (take the wheel)
 Research:  research (triple-agent) | delegate (in-session)
-Quality:   review | prune
+Quality:   review (bounded diff/PR/commit) | followup (post-implementation direction) | prune
 Video:     screenscribe (foundation)
 
 Spawn helpers (per agent):
   <agent>-implement <plan.md>    Full implementation from plan
-  <agent>-review <plan.md>       PR review
+  <agent>-review <plan.md>       Bounded PR, branch, commit-range, or artifact review
   <agent>-plan <plan.md>         Planning only
   <agent>-prompt "text"          Quick one-shot prompt
   <agent>-scaffold                Architecture planning
-  <agent>-followup               Post-implementation audit
+  <agent>-followup               Post-implementation direction audit
   <agent>-dou                    Definition of Undone audit
   <agent>-hydrate                Market packaging
   <agent>-marbles                Convergence loop
@@ -2261,8 +2422,8 @@ Spawn helpers (per agent):
   <agent>-release                Ship to market
   <agent>-prune                  Repo pruning
   <agent>-skill-implement        Autonomous e2e implementation (vc-implement)
-  <agent>-justdo                 Autonomous e2e implementation (legacy alias)
-  <agent>-partner                Collaborative partner mode
+  <agent>-justdo                 Alias for autonomous e2e implementation
+  <agent>-partner                Collaborative partner mode with the user in the loop
   <agent>-observe --last         Check last report
   <agent>-await --last           Wait for metadata completion + summary
 

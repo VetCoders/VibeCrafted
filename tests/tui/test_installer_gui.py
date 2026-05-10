@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 from scripts import installer_gui
@@ -15,6 +16,8 @@ def test_build_install_command_respects_shell_toggle(tmp_path: Path) -> None:
 
     assert with_shell[-1] == "--with-shell"
     assert "--with-shell" not in without_shell
+    assert "--mirror" in with_shell
+    assert "--mirror" in without_shell
     assert with_shell[:5] == without_shell[:5]
 
 
@@ -38,6 +41,7 @@ def test_build_install_steps_include_foundations_before_installer(
     ]
     assert steps[0].command == ["bash", str(scripts_dir / "install-foundations.sh")]
     assert steps[1].command[-1] == "--with-shell"
+    assert "--mirror" in steps[1].command
 
 
 def test_preflight_payload_summarizes_diagnostics(monkeypatch, tmp_path: Path) -> None:
@@ -116,6 +120,18 @@ def test_preflight_payload_summarizes_diagnostics(monkeypatch, tmp_path: Path) -
     ]
     assert payload["control_plane"]["skills_ready"] == 1
     assert payload["status"]["completed"] is False
+    assert payload["bundled_bin_dir"] == str(tmp_path / "tools" / "bin")
+    assert payload["bundled_bin_present"] is False
+
+
+def test_gui_keeps_tui_diagnostic_api_contract() -> None:
+    """The browser installer relies on source-aware TUI diagnostics."""
+
+    signature = inspect.signature(installer_gui.run_diagnostics)
+
+    assert "source_dir" in signature.parameters
+    assert signature.parameters["source_dir"].default is None
+    assert callable(installer_gui.bundled_bin_root)
 
 
 def test_install_runtime_env_prepends_repo_owned_bins(
@@ -182,6 +198,9 @@ def test_build_html_renders_wizard_shell() -> None:
     assert "Launch guided install" in html
     assert "Finish state" in html
     assert "make wizard" in html
+    assert "make vibecrafted" in html
+    assert "Local checkout GUI" in html
+    assert "Terminal-native fallback" not in html
     assert "height: calc(100dvh - 36px);" in html
     assert "overflow: hidden;" in html
     assert "-webkit-overflow-scrolling: touch;" in html
@@ -280,6 +299,19 @@ def test_resolve_site_dist_respects_env_var(monkeypatch, tmp_path: Path) -> None
     monkeypatch.setenv("VIBECRAFTED_SITE_BUNDLE", str(bundle))
 
     controller = installer_gui.InstallController(str(tmp_path))
+
+    assert controller.site_dist_dir == bundle.resolve()
+
+
+def test_resolve_site_dist_finds_built_sibling_bundle(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source_root = tmp_path / "vibecrafted"
+    source_root.mkdir()
+    _stub_controller_deps(monkeypatch, source_root)
+    bundle = _make_bundle_shape(tmp_path / "vibecrafted-io" / "site" / "dist")
+
+    controller = installer_gui.InstallController(str(source_root))
 
     assert controller.site_dist_dir == bundle.resolve()
 

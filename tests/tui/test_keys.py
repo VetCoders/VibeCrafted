@@ -2,19 +2,19 @@ import pytest
 import sys
 from pathlib import Path
 
-from scripts import installer_tui
+from scripts import installer_gui
 from scripts import vetcoders_install
-from scripts.runtime_paths import read_version_file
+from scripts.runtime_paths import read_version_file, vibecrafted_home
 
 
 def test_read_framework_version_reads_version_file(tmp_path: Path) -> None:
     (tmp_path / "VERSION").write_text("9.9.9\n", encoding="utf-8")
 
-    assert installer_tui.read_framework_version(str(tmp_path)) == "9.9.9"
+    assert installer_gui.read_framework_version(str(tmp_path)) == "9.9.9"
 
 
 def test_read_framework_version_returns_unknown_when_missing(tmp_path: Path) -> None:
-    assert installer_tui.read_framework_version(str(tmp_path)) == "unknown"
+    assert installer_gui.read_framework_version(str(tmp_path)) == "unknown"
 
 
 def test_runtime_paths_reads_framework_version(tmp_path: Path) -> None:
@@ -30,7 +30,7 @@ def test_build_install_command_includes_compact_noninteractive_flags(
     installer_path.parent.mkdir()
     installer_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
 
-    command = installer_tui.build_install_command(str(tmp_path))
+    command = installer_gui.build_install_command(str(tmp_path), with_shell=True)
 
     assert command[0] == sys.executable
     assert command[1] == str(installer_path)
@@ -38,18 +38,19 @@ def test_build_install_command_includes_compact_noninteractive_flags(
         "install",
         "--source",
         str(tmp_path.resolve()),
-        "--with-shell",
         "--compact",
         "--non-interactive",
+        "--mirror",
+        "--with-shell",
     ]
 
 
 def test_build_install_command_raises_when_installer_missing(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
-        installer_tui.build_install_command(str(tmp_path))
+        installer_gui.build_install_command(str(tmp_path), with_shell=True)
 
 
-def test_installer_tui_vibecrafted_home_expands_user(
+def test_installer_gui_runtime_paths_expand_user(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home = tmp_path / "home"
@@ -57,9 +58,9 @@ def test_installer_tui_vibecrafted_home_expands_user(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("VIBECRAFTED_HOME", str(portable_vc))
 
-    assert installer_tui.vibecrafted_home() == portable_vc
-    assert installer_tui.framework_store_dir() == portable_vc / "skills"
-    assert installer_tui.install_log_path() == portable_vc / "install.log"
+    assert vibecrafted_home() == portable_vc
+    assert installer_gui.framework_store_dir() == portable_vc / "skills"
+    assert installer_gui.install_log_path() == portable_vc / "install.log"
 
 
 def test_vetcoders_install_env_paths_expand_user(
@@ -94,8 +95,8 @@ def test_helper_surface_label_prefers_canonical_helper(
 
     legacy = home / ".config" / "zsh" / "vc-skills.zsh"
     legacy.parent.mkdir(parents=True)
-    legacy.write_text("# legacy\n", encoding="utf-8")
-    assert vetcoders_install._helper_surface_label() == "legacy zsh"
+    legacy.write_text("# compat\n", encoding="utf-8")
+    assert vetcoders_install._helper_surface_label() == "compat zsh"
 
     canonical = home / ".config" / "vetcoders" / "vc-skills.sh"
     canonical.parent.mkdir(parents=True)
@@ -180,7 +181,13 @@ def test_install_launcher_dedupes_zshrc_path_entries(
     zshrc_content = zshrc.read_text(encoding="utf-8")
     assert zshrc_content.count(path_line) == 1
     assert zshrc_content.count("# 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. launcher") == 1
-    assert (home / ".local" / "bin" / "vibecrafted").exists()
+    assert "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/bin" in zshrc_content
+    assert "$HOME/.local/bin" in zshrc_content
+    assert (home / ".vibecrafted" / "bin" / "vibecrafted").is_file()
+    assert (home / ".local" / "bin" / "vibecrafted").is_symlink()
+    assert (home / ".local" / "bin" / "vibecrafted").readlink() == (
+        home / ".vibecrafted" / "bin" / "vibecrafted"
+    )
     for launcher_bin in (home / ".local" / "bin", home / ".vibecrafted" / "bin"):
         for wrapper_name in (
             "vc-help",
@@ -194,6 +201,31 @@ def test_install_launcher_dedupes_zshrc_path_entries(
             wrapper_path = launcher_bin / wrapper_name
             assert wrapper_path.is_symlink()
             assert wrapper_path.readlink() == Path("vibecrafted")
+
+
+def test_install_launcher_replaces_old_blind_local_bin_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    repo_root = tmp_path / "repo"
+    launcher_src = repo_root / "scripts" / "vibecrafted"
+    zshrc = home / ".zshrc"
+
+    launcher_src.parent.mkdir(parents=True)
+    launcher_src.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    home.mkdir()
+    zshrc.write_text(
+        '# user\n# 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. launcher\nexport PATH="$HOME/.local/bin:$PATH"\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+
+    vetcoders_install._install_launcher(repo_root, dry_run=False)
+
+    zshrc_content = zshrc.read_text(encoding="utf-8")
+    assert 'export PATH="$HOME/.local/bin:$PATH"' not in zshrc_content.splitlines()
+    assert zshrc_content.count(vetcoders_install._launcher_path_line()) == 1
 
 
 def test_pipeline_category_describes_release_not_removed_ship_skill() -> None:

@@ -53,8 +53,16 @@ import tempfile
 state_path = sys.argv[1]
 args = sys.argv[2:]
 mutator = os.environ["STATE_JSON_MUTATOR"]
+dir_path = os.path.dirname(state_path) or "."
 
-lock = open(state_path + ".lock", "a+", encoding="utf-8")
+if not os.path.isdir(dir_path):
+    raise SystemExit(0)
+
+try:
+    lock = open(state_path + ".lock", "a+", encoding="utf-8")
+except FileNotFoundError:
+    raise SystemExit(0)
+
 try:
     fcntl.flock(lock, fcntl.LOCK_EX)
     try:
@@ -65,7 +73,6 @@ try:
 
     exec(mutator, {"datetime": datetime}, {"payload": payload, "args": args})
 
-    dir_path = os.path.dirname(state_path) or "."
     fd, tmp_path = tempfile.mkstemp(
         prefix=os.path.basename(state_path) + ".", dir=dir_path
     )
@@ -370,6 +377,7 @@ Loop $loop_nr of $total_count did not produce an observed report.
 CONV
 
   _update_lock status failed
+  _archive_terminal_state "failed"
   printf '\n\033[31m ✗  Marbles blocked at loop %s/%s\033[0m\n' "$loop_nr" "$total_count"
   printf '    Missing report guard: %s\n' "$reason"
   printf '    Convergence: %s\n' "$convergence"
@@ -401,6 +409,7 @@ reason: invalid_ancestor_agent
 CONV
 
   _update_lock status failed
+  _archive_terminal_state "failed"
   printf '\n\033[31m ✗  Marbles blocked before loop %s/%s\033[0m\n' "$loop_nr" "$total_count"
   printf '    Invalid ancestor agent: %s\n' "${invalid_agent:-<empty>}"
   printf '    Convergence: %s\n' "$convergence"
@@ -417,6 +426,14 @@ _collect_reports() {
       printf '%s\n' "$report_path"
     fi
   done
+}
+
+_archive_terminal_state() {
+  local status="$1"
+  if [[ "${VIBECRAFTED_MARBLES_WATCHER:-0}" == "1" ]]; then
+    return 0
+  fi
+  spawn_archive_marbles_state_dir "$run_id" "$status" >/dev/null 2>&1 || true
 }
 
 _launch_verification() {
@@ -571,6 +588,37 @@ TXT
   SPAWN_SKILL_CODE="impl" \
   spawn_finish_meta "$meta_path" "failed" "$exit_code"
 
+  if [[ -f "$state_file" ]]; then
+    _state_json_edit "$(cat <<'PY'
+loop_nr = int(args[0])
+report_path, transcript_path, reason, exit_code = args[1:5]
+now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+payload["status"] = "failed"
+payload["updated_at"] = now
+loops = payload.get("loops", [])
+target = None
+for loop in loops:
+    if loop.get("loop") == loop_nr:
+        target = loop
+        break
+
+if target is None:
+    target = {"loop": loop_nr, "started_at": now}
+    loops.append(target)
+
+target["status"] = "failed"
+target["report"] = report_path
+target["transcript"] = transcript_path
+target["failure_reason"] = "spawn-failed"
+target["failure_detail"] = reason
+target["exit_code"] = int(exit_code)
+target["finished_at"] = now
+payload["loops"] = loops
+PY
+)" "$loop_nr" "$report_path" "$transcript_path" "$reason" "$exit_code" >/dev/null || true
+  fi
+
   printf '    ⚠ Next loop L%s failed before launch metadata stabilized (%s, exit %s)\n' \
     "$loop_nr" "$reason" "$exit_code"
 }
@@ -611,6 +659,7 @@ _launch_next_loop() {
     --success-hook "$success_hook"
     --failure-hook "$failure_hook"
   )
+  loop_model="$(spawn_clean_model "$loop_model")"
   if [[ -n "$loop_model" && "$loop_agent" != "codex" ]]; then
     spawn_args+=(--model "$loop_model")
   fi
@@ -651,6 +700,7 @@ Check individual loop reports for details.
 CONV
 
   _update_lock status failed
+  _archive_terminal_state "failed"
   printf '\n\033[31m ✗  Marbles failed at loop %s/%s\033[0m\n' "$current" "$total_count"
   printf '    Convergence: %s\n' "$convergence"
   exit 0
@@ -716,11 +766,12 @@ HEADER
       printf '\n...\n'
     done < <(_collect_reports "$total_count")
 
-    printf '\n---\n𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents (c)2024-2026 VetCoders\n'
+    printf '\n---\n𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents by VetCoders (c)2024-2026 LibraxisAI\n'
   } > "$convergence"
 
   _launch_verification "$current" 1
   _update_lock status completed
+  _archive_terminal_state "completed"
   printf '\n\033[32m ✓  Marbles complete: %s loops · %s\033[0m\n' "$total_count" "$run_id"
   printf '    Convergence: %s\n' "$convergence"
   exit 0
@@ -757,7 +808,7 @@ rm -f "$next_plan_tmp"
 spawn_marbles_write_child_plan "$ancestor_plan" "$next_plan_tmp"
 
 _ancestor_agent="$(spawn_frontmatter_field "$next_plan_tmp" "agent")"
-_ancestor_model="$(spawn_frontmatter_field "$next_plan_tmp" "model")"
+_ancestor_model="$(spawn_clean_model "$(spawn_frontmatter_field "$next_plan_tmp" "model")")"
 
 # Determine if ancestor.md was explicitly steered by the previous child.
 # Steering requires: (a) ancestor has a non-empty agent, (b) it differs from
@@ -835,5 +886,28 @@ if (( launch_rc != 0 )); then
       "next-loop spawn failed before meta.json was created" \
       "$launch_rc"
   fi
+  if [[ -f "$state_file" ]]; then
+    _state_json_edit "$(cat <<'PY'
+loop_nr = int(args[0])
+exit_code = int(args[1])
+now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+payload["status"] = "failed"
+payload["updated_at"] = now
+loops = payload.get("loops", [])
+for loop in loops:
+    if loop.get("loop") == loop_nr:
+        loop["status"] = "failed"
+        loop["failure_reason"] = "spawn-failed"
+        loop["failure_detail"] = "next-loop spawn exited nonzero"
+        loop["exit_code"] = exit_code
+        loop["finished_at"] = now
+        break
+payload["loops"] = loops
+PY
+)" "$next" "$launch_rc" >/dev/null || true
+  fi
+  _update_lock status failed
+  _archive_terminal_state "failed"
   exit "$launch_rc"
 fi

@@ -5,6 +5,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+### Added
+
+- **Prism → Polarize gate (Plan 01)**: `vc-polarize` runner (`skills/vc-agents/shell/vetcoders.sh:1168-1186`) now parses `loct prism --json` output, reads `total_score`, and routes to the canonical action band: `0..4` abort (no polarize, no memo), `5..8` memo (capture local Loctree tag / context-corpus entry, do not dispatch), `9..12` pass (run full `vc-polarize` agent dispatch), `13..15` doctrine (write canonical decision into context corpus). The runner also emits a prism preflight that injects the band/score into the polarize prompt so the dispatched agent can cite structural evidence rather than re-deriving it. The same threshold mapping is consumed independently by `vc-operator` (`src/polarize.rs:18-23 PolarizeBand::from_score`) — single source of truth at the boundaries `5 / 9 / 13`.
+- New `.claude-plugin/plugin.json` stub manifests for `skills/vc-polarize/`, `skills/vc-intents/`, and `skills/vc-ownership/` to bring them in line with the rest of the framework's marketplace surface (vc-marbles / vc-init / vc-implement / vc-followup / vc-decorate / vc-hydrate / vc-dou / vc-prune / vc-research / vc-review / vc-release / vc-scaffold / vc-workflow / vc-agents / vc-delegate / vc-partner all already shipped manifests).
+- `vc-release` Release Report Contract: every release report now requires
+  four mandatory sections — security gate (Semgrep), exposed surface
+  inventory (ports, proxies, auth, headers, secrets), deployment mode
+  decision, and post-release install smoke from the **published**
+  artefact (not the working tree). Canonical template lives at
+  `skills/vc-release/references/release-report-template.md`.
+- `skills/vc-release/references/deployment-reality.md` gains an
+  "Exposed Surface Inventory" matrix (process, bind, port, proxy, TLS,
+  auth, edge headers, secret materialization) so the inventory has a
+  doctrine to reference.
+- `tests/tui/test_release_contract.py` adds two locks: the four
+  mandatory sections in `skills/vc-release/SKILL.md` plus the surface
+  inventory tokens in `deployment-reality.md`. Future drift fails the
+  pytest gate.
+
+### Changed
+
+- `skills/vc-release/SKILL.md` Semgrep release gate now points at the
+  canonical `make semgrep` (mirrored by `scripts/hooks/pre-commit` and
+  `scripts/hooks/pre-push`), classifies findings by dataflow boundary
+  (path / regex / merge / shell / auth / other), and treats silent
+  unavailability as a release block.
+- `skills/vc-release/SKILL.md` Post-release smoke now requires a cold
+  install from the published artefact source (registry URL, tag,
+  digest, or download URL) and forbids using the local checkout as the
+  witness.
+- `docs/runtime/CONTRACT.md` quality gate section references the
+  canonical `make semgrep` invocation and links the Release Report
+  Contract.
+- `docs/RELEASE_KICKOFF.md` adds `make semgrep` to the kickoff gate
+  block and links the release report template plus the deployment
+  reality matrix.
+- `README.md` release-flow paragraph names the four-section release
+  report and links the doctrine + template.
+
 ## 1.4.1 — 2026-04-22
 
 ### Added
@@ -16,8 +55,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
     plugin bundle artifact
   - `scripts/install-foundations.sh` gains `bundled_bin_root()` and
     `install_from_bundled()` with explicit fallback order
-  - `installer_tui.py` / `installer_gui.py` surface bundled diagnostics as a
-    new category in the pre-flight doctor
+  - `installer_gui.py` surfaces bundled diagnostics as a new category in the
+    pre-flight doctor
   - Documented resolution order and notarization expectations in
     `tools/bin/README.md`
 - `skills/vc-agents/scripts/marbles_verify_watch.sh` — standalone detached
@@ -37,7 +76,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   time, exit code, session_id) so marbles state is the single source of truth
   for multi-loop runs.
 - New skill **`vc-implement`** becomes the canonical end-to-end implementation
-  skill. The `vc-justdo` name stays in-tree as a **backward-compatible legacy
+  skill. The `vc-justdo` name stays in-tree as a **backward-compatible
   alias** (frontmatter: `canonical: vc-implement`) so agents already wired to
   the old name keep working. Every public surface (START_HERE `Simplest path`,
   install banner, skill registry in `vetcoders_install.py`) now shows
@@ -81,8 +120,8 @@ research` / `vc-dashboard`) with matching launcher and test updates.
   WORKFLOWS, installer/DESIGN, workflows/MARBLES — copy brought in line with
   the canonical command set (`vibecrafted implement`) and the current 1.4.1
   surface.
-- FLOW + SKILL polish across `vc-delegate`, `vc-init`, `vc-justdo` (marked
-  legacy), `vc-partner`, `vc-research`, `vc-scaffold`, `vc-workflow`.
+- FLOW + SKILL polish across `vc-delegate`, `vc-init`, `vc-justdo` (alias),
+  `vc-partner`, `vc-research`, `vc-scaffold`, `vc-workflow`.
 
 ### Fixed
 
@@ -184,7 +223,7 @@ operator` crate — see **Changed** above).
 ### Added
 
 - `make foundations` — portable installer for loctree and ai-contexters binaries
-  - Downloads pre-built loctree v0.8.16 binaries (notarized/signed) for macOS, Linux, Windows
+  - Downloads pre-built loctree v0.8.17 binaries (notarized/signed) for macOS, Linux, Windows
   - Installs ai-contexters via GitHub release binary or `cargo install` fallback
   - `make foundations-check` for dry-run preview
   - `scripts/install-foundations.sh` works standalone or via Make

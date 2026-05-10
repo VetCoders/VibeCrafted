@@ -26,7 +26,7 @@ def test_discover_bundle_skills_tracks_live_skill_surface() -> None:
     ]
 
     assert "vc-implement" in skill_names
-    assert "vc-justdo" in skill_names  # legacy alias kept in bundle
+    assert "vc-justdo" in skill_names  # alias kept in bundle
     assert "vc-marbles" in skill_names
     assert "vc-ship" not in skill_names
     assert "vc-ownership" in skill_names
@@ -34,7 +34,7 @@ def test_discover_bundle_skills_tracks_live_skill_surface() -> None:
 
 
 def test_top_level_skill_dirs_are_live_skills_or_foundations() -> None:
-    allowed_non_skill_dirs = {"foundations"}
+    allowed_non_skill_dirs = {"experimental", "foundations"}
     offenders: list[str] = []
 
     for path in sorted((bundle.REPO_ROOT / "skills").iterdir()):
@@ -66,13 +66,61 @@ def test_write_bundle_uses_current_metadata_and_skill_inventory(tmp_path: Path) 
     assert manifest["version"] == bundle.read_version(bundle.REPO_ROOT)
     assert manifest["license"] != "MIT"
     assert "skills/vc-implement/SKILL.md" in members
-    assert "skills/vc-justdo/SKILL.md" in members  # legacy alias kept in bundle
+    assert "skills/vc-justdo/SKILL.md" in members  # alias kept in bundle
     assert "skills/vc-marbles/SKILL.md" in members
     assert "skills/vc-ship/SKILL.md" not in members
     assert "skills/vc-ownership/SKILL.md" in members
     assert "skills/vc-screenscribe/SKILL.md" not in members
     assert "docs/RELEASE_KICKOFF.md" in members
     assert "docs/SUBMISSION_FORMS.md" in members
+
+
+def test_write_bundle_includes_bundled_tool_drop_in_slot(
+    monkeypatch, tmp_path: Path
+) -> None:
+    repo_root = tmp_path / "repo"
+    bin_root = repo_root / "tools" / "bin"
+    per_arch = bin_root / "linux-x86_64"
+    per_arch.mkdir(parents=True)
+    (repo_root / "docs").mkdir()
+    (repo_root / "VERSION").write_text("9.9.9\n", encoding="utf-8")
+    (repo_root / "LICENSE").write_text("license\n", encoding="utf-8")
+    (repo_root / "docs" / "MARKETPLACE_LISTING.md").write_text(
+        "listing\n", encoding="utf-8"
+    )
+    (per_arch / "loctree-mcp").write_text("binary\n", encoding="utf-8")
+    (bin_root / "prview").write_text("binary\n", encoding="utf-8")
+    (bin_root / ".gitkeep").write_text("", encoding="utf-8")
+    (bin_root / ".DS_Store").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(bundle, "SUPPORT_DOC_PATHS", ())
+    monkeypatch.setattr(bundle, "discover_bundle_skills", lambda _repo: [])
+    monkeypatch.setattr(bundle, "discover_foundation_skills", lambda _repo: [])
+    monkeypatch.setattr(
+        bundle,
+        "load_listing_metadata",
+        lambda _repo: bundle.ListingMetadata(
+            description="desc",
+            keywords=("codex",),
+            homepage="https://vibecrafted.io/",
+            repository="https://github.com/VetCoders/vibecrafted",
+            documentation="https://vibecrafted.io/en/quickstart/",
+            faq="https://vibecrafted.io/en/faq/",
+            license="Business Source License 1.1",
+        ),
+    )
+
+    archive_bytes = bundle.build_bundle_bytes(repo_root)
+
+    archive_path = tmp_path / "bundle.plugin"
+    archive_path.write_bytes(archive_bytes)
+    with zipfile.ZipFile(archive_path) as archive:
+        members = set(archive.namelist())
+
+    assert "tools/bin/linux-x86_64/loctree-mcp" in members
+    assert "tools/bin/prview" in members
+    assert "tools/bin/.gitkeep" not in members
+    assert "tools/bin/.DS_Store" not in members
 
 
 def test_framework_playground_uses_vibecrafted_command_deck() -> None:

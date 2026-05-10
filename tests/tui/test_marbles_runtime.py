@@ -277,6 +277,17 @@ def _expected_operator_session(run_id: str | None = None) -> str:
     return f"{base}-{run_id}" if run_id else base
 
 
+def _marbles_state_dirs(crafted_home: Path) -> list[Path]:
+    marbles_dir = crafted_home / "marbles"
+    live = [
+        path
+        for path in marbles_dir.iterdir()
+        if path.is_dir() and path.name != "_archived"
+    ]
+    archived = list((marbles_dir / "_archived").glob("*/*"))
+    return live + archived
+
+
 def _org_repo() -> str:
     remote = subprocess.check_output(
         ["git", "-C", str(REPO_ROOT), "remote", "get-url", "origin"],
@@ -397,6 +408,58 @@ def test_vc_marbles_preserves_prompt_as_single_argument_inside_zellij(
         "weź i vc-justdo wszystko co marbles znajdzie" in line
         for line in zellij_payload
     )
+
+
+def test_vc_marbles_inside_zellij_prints_launch_receipt(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    fake_bin = tmp_path / "bin"
+    isolated_root = tmp_path / "isolated-root"
+    tmpdir_root = tmp_path / "tmpdir"
+    capture_file = tmp_path / "marbles-args.txt"
+    zellij_capture_file = tmp_path / "zellij-args.txt"
+    spawn_script = (
+        crafted_home / "skills" / "vc-agents" / "scripts" / "marbles_spawn.sh"
+    )
+
+    home.mkdir()
+    fake_bin.mkdir()
+    isolated_root.mkdir()
+    tmpdir_root.mkdir()
+    spawn_script.parent.mkdir(parents=True)
+    _write_fake_marbles_spawn(spawn_script)
+    _write_replaying_zellij(fake_bin / "zellij")
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["VIBECRAFTED_HOME"] = str(crafted_home)
+    env["VIBECRAFTED_ROOT"] = str(isolated_root)
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["ZELLIJ_CAPTURE_FILE"] = str(zellij_capture_file)
+    env["EXPECTED_MARBLES_SPAWN"] = str(spawn_script)
+    env["TMPDIR"] = f"{tmpdir_root}/"
+    env["ZELLIJ"] = "operator"
+    env["ZELLIJ_PANE_ID"] = "terminal_7"
+    env["ZELLIJ_SESSION_NAME"] = "ambient-session"
+    env.pop("VIBECRAFTED_OPERATOR_SESSION", None)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'source "{HELPER_SCRIPT}"; codex-marbles --count 1 --depth 3',
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Marbles run launched in zellij tab: marbles-marb-" in result.stdout
+    assert "run_id:  marb-" in result.stdout
+    assert "inspect: vc-marbles inspect marb-" in result.stdout
 
 
 def test_vc_marbles_uses_no_watch_for_headless_runtime(tmp_path: Path) -> None:
@@ -614,6 +677,7 @@ def test_marbles_runtime_steers_next_loop_from_ancestor_frontmatter(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_EDIT_ANCESTOR"] = "1"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
@@ -640,7 +704,7 @@ def test_marbles_runtime_steers_next_loop_from_ancestor_frontmatter(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state_dir = state_dirs[0]
     state = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
@@ -659,7 +723,7 @@ def test_marbles_runtime_steers_next_loop_from_ancestor_frontmatter(
 
     events = _load_spawn_events(capture_file)
     assert [event["agent"] for event in events] == ["codex", "gemini"]
-    assert str(state_dir) in str(events[0]["success_hook"])
+    assert state["archived_from"] in str(events[0]["success_hook"])
     assert str(events[0]["plan"]).endswith("marbles-ancestor_L1.md")
     assert str(events[1]["plan"]).endswith("marbles-ancestor_L2.md")
     assert str(events[0]["plan"]) not in str(events[0]["success_hook"])
@@ -678,6 +742,7 @@ def test_marbles_runtime_keeps_ancestor_focus_when_next_plan_write_lags(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_EDIT_ANCESTOR"] = "1"
     env["MARBLES_TEST_DELAY_NEXT_PLAN"] = "2"
     env.pop("ZELLIJ", None)
@@ -705,7 +770,7 @@ def test_marbles_runtime_keeps_ancestor_focus_when_next_plan_write_lags(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state = json.loads((state_dirs[0] / "state.json").read_text(encoding="utf-8"))
 
@@ -729,6 +794,7 @@ def test_marbles_runtime_applies_rotation_schedule_without_ancestor_override(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
@@ -756,7 +822,7 @@ def test_marbles_runtime_applies_rotation_schedule_without_ancestor_override(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state_dir = state_dirs[0]
     state = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
@@ -820,6 +886,7 @@ def test_marbles_runtime_consumes_ancestor_override_sequence_across_children(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_ANCESTOR_SEQUENCE"] = (
         "gemini|accessibility|;claude|auth hardening|"
     )
@@ -850,7 +917,7 @@ def test_marbles_runtime_consumes_ancestor_override_sequence_across_children(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state_dir = state_dirs[0]
     state = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
@@ -909,8 +976,8 @@ def test_marbles_runtime_consumes_ancestor_override_sequence_across_children(
     assert len(convergence_reports) == 1
     convergence = convergence_reports[0].read_text(encoding="utf-8")
     assert "## Steering Surfaces" in convergence
-    assert f"- GOD: {state_dir / 'god.md'}" in convergence
-    assert f"- ANCESTOR: {state_dir / 'ancestor.md'}" in convergence
+    assert f"- GOD: {state['archived_from']}/god.md" in convergence
+    assert f"- ANCESTOR: {state['archived_from']}/ancestor.md" in convergence
 
 
 def test_marbles_contract_docs_forbid_worker_worktree_escape() -> None:
@@ -951,6 +1018,7 @@ def test_marbles_no_watch_still_creates_god_and_ancestor_contract(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
@@ -977,12 +1045,13 @@ def test_marbles_no_watch_still_creates_god_and_ancestor_contract(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state_dir = state_dirs[0]
     state = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
 
-    assert state["status"] == "initialized"
+    assert state["status"] == "completed"
+    assert state["previous_status"] == "initialized"
     assert state["god_plan"] == str(state_dir / "god.md")
     assert state["ancestor_plan"] == str(state_dir / "ancestor.md")
     assert (state_dir / "god.md").exists()
@@ -990,7 +1059,7 @@ def test_marbles_no_watch_still_creates_god_and_ancestor_contract(
 
     events = _load_spawn_events(capture_file)
     assert len(events) == 1
-    assert str(state_dir) in str(events[0]["success_hook"])
+    assert state["archived_from"] in str(events[0]["success_hook"])
     assert str(events[0]["plan"]).endswith("marbles-ancestor_L1.md")
 
 
@@ -1006,6 +1075,7 @@ def test_marbles_materializes_failed_loop_when_child_spawn_dies_before_meta(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_FAIL_BEFORE_META_LOOP"] = "2"
     env["VIBECRAFTED_MARBLES_META_TIMEOUT_S"] = "3"
     env["VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S"] = "2"
@@ -1034,7 +1104,7 @@ def test_marbles_materializes_failed_loop_when_child_spawn_dies_before_meta(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state_dir = state_dirs[0]
     state = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
@@ -1091,6 +1161,7 @@ def test_marbles_spawn_fails_fast_when_watcher_script_is_invalid(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
@@ -1134,9 +1205,10 @@ def test_marbles_watcher_waits_for_meta_completion_before_advancing(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_DELAY_META_AFTER_REPORT_LOOP"] = "1"
     env["MARBLES_TEST_DELAY_META_AFTER_REPORT_S"] = "4"
-    env["VIBECRAFTED_MARBLES_META_TIMEOUT_S"] = "3"
+    env["VIBECRAFTED_MARBLES_META_TIMEOUT_S"] = "8"
     env["VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S"] = "10"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
@@ -1163,7 +1235,7 @@ def test_marbles_watcher_waits_for_meta_completion_before_advancing(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state = json.loads((state_dirs[0] / "state.json").read_text(encoding="utf-8"))
 
@@ -1174,6 +1246,12 @@ def test_marbles_watcher_waits_for_meta_completion_before_advancing(
     events = _load_spawn_events(capture_file)
     assert len(events) == 2
     assert all(event["suppress_report_hint"] == "1" for event in events)
+
+    meta_paths = list((crafted_home / "artifacts").rglob("*.meta.json"))
+    assert meta_paths
+    assert {
+        json.loads(path.read_text(encoding="utf-8"))["liveness"] for path in meta_paths
+    } == {"terminal"}
 
 
 def test_marbles_no_watch_keeps_report_hint_enabled(
@@ -1188,6 +1266,7 @@ def test_marbles_no_watch_keeps_report_hint_enabled(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
@@ -1231,6 +1310,7 @@ def test_marbles_watcher_does_not_consume_failed_fallback_report(
     env["HOME"] = str(home)
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
+    env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
     env["MARBLES_TEST_FAIL_WITH_REPORT_LOOP"] = "1"
     env["VIBECRAFTED_MARBLES_META_TIMEOUT_S"] = "2"
     env["VIBECRAFTED_MARBLES_REPORT_TIMEOUT_S"] = "2"
@@ -1259,7 +1339,7 @@ def test_marbles_watcher_does_not_consume_failed_fallback_report(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state = json.loads((state_dirs[0] / "state.json").read_text(encoding="utf-8"))
 
@@ -1318,7 +1398,7 @@ def test_marbles_verification_poll_survives_watcher_exit_without_job_noise(
         text=True,
     )
 
-    state_dirs = list((crafted_home / "marbles").iterdir())
+    state_dirs = _marbles_state_dirs(crafted_home)
     assert len(state_dirs) == 1
     state_path = state_dirs[0] / "state.json"
 

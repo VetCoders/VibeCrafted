@@ -189,7 +189,13 @@ class Foundation:
 
     def is_installed(self) -> Optional[str]:
         """Return path if installed, None otherwise."""
-        return shutil.which(self.name)
+        found = shutil.which(self.name)
+        if found:
+            return found
+        bundled = vibecrafted_home() / "bin" / self.name
+        if bundled.is_file() and os.access(bundled, os.X_OK):
+            return str(bundled)
+        return None
 
     def install_hint(self) -> str:
         hints = []
@@ -216,8 +222,8 @@ FOUNDATIONS: List[Foundation] = [
         description="AICX MCP server for session history and memory recovery",
         channels=["crates", "github"],
         packages={
-            "crates": "ai-contexters",
-            "github": "https://github.com/VetCoders/ai-contexters/releases",
+            "crates": "aicx",
+            "github": "https://github.com/Loctree/aicx/releases",
         },
         verify_cmd="aicx-mcp --version",
     ),
@@ -421,21 +427,30 @@ def _doctor_action_items(findings: Sequence["DoctorFinding"]) -> List[str]:
         for finding in issues
     ):
         actions.append(
-            "Required foundations are missing. Run `make foundations` or install them manually, then run `vibecrafted doctor` again."
+            "Required foundations are missing. Run `vibecrafted update` to "
+            "re-fetch the toolchain (or "
+            "`bash ~/.vibecrafted/tools/vibecrafted-current/scripts/install-foundations.sh` "
+            "directly), then re-run `vibecrafted doctor`. "
+            "If you cloned the repo, `make foundations` works too."
         )
     if any(
         finding.component.startswith(("runtime:", "symlink:", "stale-copy:"))
         for finding in issues
     ):
         actions.append(
-            "Runtime links need repair. Re-run `make install` to rebuild the shared skill views and remove stale copies."
+            "Runtime links need repair. Re-run `vibecrafted update` (or "
+            "`make install` from a repo checkout) to rebuild the shared "
+            "skill views and remove stale copies."
         )
     if any(
         finding.component in ("launcher-wrappers", "launcher-runtime")
         for finding in issues
     ):
         actions.append(
-            "Launcher commands need repair. Run `vibecrafted doctor --fix-launchers` for an in-place repair, or re-run `make install` to rebuild the full launcher surface."
+            "Launcher commands need repair. Run "
+            "`vibecrafted doctor --fix-launchers` for an in-place repair, "
+            "or `vibecrafted update` (or `make install` from a repo "
+            "checkout) to rebuild the full launcher surface."
         )
     if any(
         finding.component.startswith("shell-helper")
@@ -1104,12 +1119,16 @@ def _helper_surface_label(*, zsh_available: Optional[bool] = None) -> str:
     if helper_file.exists():
         return "bash + zsh" if zsh_available else "bash only"
     if legacy_file.exists():
-        return "legacy zsh"
+        return "compat zsh"
     return "not installed"
 
 
 def _launcher_path_line() -> str:
-    return 'export PATH="$HOME/.local/bin:$PATH"'
+    return 'case ":$PATH:" in *":${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/bin:"*) ;; *) export PATH="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/bin:$PATH" ;; esac; case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
+
+
+def _legacy_launcher_path_lines() -> List[str]:
+    return ['export PATH="$HOME/.local/bin:$PATH"']
 
 
 def _doctor_repair_rc_content(
@@ -1176,7 +1195,7 @@ def _doctor_fix_rc_files() -> List[DoctorFinding]:
             DoctorFinding(
                 "ok",
                 f"rc-fix:{rcname}",
-                "repaired legacy rc entries and restored canonical launcher/helper hints",
+                "repaired compat rc entries and restored canonical launcher/helper hints",
             )
         )
 
@@ -1514,6 +1533,7 @@ SKILL_WRAPPER_NAMES = [
     "marbles",
     "ownership",
     "partner",
+    "polarize",
     "prune",
     "release",
     "research",
@@ -1567,13 +1587,18 @@ def _find_launcher_wrapper(name: str) -> Optional[Path]:
 
 
 def _uninstall_rc_entries() -> List[Tuple[str, str]]:
-    return [
+    entries = [
         (_shell_source_line(), "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. shell helpers"),
         (_shell_source_line(), "VetCoders shell helpers"),
         (_old_zshrc_source_line(), "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. shell helpers"),
         (_old_zshrc_source_line(), "VetCoders shell helpers"),
         (_launcher_path_line(), "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. launcher"),
     ]
+    entries.extend(
+        (legacy_line, "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. launcher")
+        for legacy_line in _legacy_launcher_path_lines()
+    )
+    return entries
 
 
 def _rc_has_framework_install_hints(rcfile: Path) -> bool:
@@ -1810,6 +1835,13 @@ def report_helper_conflicts(
 
 
 _RSYNC_EXCLUDES = {".DS_Store", ".loctree"}
+_CONTROL_PLANE_EXCLUDES = {
+    ".DS_Store",
+    ".git",
+    ".loctree",
+    ".pytest_cache",
+    "__pycache__",
+}
 
 
 def _copytree_skill(src: Path, dst: Path, mirror: bool = False) -> None:
@@ -1844,6 +1876,124 @@ def rsync_skill(
         )
     else:
         _copytree_skill(src, dst, mirror=mirror)
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def _clear_dir_contents(path: Path) -> None:
+    if not path.exists():
+        return
+    for child in path.iterdir():
+        _remove_path(child)
+
+
+def _copy_control_plane_contents(src: Path, dst: Path, mirror: bool = False) -> None:
+    """Pure-Python fallback for staged control-plane sync."""
+    if mirror:
+        _clear_dir_contents(dst)
+    dst.mkdir(parents=True, exist_ok=True)
+
+    for item in src.iterdir():
+        if item.name in _CONTROL_PLANE_EXCLUDES:
+            continue
+
+        target = dst / item.name
+        if item.is_symlink():
+            if target.exists() or target.is_symlink():
+                _remove_path(target)
+            target.symlink_to(os.readlink(item))
+        elif item.is_dir():
+            if target.exists() and not target.is_dir():
+                _remove_path(target)
+            _copy_control_plane_contents(item, target, mirror=False)
+        elif item.is_file():
+            if target.exists() and target.is_dir():
+                _remove_path(target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, target)
+
+
+def sync_control_plane_tree(
+    src: Path, dst: Path, dry_run: bool = False, mirror: bool = False
+) -> None:
+    """Sync the staged source tree used by installed launchers and helpers."""
+    if dry_run:
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    if shutil.which("rsync"):
+        cmd = ["rsync", "-a"]
+        for name in sorted(_CONTROL_PLANE_EXCLUDES):
+            cmd += ["--exclude", name]
+        if mirror:
+            cmd.append("--delete")
+        cmd += [str(src) + "/", str(dst) + "/"]
+        subprocess.run(
+            cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    else:
+        _copy_control_plane_contents(src, dst, mirror=mirror)
+
+
+def _is_framework_source_root(repo_root: Path) -> bool:
+    return (
+        (repo_root / "VERSION").is_file()
+        and (repo_root / "scripts" / "vibecrafted").is_file()
+        and (repo_root / "skills").is_dir()
+    )
+
+
+def _current_tools_link(shared_home: Path) -> Path:
+    return shared_home / "tools" / "vibecrafted-current"
+
+
+def _ensure_current_tools_target(shared_home: Path) -> Path:
+    tools_dir = shared_home / "tools"
+    current_link = _current_tools_link(shared_home)
+    tools_dir.mkdir(parents=True, exist_ok=True)
+
+    if current_link.is_symlink():
+        target = current_link.resolve(strict=False)
+        if target.exists():
+            return target
+        current_link.unlink()
+    elif current_link.exists():
+        return current_link
+
+    target = tools_dir / "vibecrafted-local"
+    target.mkdir(parents=True, exist_ok=True)
+    current_link.symlink_to(target)
+    return target
+
+
+def refresh_current_tools(
+    repo_root: Path, shared_home: Path, dry_run: bool = False, mirror: bool = False
+) -> Optional[Path]:
+    """Refresh ~/.vibecrafted/tools/vibecrafted-current from the install source."""
+    if not _is_framework_source_root(repo_root):
+        return None
+
+    current_link = _current_tools_link(shared_home)
+    if current_link.exists() or current_link.is_symlink():
+        try:
+            if current_link.resolve(strict=False) == repo_root:
+                return current_link
+        except OSError:
+            pass
+
+    if dry_run:
+        return current_link
+
+    target = _ensure_current_tools_target(shared_home)
+    if target.resolve(strict=False) == repo_root:
+        return target
+
+    sync_control_plane_tree(repo_root, target, dry_run=dry_run, mirror=mirror)
+    return current_link
 
 
 def prune_orphaned_skills(
@@ -1950,7 +2100,7 @@ def prune_legacy_skills(
             removed += 1
 
     if removed:
-        print(f"  {OK} Removed {removed} legacy entries")
+        print(f"  {OK} Removed {removed} old entries")
 
     # Clean old source line from .zshrc
     zshrc = Path.home() / ".zshrc"
@@ -2296,7 +2446,7 @@ def run_doctor(store_path: Path, state: InstallState) -> List[DoctorFinding]:
             DoctorFinding(
                 "warn",
                 "shell-helpers",
-                f"legacy location only: {legacy_file} — re-run install",
+                f"compat location only: {legacy_file} — re-run install",
             )
         )
     elif state.shell_helpers:
@@ -2596,6 +2746,10 @@ def run_doctor(store_path: Path, state: InstallState) -> List[DoctorFinding]:
 
     # 7e. Zellij availability and version
     zellij_bin = shutil.which("zellij")
+    if not zellij_bin:
+        bundled_zellij = vibecrafted_home() / "bin" / "zellij"
+        if bundled_zellij.is_file() and os.access(bundled_zellij, os.X_OK):
+            zellij_bin = str(bundled_zellij)
     if zellij_bin:
         try:
             zellij_ver = subprocess.run(
@@ -2658,48 +2812,58 @@ def run_doctor(store_path: Path, state: InstallState) -> List[DoctorFinding]:
 
     # 7g. Agent CLI stream contract: verify expected flags are recognized
     _agent_flag_checks = {
-        "claude": ["--version"],
-        "codex": ["--version"],
-        "gemini": ["--version"],
+        "claude": [["--version"]],
+        "codex": [["--version"]],
+        "gemini": [["--version"], ["-v"], ["--help"]],
     }
-    for agent_name, flags in _agent_flag_checks.items():
+    for agent_name, flag_options in _agent_flag_checks.items():
         agent_bin = shutil.which(agent_name)
         if not agent_bin:
             continue
-        try:
-            flag_result = subprocess.run(
-                [agent_bin] + flags,
-                capture_output=True,
-                text=True,
-                timeout=10,
+        last_detail = ""
+        stream_ok = False
+        stream_line = ""
+        stream_flags: List[str] = []
+        for flags in flag_options:
+            try:
+                flag_result = subprocess.run(
+                    [agent_bin] + flags,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if flag_result.returncode == 0:
+                    stream_ok = True
+                    stream_flags = flags
+                    stream_line = (
+                        (flag_result.stdout or "").strip().splitlines()[0]
+                        if flag_result.stdout
+                        else "ok"
+                    )
+                    break
+                last_detail = (
+                    f"'{agent_name} {' '.join(flags)}' exited {flag_result.returncode}"
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                last_detail = (
+                    f"timed out or failed to run '{agent_name} {' '.join(flags)}'"
+                )
+        if stream_ok:
+            if agent_name == "gemini" and stream_flags == ["--help"]:
+                stream_line = "CLI responds to --help; version flag unavailable"
+            findings.append(
+                DoctorFinding(
+                    "ok",
+                    f"agent-stream:{agent_name}",
+                    stream_line,
+                )
             )
-            if flag_result.returncode == 0:
-                ver_line = (
-                    (flag_result.stdout or "").strip().splitlines()[0]
-                    if flag_result.stdout
-                    else "ok"
-                )
-                findings.append(
-                    DoctorFinding(
-                        "ok",
-                        f"agent-stream:{agent_name}",
-                        ver_line,
-                    )
-                )
-            else:
-                findings.append(
-                    DoctorFinding(
-                        "warn",
-                        f"agent-stream:{agent_name}",
-                        f"'{agent_name} {' '.join(flags)}' exited {flag_result.returncode}",
-                    )
-                )
-        except (OSError, subprocess.TimeoutExpired):
+        else:
             findings.append(
                 DoctorFinding(
                     "warn",
                     f"agent-stream:{agent_name}",
-                    f"timed out or failed to run '{agent_name} {' '.join(flags)}'",
+                    last_detail,
                 )
             )
 
@@ -2774,7 +2938,7 @@ def print_doctor(
 
     if fails:
         print(
-            f"  {red('Installation has issues.')} Run {bold('vetcoders install')} to fix.\n"
+            f"  {red('Installation has issues.')} Run {bold('vibecrafted doctor --fix-rc --fix-launchers')} or {bold('make install')} to fix.\n"
         )
         exit_code = 1
     elif warns:
@@ -3185,6 +3349,27 @@ def _cmd_install_verbose(args: argparse.Namespace, repo_root: Path) -> int:
         rsync_skill(src, dst, dry_run=dry_run, mirror=mirror)
     print()
 
+    # --- Execute: staged control plane ---
+    print(bold("Refreshing staged control plane..."))
+    try:
+        current_tools = refresh_current_tools(
+            repo_root, shared_home, dry_run=dry_run, mirror=mirror
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"  {MISS} Could not refresh staged tools: {exc}")
+        print(
+            "  Stopping install so stale ~/.vibecrafted/tools/vibecrafted-current "
+            "cannot shadow fresh skills."
+        )
+        return 1
+    if current_tools is None:
+        print(f"  {WARN} Source is not a full framework checkout; staged tools skipped")
+    elif dry_run:
+        print(f"  {dim('would sync')} {repo_root} -> {current_tools}")
+    else:
+        print(f"  {OK} {current_tools}")
+    print()
+
     # --- Execute: symlink views ---
     print(bold("Linking agent views..."))
     for rt in all_runtimes:
@@ -3208,12 +3393,12 @@ def _cmd_install_verbose(args: argparse.Namespace, repo_root: Path) -> int:
         interactive=interactive,
     )
 
-    # --- Prune legacy vetcoders-* skills ---
+    # --- Prune old vetcoders-* skills ---
     prune_legacy_skills(
         store_path, all_runtimes, dry_run=dry_run, interactive=interactive
     )
 
-    # --- Execute: clean legacy and duplicate RC entries ---
+    # --- Execute: clean compat and duplicate RC entries ---
     for rcname in (".bashrc", ".zshrc"):
         rcfile = Path.home() / rcname
         if rcfile.exists():
@@ -3296,23 +3481,34 @@ def _cmd_install_verbose(args: argparse.Namespace, repo_root: Path) -> int:
 
 
 def _install_launcher(repo_root: Path, dry_run: bool) -> None:
-    """Install vibecrafted launcher to portable and legacy bin surfaces."""
+    """Install vibecrafted launcher to portable and compat bin surfaces."""
     launcher_src = repo_root / "scripts" / "vibecrafted"
     if launcher_src.exists():
         if not dry_run:
             legacy_redirect_src = repo_root / "scripts" / "vibecraft"
+            canonical_bin_dir = vibecrafted_home() / "bin"
+            canonical_bin_dir.mkdir(parents=True, exist_ok=True)
+            canonical_launcher = canonical_bin_dir / "vibecrafted"
+            shutil.copy2(launcher_src, canonical_launcher)
+            canonical_launcher.chmod(0o755)
+
+            canonical_legacy = canonical_bin_dir / "vibecraft"
+            if legacy_redirect_src.exists():
+                shutil.copy2(legacy_redirect_src, canonical_legacy)
+                canonical_legacy.chmod(0o755)
+
             for launcher_bin_dir in _launcher_bin_dirs():
                 launcher_bin_dir.mkdir(parents=True, exist_ok=True)
                 launcher_dst = launcher_bin_dir / "vibecrafted"
-                shutil.copy2(launcher_src, launcher_dst)
-                launcher_dst.chmod(0o755)
+                if launcher_dst != canonical_launcher:
+                    create_symlink(canonical_launcher, launcher_dst)
                 for wrapper in LAUNCHER_WRAPPERS:
                     create_symlink(Path("vibecrafted"), launcher_bin_dir / wrapper)
-                # Replace legacy vibecraft binary with a thin redirect
+                # Replace old vibecraft binary with a thin redirect
                 legacy_dst = launcher_bin_dir / "vibecraft"
                 if legacy_redirect_src.exists():
-                    shutil.copy2(legacy_redirect_src, legacy_dst)
-                    legacy_dst.chmod(0o755)
+                    if legacy_dst != canonical_legacy:
+                        create_symlink(canonical_legacy, legacy_dst)
         else:
             for launcher_bin_dir in _launcher_bin_dirs():
                 for wrapper in LAUNCHER_WRAPPERS:
@@ -3320,19 +3516,26 @@ def _install_launcher(repo_root: Path, dry_run: bool) -> None:
                         Path("vibecrafted"), launcher_bin_dir / wrapper, dry_run=True
                     )
         # Ensure $HOME/.local/bin is in PATH via shell rc files
-        path_line = _launcher_path_line()
+        canonical_path_line = _launcher_path_line()
+        path_lines = [canonical_path_line, *_legacy_launcher_path_lines()]
         path_comment = "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. launcher"
         for rcname in (".bashrc", ".zshrc"):
             rcfile = Path.home() / rcname
             if rcfile.exists():
                 content = rcfile.read_text()
-                cleaned, removed = _strip_rc_entry(content, path_line, path_comment)
+                cleaned = content
+                removed = 0
+                for path_line in path_lines:
+                    cleaned, removed_now = _strip_rc_entry(
+                        cleaned, path_line, path_comment
+                    )
+                    removed += removed_now
                 has_path = _rc_has_vibecrafted_bin_path(cleaned)
                 changed = removed > 0
                 if not has_path:
                     if cleaned and not cleaned.endswith("\n"):
                         cleaned += "\n"
-                    cleaned += f"\n# {path_comment}\n{path_line}\n"
+                    cleaned += f"\n# {path_comment}\n{canonical_path_line}\n"
                     changed = True
                 if changed and not dry_run:
                     rcfile.write_text(cleaned)
@@ -3500,6 +3703,33 @@ def _cmd_install_compact(args: argparse.Namespace, repo_root: Path) -> int:
             rsync_skill(src, dst, dry_run=dry_run, mirror=mirror)
         print()
 
+        print("Refreshing staged control plane:")
+        try:
+            current_tools = refresh_current_tools(
+                repo_root, shared_home, dry_run=dry_run, mirror=mirror
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(f"  FAILED: {exc}")
+            out.write(
+                "\n  "
+                + red("Install stopped")
+                + " — could not refresh ~/.vibecrafted/tools/vibecrafted-current\n"
+            )
+            out.write(
+                "  Stale staged tools would shadow fresh skills; check the install log.\n"
+            )
+            return 1
+        if current_tools is None:
+            print("  skipped: source is not a full framework checkout")
+            _compact_line(out, WARN, "Tools", "staged control plane skipped")
+        elif dry_run:
+            print(f"  would sync: {repo_root} -> {current_tools}")
+            _compact_line(out, SKIP, "Tools", "dry run")
+        else:
+            print(f"  synced: {repo_root} -> {current_tools}")
+            _compact_line(out, green("\u2713"), "Tools", "staged current refreshed")
+        print()
+
         # Compact status lines on real stdout
         _compact_line(
             out, green("\u2713"), "Skills", f"{len(selected_skills)} installed"
@@ -3542,7 +3772,7 @@ def _cmd_install_compact(args: argparse.Namespace, repo_root: Path) -> int:
             store_path, all_runtimes, dry_run=dry_run, interactive=False
         )
 
-        # Clean legacy RC entries
+        # Clean compat RC entries
         for rcname in (".bashrc", ".zshrc"):
             rcfile = Path.home() / rcname
             if rcfile.exists():
@@ -4170,7 +4400,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
     if helper_backup.is_dir():
         print(bold("Restoring helpers..."))
         # Helper file
-        # Try new name first, then legacy
+        # Try new name first, then compat path
         backed_helper = helper_backup / "vc-skills.sh"
         if not backed_helper.exists():
             backed_helper = helper_backup / "vc-skills.zsh"
@@ -4294,7 +4524,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p_install.add_argument(
         "--mirror",
         action="store_true",
-        help="Delete extra files in installed skill dirs (rsync --delete)",
+        help=(
+            "Delete extra files in installed skill dirs and staged tools "
+            "(rsync --delete)"
+        ),
     )
     p_install.add_argument(
         "--compact",
@@ -4307,7 +4540,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p_doctor.add_argument(
         "--fix-rc",
         action="store_true",
-        help="Repair legacy shell startup lines and restore canonical helper/PATH hints before verifying",
+        help="Repair old shell startup lines and restore canonical helper/PATH hints before verifying",
     )
     p_doctor.add_argument(
         "--fix-launchers",

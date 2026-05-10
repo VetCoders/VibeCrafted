@@ -5,7 +5,7 @@ description: >
   Full-spectrum VetCoders ownership mode for moments when the user wants Agent
   to take the wheel and drive a product from A to Z: architecture, coding,
   runtime debugging, UI polish, packaging, docs, testing, local tooling,
-  agent orchestration, and wow-effect finish. Use whenever the user says things
+  optional agent orchestration, and wow-effect finish. Use whenever the user says things
   like "take ownership", "you drive", "od a do z", "zrob to cale", "dowiez
   to", "wow effect", "superprodukcyjny", "manufakturer produktowy", or when
   the team clearly wants decisive end-to-end execution with minimal back-and-forth.
@@ -23,6 +23,12 @@ compatibility:
 ---
 
 # VibeCraft Ownership
+
+## Living Tree / Worktree Rule
+
+This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a substrate failure if the current tree is too poisoned to continue safely.
+
+See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
 ## Purpose
 
@@ -58,11 +64,15 @@ That includes, when justified by the task and available in the environment:
 - improving UX and visual quality
 - running local servers and smoke tests
 - steering browser or desktop interactions through available tooling
-- orchestrating agent swarms through `vc-agents`
+- orchestrating agent swarms through `vc-agents` only when explicitly useful
+  and allowed by the operator
 - converging through `vc-marbles`
 
 The goal is not just correctness.
 The goal is a strong finished surface.
+
+Ownership is not silent delegation. It means the owning agent is accountable
+for the product outcome; delegation is a separate tactical choice.
 
 ## When To Use It
 

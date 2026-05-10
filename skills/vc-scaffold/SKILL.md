@@ -12,6 +12,12 @@ description: >
 
 ## Operator Entry
 
+### Living Tree / Worktree Rule
+
+This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a substrate failure if the current tree is too poisoned to continue safely.
+
+See [Living Tree Rule](../LIVING_TREE_RULE.md).
+
 Operator enters the framework session through:
 
 ```bash
@@ -68,7 +74,7 @@ After scaffolding produces a plan, the pipeline continues:
 
 - `vc-init` bootstraps agent context
 - `vc-workflow` executes the ERi pipeline (Examine → Research → Implement)
-- `vc-implement` (legacy alias `vc-justdo`) can consume the scaffold plan for autonomous end-to-end execution
+- `vc-implement` (alias `vc-justdo`) can consume the scaffold plan for autonomous end-to-end execution
 
 ## The Mission
 
@@ -217,7 +223,7 @@ That's it. No polishing. No prettifying. Just working plans.
 
 - **vc-init** — bootstraps agent context after scaffolding
 - **vc-workflow** — executes the ERi pipeline on scaffold tasks
-- **vc-implement** (legacy alias **vc-justdo**) — autonomous execution that can consume scaffold plans
+- **vc-implement** (alias **vc-justdo**) — autonomous execution that can consume scaffold plans
 - **vc-research** — standalone triple-agent research for unknowns found during scaffolding
 - **vc-release** — the end of the pipeline; scaffold's product identity decisions feed into release brand checks
 
@@ -233,4 +239,4 @@ That's it. No polishing. No prettifying. Just working plans.
 
 See references/plan-template.md for the output format.
 
-_Vibecrafted with AI Agents by VetCoders (c)2024-2026 VetCoders_
+_𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents by VetCoders (c)2024-2026 LibraxisAI_

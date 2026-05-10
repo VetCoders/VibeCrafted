@@ -109,6 +109,12 @@ needs it:
   hardens distinct seams.
 - Never change branches during active work. The intent is to stay on the
   current working branch and keep building inside that living tree.
+- Never create, switch to, or move execution into a git worktree unless the
+  operator explicitly asks for a worktree. Generic "isolate this" or "work in
+  parallel" language is not enough.
+- If the current checkout is too poisoned to continue safely, report the
+  substrate failure to the operator/runtime layer instead of escaping into a
+  side tree.
 - Plans may explicitly instruct the agent to finish and harden one seam, spawn
   another `vc-agents` worker for the next plan, commit locally for
   preservation, and continue.
@@ -245,11 +251,23 @@ Use the equivalent agent observer when needed.
 Keep the standard 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. quality bar:
 
 - loctree-mcp as first-choice exploration and search tool with fail-fast if inaccessible
-- semgrep as first-choice security guard when available
+- semgrep as first-choice security guard when available; the canonical
+  invocation in this repo is `make semgrep`, mirrored by the hooks under
+  `scripts/hooks/pre-commit` and `scripts/hooks/pre-push`
 - Rust repos: `cargo clippy -- -D warnings`
 - Non-Rust repos: choose the closest equivalent lint/type/test gate
 - Tests: run if reviewing; write if implementing new behavior; prefer real e2e coverage for the actual pipeline
 - If a gate is blocked, report the exact blocker and run the closest safe equivalent
+
+### Release report contract
+
+`vc-release` runs are not finished by passing gates alone. Every release
+report must contain four mandatory sections — security gate evidence,
+exposed surface inventory, deployment mode decision, and post-release
+install smoke from the published artefact (not the working tree). The
+canonical template lives at
+[`skills/vc-release/references/release-report-template.md`](../../skills/vc-release/references/release-report-template.md)
+and the doctrine sits in [`skills/vc-release/SKILL.md`](../../skills/vc-release/SKILL.md).
 
 ---
 

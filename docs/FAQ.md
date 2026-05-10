@@ -19,7 +19,8 @@ For the long-form answer bank, see [FAQ-ANSWERED.md](FAQ-ANSWERED.md).
   Yes. Run `curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --gui` to stage the control plane and open the browser-based installer. It bootstraps foundations first, then runs the same compact installer truth used by automation. If you are already in the repo, use `make wizard` or its alias `make gui-install`. The default `make vibecrafted` target runs the terminal-native installer wizard.
 
 - **What does `make doctor` check?**
-  The doctor verifies the central store, helper availability, symlink health, optional foundations, and shell quietness.
+  The doctor verifies the central store, helper availability, symlink health, required foundations (`loctree-mcp` and
+  `aicx-mcp`), evidence tools such as `prview` and ScreenScribe, and shell quietness.
 
 - **Which install path should I use in CI?**
   Use `make install` for the direct non-interactive path, or
@@ -35,8 +36,9 @@ For the long-form answer bank, see [FAQ-ANSWERED.md](FAQ-ANSWERED.md).
   Because 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. is trying to solve system-shaping, not only chat convenience. It adds structural awareness,
   decision retrieval, convergence loops, and shipping audits.
 
-- **Can I use 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. without loctree or aicx?**
-  Yes, but you lose structural perception and session continuity. The framework runs, but with weaker context.
+- **Are loctree and aicx required?**
+  Not honestly. `loctree` and `aicx` are required foundations: one gives the agent structural perception, the other
+  restores prior decisions and intent. If either is missing, fix the foundation layer before trusting the workflow.
 
 - **What is Marbles?**
   Marbles is the convergence loop: implement, follow up, measure, and repeat until the important classes of findings
@@ -44,10 +46,15 @@ For the long-form answer bank, see [FAQ-ANSWERED.md](FAQ-ANSWERED.md).
 
 ## Workflow and Operations
 
-- **When should I use `vc-implement` (legacy alias `vc-justdo`)?**
+- **When should I use `vc-implement` (alias `vc-justdo`)?**
   Use it when the task is clear and you want the agent to take ownership end-to-end. `vc-implement` is the canonical
   name; `vc-justdo` keeps working for agents already wired to it. Use the phase skills individually when you want more
   supervisory control.
+
+- **When should I use `vc-review` instead of `vc-followup`?**
+  Use `vc-review` for a bounded review target: a PR, branch diff, commit range, or artifact pack. Use `vc-followup`
+  after implementation when you need a broader direction audit across code, runtime, UX, docs, packaging, and the next
+  highest-leverage move.
 
 - **Can I run 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. in CI/CD?**
   Yes. The direct install path is non-interactive, and review/followup/release flows are shaped to work as repeatable

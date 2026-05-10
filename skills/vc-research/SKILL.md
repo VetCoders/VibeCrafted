@@ -23,39 +23,17 @@ compatibility:
 
 # vc-research — Triple-Agent Research Swarm
 
+> One perspective is an opinion. Three perspectives are evidence.
+
 ## Operator Entry
 
-Operator enters the framework session through:
+### Living Tree / Worktree Rule
 
-```bash
-vibecrafted start
-# or
-vc-start
-# same default board as: vc-start operator
-```
+This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a substrate failure if the current tree is too poisoned to continue safely.
 
-Then launch this workflow through the command deck, not raw `skills/.../*.sh` paths:
+See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
-```bash
-vibecrafted <workflow> \
-  --<options> <values> \
-  --<parameters> <values> \
-  --file '/path/to/plan.md'
-```
-
-```bash
-vc-<workflow> \
-  --<options> <values> \
-  --<parameters> <values> \
-  --prompt '<prompt>'
-```
-
-If `vc-<workflow>` is invoked outside Zellij, the framework will attach
-or create the operator session and run that workflow in a new tab. Replace
-`<workflow>` with this skill's name. Prefer `--file` for an existing plan or
-artifact and `--prompt` for inline intent.
-
-### Concrete dispatch examples
+Enter the framework session via `vibecrafted start` (or `vc-start`). Then launch through the command deck — never raw `skills/.../*.sh` paths:
 
 ```bash
 vibecrafted research --prompt 'Compare auth libraries for Tauri desktop'
@@ -63,24 +41,18 @@ vc-research --prompt 'State of the art for MCP streaming transports'
 vibecrafted research --file /path/to/research-plan.md
 ```
 
+If invoked outside Zellij, the framework attaches/creates the operator session and runs in a new tab. Prefer `--file` for an existing plan, `--prompt` for inline intent.
+
 <details>
-<summary>Foundation Dependencies (Loaded with framework)</summary>
+<summary>Foundation Dependencies</summary>
 
-- [vc-loctree](../foundations/vc-loctree/SKILL.md) — primary map and structural awareness.
-- [vc-aicx](../foundations/vc-aicx/SKILL.md) — primary memory and steerability index.
+- [vc-loctree](../foundations/vc-loctree/SKILL.md) — structural awareness
+- [vc-aicx](../foundations/vc-aicx/SKILL.md) — intentions and steerability
 </details>
-
-> One perspective is an opinion. Three perspectives are evidence.
 
 ## Purpose
 
-Research a problem from three independent angles before writing a single line of
-code. The orchestrating agent (you) co-defines the problem with the user, writes
-a plan, spawns claude + codex + gemini on the same questions, then synthesizes
-their findings into one gap-free research document.
-
-This is the Research phase from vc-workflow, extracted as a standalone
-skill and upgraded with triple-agent triangulation.
+Research a problem from three independent angles before writing code. The orchestrating agent co-defines the problem with the user, writes a plan, spawns claude + codex + gemini on the same questions, then synthesizes findings into one gap-free document. This is the Research phase from `vc-workflow`, extracted as a standalone skill and upgraded with triple-agent triangulation.
 
 ## When To Use
 
@@ -91,12 +63,21 @@ skill and upgraded with triple-agent triangulation.
 - Integration research (how does X talk to Y?)
 - Any moment where guessing would be cheaper than being wrong
 
-Do NOT use for:
+**Do NOT use for:**
 
 - Questions answerable by reading one file in the repo
 - Problems where loctree slice + grep gives the answer in 30 seconds
-- Pure implementation tasks (use vc-workflow, usually through vc-agents; use vc-delegate only for small model-agnostic
-  work)
+- Pure implementation tasks (use `vc-workflow` via `vc-agents`; `vc-delegate` only for small model-agnostic work)
+
+## Research Safety
+
+Research mode is **read-only** for the source repository.
+
+- **Closure marker = filesystem artifacts**, not git. The run directory under `$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/research/<run_id>/` with `report.md` + `meta.json` + `transcript.log` is the deterministic anchor. Operator verifies via `ls`, `cat meta.json | jq .status`. No git commits needed.
+- **No source mutation.** Do not edit repo source, config, `.gitignore`, or generated files unless the operator plan explicitly asks.
+- **No git writes.** No stage, commit, amend, tag, branch, merge, rebase, push, stash, clean, reset, checkout, switch. Working tree unchanged at end. Empty commits / `--allow-empty` / chore stamps — forbidden.
+- If research discovers an obvious fix, write the proposed fix and file references to the report artifact instead of applying it.
+- Codex workers must write the full markdown report to the given report path through the filesystem before exiting. The `codex exec --output-last-message` final message is only a completion note, not the durable report.
 
 ## The 6-Step Research Flow
 
@@ -105,15 +86,15 @@ Do NOT use for:
 Talk with the user. Do not write a plan yet. Establish:
 
 - **What we need to know** — the actual question, not the symptom
-- **Why we need to know it** — what decision depends on this answer
-- **What we already know** — priors, assumptions, prior art in the repo
-- **Boundaries** — what is out of scope for this research
+- **Why** — what decision depends on this answer
+- **What we already know** — priors, prior art in the repo
+- **Boundaries** — what is out of scope
 
-Output: a short problem statement (3-5 sentences) agreed with the user.
+Output: a 3-5 sentence problem statement agreed with the user.
 
 ### Step 2 — Write the research plan
 
-Create one plan file. The plan is what every agent receives. It contains:
+Create one plan file. Every agent receives this plan:
 
 ```markdown
 ---
@@ -128,44 +109,28 @@ status: in-progress
 
 ## Problem
 
-<the co-defined problem statement from Step 1>
+<co-defined problem statement>
 
 ## Questions
 
 1. <specific, answerable question>
-2. <specific, answerable question>
-3. ...
+2. ...
 
 ## Mandatory tools
 
-- loctree MCP (repo-view, slice, find, impact) — for any codebase-related questions
+- loctree MCP (repo-view, slice, find, impact) — for codebase questions
 - Brave Search or WebSearch — for external ground truth
 
 ## Encouraged tools (agent's choice)
 
-- Context7 (resolve-library-id → query-docs) — for library documentation
-- WebFetch — for specific URLs found via search
+- Context7 (resolve-library-id → query-docs) — for library docs
+- WebFetch — for URLs found via search
 - Codebase grep — for internal patterns (only after loctree mapping)
 
 ## Report format
 
-Write your findings to the report file as markdown with this structure:
-
-### Q1: <question>
-
-**Sources**: <URLs, docs, file refs>
-**Finding**: <concise answer>
-**Confidence**: high / medium / low
-**Evidence**: <code snippet, quote, or data>
-
-### Q2: ...
-
-### Synthesis
-
-- Recommended approach: <your recommendation>
-- Alternatives considered: <with tradeoffs>
-- Open questions: <what you could not answer>
-- Implementation notes: <concrete guidance>
+Each question answered with: **Sources**, **Finding**, **Confidence** (high/medium/low), **Evidence**.
+Conclude with **Synthesis**: recommended approach, alternatives, open questions, implementation notes.
 
 ## Constraints
 
@@ -175,64 +140,39 @@ Write your findings to the report file as markdown with this structure:
 - Do not hallucinate API signatures — verify them
 ```
 
-Save to
-`$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_research-plan.md`.
-
-Plans can be split if the problem has clearly separable domains. Each agent
-gets ALL plans — they are independent researchers, not specialists.
+`vc-research` records the effective plan under `$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/research/<run_id>/plans/<ts>_<slug>_research-plan.md`. Plans can be split for separable domains, but each agent gets ALL plans — they are independent researchers, not specialists.
 
 ### Step 3 — Spawn triple research swarm
 
-Canonical operator-facing launch path goes through the command deck:
-
 ```bash
 PLAN="$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_research-plan.md"
-
 vc-research --file "$PLAN"
 ```
 
-The repo-owned spawn scripts remain the internal engine behind that surface. Do
-not document raw `bash skills/...spawn.sh` paths as the operator entrypoint.
+Repo-owned spawn scripts remain the internal engine. Do not document raw `bash skills/...spawn.sh` paths as the operator entrypoint.
 
-The launcher opens one shared Zellij research tab using `research.kdl`,
-keeps a common `run_id`, and starts claude + codex + gemini against the same
-plan. This is intentional — divergence between reports reveals blind spots.
+The launcher opens one shared Zellij research tab using `research.kdl`, keeps a common `run_id`, and starts claude + codex + gemini against the same plan. Divergence between reports reveals blind spots.
 
-Research observability is mandatory.
-`vc-research` is not "running" just because three panes appeared.
-Immediately after spawn, the operator should get a launch card with the shared
-`run_id`, plan path, report/meta paths, and the exact await command.
-
-That launch card is the default surface.
-`observe --last` is a drilldown tool, not the primary source of truth.
+Immediately after spawn, the operator gets a launch card with shared `run_id`, run directory, reports directory, summary path, and the exact await command. **The launch card is the default surface.** `observe --last` is a drilldown tool, not the primary source of truth.
 
 ### Step 4 — Collect reports
 
 Reports land in:
 
 ```
-$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/<ts>_research-plan_claude.md
-$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/<ts>_research-plan_codex.md
-$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/<ts>_research-plan_gemini.md
+$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/research/<run_id>/reports/{claude,codex,gemini}.md
 ```
 
-Wait for all three through the dedicated runtime helper, not by hand-rolled
-snippets.
-The standard operator move is:
+Launch card lives at `research/<run_id>/summary.md`. Metadata, transcripts, raw streams, prompts, launchers, Zellij layout stay inside `research/<run_id>/logs/` and `research/<run_id>/tmp/`.
+
+Wait for all three through the dedicated runtime helper:
 
 ```bash
 vc-research-await --run-id <run_id>
+vc-research-await --last     # newest swarm
 ```
 
-If you just launched the latest research swarm and want the newest one, this is
-also valid:
-
-```bash
-vc-research-await --last
-```
-
-If you need transcript-level inspection while the swarm is still running, use
-the observer helpers:
+For transcript-level inspection while the swarm is running:
 
 ```bash
 vibecrafted claude observe --last
@@ -240,97 +180,54 @@ vibecrafted codex observe --last
 vibecrafted gemini observe --last
 ```
 
-Do not treat manual `observe --last` calls as sufficient observability for the
-workflow itself. The workflow should expose its state through launch metadata,
-the await helper, and durable report paths by default.
+Do not treat manual `observe --last` calls as sufficient observability. Workflow state goes through launch metadata, the await helper, and durable report paths by default.
 
 ### Step 5 — Synthesize
 
-Read all three reports. For each research question, build a truth table:
+**Before citing a single line of any source report, you MUST have read each report in full via layered slicing.** Non-negotiable.
 
-| Question | Claude | Codex | Gemini | Consensus                          |
-| -------- | ------ | ----- | ------ | ---------------------------------- |
-| Q1       | X      | X     | X      | agreed                             |
-| Q2       | A      | A     | B      | 2:1 → A, investigate B's reasoning |
-| Q3       | X      | —     | X      | gap in Codex, cross-check          |
+Most reports run 30-100KB. Tools cap output at ~25KB and dump the rest to a file with a "see path: ..." warning. Skipping that file because it's "long" or working only from the warning text is the failure mode this skill exists to prevent. A synthesis built from truncation warnings is a hallucination wearing the costume of expertise.
 
-Rules for synthesis:
+Per source report:
 
-- **3/3 agree** → high confidence, use as ground truth
-- **2/3 agree** → likely correct, but read the dissenting report carefully — it
-  may have found an edge case the others missed
-- **All disagree** → the question needs refinement or the domain is genuinely
-  ambiguous. Flag for user decision.
-- **One agent found nothing** → gap. Check if the question was answerable.
-  If yes, that agent's search strategy was weak — use the others.
+1. Read in full via offset/limit slicing in spans of ~1500-2000 lines (or ~80,000 chars).
+2. Record coverage in synthesis section "0. Coverage statement" — lines/bytes per source report.
+3. If a report is too large for the available budget, **HALT** and report the boundary. Do NOT cite line ranges you have not actually read.
 
-### Step 6 — Produce gap-free research document
+**Synthesis = operator's expert opinion built ON the three reports, NOT a copy.** Two sections: **A. Convergent (deduplicated)** and **B. Signals (single-agent findings — potentially key insights)**. Voting/majority rules explicitly rejected.
 
-Write the final document to
-`$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/plans/<ts>_<slug>_RESEARCH.md`:
+- **A. Convergent** — findings where two or three reports overlap, reduced to one statement. Cite agreeing reports with file:line. If one didn't address the question, note explicitly (silence ≠ disagreement).
+- **B. Signals** — findings surfaced by only one agent. NOT lower-priority. Often the actual direction the work needed. Per signal: what (file:line) + why others missed it + operator verdict (amplify / flag / acknowledge & reject) + reasoning.
 
-```markdown
----
-run_id: <generated-unique-id>
-agent: <claude|codex|gemini>
-skill: vc-research
-project: <repo-name>
-status: completed
----
+### Step 6 — Produce the synthesis document
 
-# Research: <title>
+Write the synthesis to `$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/research/<run_id>/synthesis.md` in the run directory. **The three source reports remain as individual files in the same directory — DO NOT inline them.**
 
-## Problem
+> See [references/synthesis-template.md](references/synthesis-template.md) for the full document template, frontmatter, section structure, and operator imperatives.
 
-<from Step 1>
+Operator non-negotiables:
 
-## Findings
+1. The synthesis does NOT contain verbatim content from the reports — only file:line citations to them.
+2. The reports remain as separate files in the run directory. Immutable expert testimony.
+3. Every nontrivial thesis in the synthesis MUST have a file:line reference to at least one report.
+4. Dissent is cited with file:line to both/all sides + reasoned judgment.
+5. The synthesis is short (usually 3–8KB). Its value = quality of interpretation + precision of citation.
 
-### Q1: <question>
-
-**Answer**: <synthesized from 3 reports>
-**Confidence**: high / medium / low
-**Sources**: <merged, deduplicated>
-**Dissent**: <if any agent disagreed, note why>
-
-### Q2: ...
-
-## Architecture Decision
-
-- **Chosen approach**: <decision>
-- **Why**: <based on triangulated evidence>
-- **Alternatives rejected**: <with reasons from multiple agents>
-
-## Implementation Notes
-
-- <concrete guidance, merged from all three reports>
-- <API signatures verified across sources>
-- <edge cases noted by any agent>
-
-## Remaining Gaps
-
-- <questions none of the three could answer>
-- <areas needing hands-on experimentation>
-```
-
-Present the summary to the user. This document is the input for
-vc-workflow Phase 3 (Implement) or standalone implementation.
+Present the synthesis to the user. This is the input for `vc-workflow` Phase 3 (Implement) or standalone implementation.
 
 ## Pipeline Integration
 
 vc-research can be used:
 
-- **Standalone** — when you need research without a full ERi pipeline
-- **As workflow Phase 2** — vc-workflow can delegate here instead of
-  doing single-agent research
-- **Before vc-partner** — when partner mode needs ground truth before
-  debug session
+- **Standalone** — research without a full ERi pipeline
+- **As workflow Phase 2** — `vc-workflow` delegates here instead of single-agent research
+- **Before vc-partner** — when partner mode needs ground truth before debug
 - **Before vc-agents/vc-delegate** — research feeds implementation plans
 
 ```
          ┌─── claude ──→ report ───┐
 research │                         │
-  plan ──├─── codex  ──→ report ───├──→ plans/<ts>_<slug>_RESEARCH.md
+  plan ──├─── codex  ──→ report ───├──→ synthesis.md
          │                         │
          └─── gemini ──→ report ───┘
 ```
@@ -338,16 +235,16 @@ research │                         │
 ## Anti-Patterns
 
 - Passing `claude|codex|gemini` to `vc-research` (defeats the purpose — the launcher is the swarm)
-- Giving each agent different questions (they must answer the SAME questions
-  independently for triangulation to work)
-- Skipping synthesis and just concatenating reports (the value is in the delta)
+- Giving each agent different questions (they must answer the SAME questions for triangulation)
+- Skipping synthesis and concatenating reports (the value is in the delta)
 - Researching things you can verify by reading one file (use loctree slice)
 - Writing the research plan without the user (Step 1 is collaborative)
 - Trusting blog posts over official documentation
 - Letting agents research without loctree context (they ask wrong questions)
-- Jumping straight to raw `*_spawn.sh` invocations when `*-research` already
-  exists in the real shell helper surface
+- Jumping to raw `*_spawn.sh` invocations when `*-research` exists in the real shell helper surface
+- Patchwork meta-artifact synthesis (verbatim concat of 3 reports)
+- Compressed-view synthesis (operator paraphrase only, no file:line refs)
 
 ---
 
-_Created by M&K (c)2024-2026 VetCoders_
+_𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents by VetCoders (c)2024-2026 LibraxisAI_

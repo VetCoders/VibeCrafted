@@ -71,7 +71,7 @@ Bundle contents:
     - vc-hydrate
     - vc-implement
     - vc-init
-    - vc-justdo (legacy alias of vc-implement)
+    - vc-justdo (alias of vc-implement)
     - vc-marbles
     - vc-partner
     - vc-prune
@@ -91,7 +91,7 @@ Select skills to install:
     [x] 6. vc-hydrate
     [x] 7. vc-implement
     [x] 8. vc-init
-    [x] 9. vc-justdo  (legacy alias of vc-implement)
+    [x] 9. vc-justdo  (alias of vc-implement)
     [x] 10. vc-marbles
     [x] 11. vc-partner
     [x] 12. vc-prune
@@ -124,7 +124,7 @@ Select runtimes for symlink views:
 
 Runtime Foundations:
   [ok] aicx-mcp -> ~/.cargo/bin/aicx-mcp
-       AICX MCP server for session history and memory recovery
+       AICX MCP server for session history and intentions recovery
   [ok] loctree-mcp -> ~/.cargo/bin/loctree-mcp
        Structural code mapping MCP server
   [ok] prview -> ~/.cargo/bin/prview
@@ -161,7 +161,7 @@ Installing shared skills...
   -> vc-hydrate
   -> vc-implement
   -> vc-init
-  -> vc-justdo (legacy alias of vc-implement)
+  -> vc-justdo (alias of vc-implement)
   -> vc-marbles
   -> vc-partner
   -> vc-prune
@@ -362,7 +362,7 @@ III. Action prompt or progress bar
     - Agents
       claude-code · codex · gemini-cli
     - Additional tools
-      zellji · mise · starship · atuin · zoxide
+      zellij · mise · starship · atuin · zoxide
   2. Installation
   We will install:
     - Missing dependencies

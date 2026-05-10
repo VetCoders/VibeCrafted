@@ -76,7 +76,7 @@ done
 spawn_require_file "$plan_file"
 spawn_validate_runtime "$runtime"
 spawn_prepare_paths gemini "$plan_file" "$root" "$mode"
-spawn_scan_active "$SPAWN_REPORT_DIR"
+spawn_scan_active "${SPAWN_LOG_DIR:-$SPAWN_REPORT_DIR}"
 runtime_input="$SPAWN_TMP_DIR/${SPAWN_TS}_${SPAWN_SLUG}_gemini_prompt.md"
 spawn_build_runtime_prompt "$SPAWN_PLAN" "$runtime_input" "$SPAWN_REPORT" gemini
 spawn_write_meta "$SPAWN_META" "launching" "gemini" "$mode" "$SPAWN_ROOT" "$SPAWN_PLAN" "$SPAWN_REPORT" "$SPAWN_TRANSCRIPT" "$SPAWN_LAUNCHER" "$model"
@@ -111,7 +111,7 @@ qfilter="$(spawn_shell_quote "$SCRIPT_DIR/gemini_stream_filter.jq")"
 # grep '^{' strips non-JSON lines so jq doesn't choke.
 vibecrafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
 qvhome="$(spawn_shell_quote "$vibecrafted_home")"
-# --approval-mode yolo supersedes -y: latter is legacy boolean that does not
+# --approval-mode yolo supersedes -y: latter is an older boolean that does not
 # cover run_shell_command in current gemini-cli. Observed 2026-04-22: gemini
 # reached run_shell_command and got "requires user confirmation, not supported
 # in non-interactive mode" — the explicit approval mode cures it.

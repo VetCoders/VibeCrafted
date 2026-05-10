@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -22,39 +23,67 @@ try:
     from control_plane_launch import launch_workflow, normalize_launch_spec
     from control_plane_state import sync_state
     from installer_brand import PRODUCT_LINE, TAGLINE, VAPOR_HEADER
-    from installer_tui import (
-        CATEGORY_LABELS,
-        bundled_bin_root,
-        framework_store_dir,
-        helper_layer_path,
-        read_framework_version,
-        run_diagnostics,
-        start_here_path,
-        summarize_diagnostics,
-    )
-    from runtime_paths import vibecrafted_home
+    from runtime_paths import read_version_file, vibecrafted_home, xdg_config_home
 except ModuleNotFoundError:  # pragma: no cover - depends on entrypoint
     from scripts.control_plane_launch import launch_workflow, normalize_launch_spec
     from scripts.control_plane_state import sync_state
     from scripts.installer_brand import PRODUCT_LINE, TAGLINE, VAPOR_HEADER
-    from scripts.installer_tui import (
-        CATEGORY_LABELS,
-        bundled_bin_root,
-        framework_store_dir,
-        helper_layer_path,
-        read_framework_version,
-        run_diagnostics,
-        start_here_path,
-        summarize_diagnostics,
+    from scripts.runtime_paths import (
+        read_version_file,
+        vibecrafted_home,
+        xdg_config_home,
     )
-    from scripts.runtime_paths import vibecrafted_home
 
 
 OUTPUT_TAIL_LIMIT = 120
+CATEGORY_LABELS = {
+    "frameworks": "Frameworks",
+    "bundled": "Bundled toolchain",
+    "foundations": "Foundations",
+    "toolchains": "Toolchains",
+    "agents": "Agents",
+    "additional_tools": "Additional tools",
+}
+CATEGORY_ORDER = tuple(CATEGORY_LABELS)
+FOUNDATION_COMMANDS = ("loctree-mcp", "aicx-mcp", "prview", "screenscribe")
+BUNDLED_BIN_NAMES = ("aicx-mcp", "aicx", "loctree-mcp", "loctree", "loct", "prview")
+TOOLCHAIN_COMMANDS = ("python3", "node", "git", "rsync")
+AGENT_COMMANDS = ("claude", "codex", "gemini")
+ADDITIONAL_TOOL_COMMANDS = ("mise", "starship", "atuin", "zoxide")
 
 
 def default_source_dir() -> str:
     return str(Path(__file__).resolve().parent.parent)
+
+
+def read_framework_version(source_dir: str) -> str:
+    return read_version_file(source_dir)
+
+
+def framework_store_dir() -> Path:
+    return vibecrafted_home() / "skills"
+
+
+def helper_layer_path() -> Path:
+    return xdg_config_home() / "vetcoders" / "vc-skills.sh"
+
+
+def install_log_path() -> Path:
+    return vibecrafted_home() / "install.log"
+
+
+def start_here_path() -> Path:
+    return vibecrafted_home() / "START_HERE.md"
+
+
+def runtime_skill_views() -> dict[str, Path]:
+    home = Path.home()
+    return {
+        "agents": home / ".agents" / "skills",
+        "claude": home / ".claude" / "skills",
+        "codex": home / ".codex" / "skills",
+        "gemini": home / ".gemini" / "skills",
+    }
 
 
 def installer_script_path(source_dir: str) -> Path:
@@ -77,6 +106,7 @@ def build_install_command(source_dir: str, *, with_shell: bool) -> list[str]:
         str(Path(source_dir).resolve()),
         "--compact",
         "--non-interactive",
+        "--mirror",
     ]
     if with_shell:
         command.append("--with-shell")
@@ -118,6 +148,183 @@ def build_install_steps(source_dir: str, *, with_shell: bool) -> list[InstallSte
         )
     )
     return steps
+
+
+def _command_check(name: str) -> dict[str, Any]:
+    path = shutil.which(name)
+    return {
+        "label": name,
+        "found": bool(path),
+        "detail": path or f"{name} not found on PATH",
+        "kind": "command",
+    }
+
+
+def _path_check(
+    label: str, path: Path, *, found: bool | None = None, detail: str | None = None
+) -> dict[str, Any]:
+    is_found = path.exists() if found is None else found
+    return {
+        "label": label,
+        "found": is_found,
+        "detail": detail or str(path),
+        "kind": "path",
+    }
+
+
+def _framework_checks() -> dict[str, dict[str, Any]]:
+    store_dir = framework_store_dir()
+    helper_file = helper_layer_path()
+    skills = []
+    if store_dir.is_dir():
+        skills = sorted(
+            child.name
+            for child in store_dir.iterdir()
+            if child.is_dir() and child.name.startswith("vc-")
+        )
+
+    binary_path = shutil.which("vibecraft") or shutil.which("vibecrafted")
+
+    active_views = []
+    for runtime, path in runtime_skill_views().items():
+        if not path.is_dir():
+            continue
+        entries = [entry.name for entry in path.iterdir()]
+        if entries:
+            active_views.append(f"{runtime} ({len(entries)})")
+
+    return {
+        "workflows": _path_check(
+            "workflows",
+            store_dir,
+            found=bool(skills),
+            detail=f"{len(skills)} installed skill directories in {store_dir}"
+            if skills
+            else f"No installed skill directories in {store_dir}",
+        ),
+        "helpers": _path_check(
+            "helpers",
+            helper_file,
+            detail=str(helper_file)
+            if helper_file.exists()
+            else f"Missing helper file at {helper_file}",
+        ),
+        "binaries": {
+            "label": "binaries",
+            "found": bool(binary_path),
+            "detail": binary_path or "vibecraft/vibecrafted not found on PATH",
+            "kind": "command",
+        },
+        "symlinks": {
+            "label": "symlinks",
+            "found": bool(active_views),
+            "detail": ", ".join(active_views)
+            if active_views
+            else "No runtime skill views detected in $HOME/.agents, $HOME/.claude, $HOME/.codex, or $HOME/.gemini",
+            "kind": "path",
+        },
+    }
+
+
+def _bundled_os() -> str:
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    if sys.platform.startswith(("win", "cygwin")):
+        return "windows"
+    return sys.platform
+
+
+def _bundled_arch() -> str:
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "x86_64"
+    if machine in ("aarch64", "arm64"):
+        return "aarch64"
+    if machine == "armv7l":
+        return "armv7"
+    return machine or "unknown"
+
+
+def bundled_bin_root(source_dir: str) -> Path:
+    override = os.environ.get("VIBECRAFTED_BUNDLED_BIN")
+    if override:
+        return Path(override).expanduser()
+    per_arch = Path(source_dir) / "tools" / "bin" / f"{_bundled_os()}-{_bundled_arch()}"
+    if per_arch.is_dir():
+        return per_arch
+    return Path(source_dir) / "tools" / "bin"
+
+
+def _bundled_check(name: str, source_dir: str) -> dict[str, Any]:
+    root = bundled_bin_root(source_dir)
+    path = root / name
+    if path.is_file() and os.access(path, os.X_OK):
+        return {
+            "label": name,
+            "found": True,
+            "detail": str(path),
+            "kind": "bundled",
+        }
+    missing_detail = (
+        f"{name} missing from bundled drop-in ({root})"
+        if root.is_dir()
+        else f"{name} - bundled drop-in directory not present ({root})"
+    )
+    return {
+        "label": name,
+        "found": False,
+        "detail": missing_detail,
+        "kind": "bundled",
+    }
+
+
+def run_diagnostics(
+    source_dir: str | None = None,
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Check: frameworks, bundled toolchain, foundations, toolchains, agents, tools."""
+    if source_dir is None:
+        source_dir = default_source_dir()
+    diagnostics: dict[str, dict[str, dict[str, Any]]] = {}
+    diagnostics["frameworks"] = _framework_checks()
+    diagnostics["bundled"] = {
+        name: _bundled_check(name, source_dir) for name in BUNDLED_BIN_NAMES
+    }
+    diagnostics["foundations"] = {
+        name: _command_check(name) for name in FOUNDATION_COMMANDS
+    }
+    diagnostics["toolchains"] = {
+        name: _command_check(name) for name in TOOLCHAIN_COMMANDS
+    }
+    diagnostics["agents"] = {name: _command_check(name) for name in AGENT_COMMANDS}
+    diagnostics["additional_tools"] = {
+        name: _command_check(name) for name in ADDITIONAL_TOOL_COMMANDS
+    }
+    return diagnostics
+
+
+def summarize_diagnostics(
+    diagnostics: dict[str, dict[str, dict[str, Any]]],
+) -> tuple[list[str], list[str], dict[str, list[str]]]:
+    found_items: list[str] = []
+    missing_items: list[str] = []
+    needs_install: dict[str, list[str]] = {}
+
+    for category in CATEGORY_ORDER:
+        missing_in_category: list[str] = []
+        for name, entry in diagnostics.get(category, {}).items():
+            label = entry.get("label", name)
+            flat_label = f"{CATEGORY_LABELS[category]}: {label}"
+            if entry.get("found"):
+                found_items.append(flat_label)
+            else:
+                missing_items.append(flat_label)
+                missing_in_category.append(label)
+        if missing_in_category:
+            needs_install[category] = missing_in_category
+
+    return found_items, missing_items, needs_install
 
 
 def install_runtime_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
@@ -200,9 +407,12 @@ class InstallController:
         2. VIBECRAFTED_SITE_BUNDLE env var
         3. <source>/site/dist (authored layout)
         4. <source>/dist (release-tarball layout)
+        5. sibling ../vibecrafted-io/site/dist
+        6. sibling ../vc-runtime/vibecrafted-io/site/dist
+        7. ~/Libraxis/vc-runtime/vibecrafted-io/site/dist
 
         Returns None when no bundle is present; the request handler
-        then falls back to the legacy inline HTML.
+        then falls back to the inline HTML.
         """
         candidates: list[Path] = []
         if explicit:
@@ -211,7 +421,23 @@ class InstallController:
         if env_bundle:
             candidates.append(Path(env_bundle))
         root = Path(self.source_dir)
-        candidates.extend([root / "site" / "dist", root / "dist"])
+        candidates.extend(
+            [
+                root / "site" / "dist",
+                root / "dist",
+                root.parent / "vibecrafted-io" / "site" / "dist",
+                root.parent / "vc-runtime" / "vibecrafted-io" / "site" / "dist",
+            ]
+        )
+        if root.name == "vibecrafted" or (root / "VERSION").is_file():
+            candidates.append(
+                Path.home()
+                / "Libraxis"
+                / "vc-runtime"
+                / "vibecrafted-io"
+                / "site"
+                / "dist"
+            )
 
         for candidate in candidates:
             if (candidate / "en" / "install" / "index.html").is_file():
@@ -1461,9 +1687,9 @@ def build_html(preflight: dict[str, Any]) -> str:
                 <section class="rail-card rail-brand">
                   <div class="eyebrow">Control plane</div>
                   <strong>%%HEADER%%</strong>
-                  <h1>Ship AI-built software without the vibe hangover</h1>
+                  <h1>Install locally. Work from evidence.</h1>
                   <p class="rail-lead">
-                    Wizard-first onboarding for founders and operators. Same repo-owned installer truth, calmer rhythm.
+                    One local installer. One visible plan.
                   </p>
                 </section>
 
@@ -1505,7 +1731,7 @@ def build_html(preflight: dict[str, Any]) -> str:
                   <p class="slide-note">%%PRODUCT_LINE%%</p>
                   <code class="fallback-code">make wizard</code>
                   <p class="slide-note">
-                    Terminal-native fallback stays available for operators who prefer the TUI rhythm. The browser path is the effortless public front door.
+                    Local checkout GUI stays available for operators who want this browser-guided rhythm. For terminal-native flow, use <code>make vibecrafted</code>.
                   </p>
                 </section>
               </aside>
@@ -1514,7 +1740,7 @@ def build_html(preflight: dict[str, Any]) -> str:
                 <section class="main-card control-plane">
                   <section class="panel-card">
                     <div class="eyebrow">Start</div>
-                    <h3>Launch the control plane without touching raw shell glue</h3>
+                    <h3>Install without shell glue</h3>
                     <p class="summary-copy">
                       The GUI is launch-capable on purpose: it dispatches through the same command deck, then switches to observability instead of pretending to be the operator console.
                     </p>
@@ -1584,7 +1810,7 @@ def build_html(preflight: dict[str, Any]) -> str:
                     <div class="eyebrow">Foundations</div>
                     <h3>Doctor truth and helper surface</h3>
                     <p class="summary-copy">
-                      Same machine truth as the installer preflight, exposed as a calmer control-plane summary.
+                      Installer scan, shown in one place.
                     </p>
                     <div class="status-grid">
                       <div class="count">
@@ -1651,17 +1877,17 @@ def build_html(preflight: dict[str, Any]) -> str:
                     <article class="slide is-active" data-step="0">
                       <section class="slide-card">
                         <div class="eyebrow">Step 1 of 6</div>
-                        <h2 class="slide-title">Welcome to the control plane</h2>
+                        <h2 class="slide-title">Install Vibecrafted</h2>
                         <div class="slide-body">
                           <div class="lead-grid">
                             <div class="main-card">
                               <p class="slide-copy">
-                                This setup stages the control plane, checks the machine shape, and only then runs the real repo-owned install flow.
+                                This setup checks the machine and runs the repo-owned installer.
                               </p>
                             </div>
                             <div class="main-card">
                               <p class="slide-copy">
-                                Until you explicitly launch the install, this wizard is read-only. It explains what changes, why it matters, and how to back out.
+                                Until you launch the install, this wizard is read-only.
                               </p>
                             </div>
                           </div>
@@ -1682,19 +1908,19 @@ def build_html(preflight: dict[str, Any]) -> str:
                           <ul class="decision-points">
                             <li>TwinSweep-style effortlessness: local web surface, lower-friction first run, readable trust contract.</li>
                             <li>`rmcp-memex`-style wizard rhythm: welcome, detection, checklist, explicit execution, clean finish state.</li>
-                            <li>No parallel installer universe: the GUI wraps the same compact install truth used by automation.</li>
+                          <li>No second installer: this view runs the same install path as automation.</li>
                           </ul>
                           <div class="summary-grid">
                             <section class="summary-card">
                               <h3>Human front door</h3>
                               <p class="summary-copy">
-                                Recommended for founders, PMs, and teammates who should understand the machine shape before they start memorizing commands.
+                                Useful when someone needs the install path before memorizing commands.
                               </p>
                             </section>
                             <section class="summary-card">
-                              <h3>Terminal fallback</h3>
+                              <h3>Local install view</h3>
                               <p class="summary-copy">
-                                `make wizard` stays available as the expert path. Useful when you want the same cadence directly inside the terminal.
+                                `make wizard` opens this same browser-guided surface from a local checkout. `make vibecrafted` stays the shell-first default.
                               </p>
                             </section>
                           </div>
@@ -1756,9 +1982,9 @@ def build_html(preflight: dict[str, Any]) -> str:
                         <div class="slide-body">
                           <div class="install-grid">
                             <section class="status-card">
-                              <div class="chip" id="status-chip">Ready to launch</div>
+                              <div class="chip" id="status-chip">Ready</div>
                               <p class="status-copy" id="status-text">
-                                Review the command preview and launch when the machine shape looks right.
+                                Review the plan, then install.
                               </p>
                               <ul class="timeline" id="status-plan"></ul>
                               <div class="button-row">
@@ -1796,7 +2022,7 @@ def build_html(preflight: dict[str, Any]) -> str:
                           <section class="success-panel" id="finish-panel" hidden>
                             <strong>Install finished cleanly.</strong>
                             <p class="summary-copy" id="finish-summary">
-                              The guided path completed. Use START_HERE for the plain-language onboarding flow, then switch to the command deck where the real work begins.
+                              Install complete. Open START_HERE, then use the command deck.
                             </p>
                             <ul class="next-steps">
                               <li><code>vibecrafted help</code></li>
@@ -2146,7 +2372,7 @@ def build_html(preflight: dict[str, Any]) -> str:
                     <li data-state="${state}">
                       <div>
                         <strong>${escapeHtml(label)}</strong>
-                        <div class="item-detail">${state === 'running' ? 'Streaming live output now.' : state === 'done' ? 'Completed in this run.' : state === 'failed' ? 'Review the log before retrying.' : 'Queued for execution.'}</div>
+                        <div class="item-detail">${state === 'running' ? 'Running now.' : state === 'done' ? 'Done.' : state === 'failed' ? 'Failed. Check the log.' : 'Queued.'}</div>
                       </div>
                       <span class="timeline-state ${badgeClass}">${badgeText}</span>
                     </li>
@@ -2188,20 +2414,20 @@ def build_html(preflight: dict[str, Any]) -> str:
                 if (installSucceeded(status)) {
                   dom.statusChip.className = 'chip ok';
                   dom.statusChip.textContent = 'Install complete';
-                  dom.statusText.textContent = 'The guided path finished cleanly. Use START_HERE for the plain-language path, then switch to the command deck.';
-                  dom.statusMeta.textContent = 'Foundations and installer exited cleanly.';
+                  dom.statusText.textContent = 'Install finished. Open START_HERE, then use the command deck.';
+                  dom.statusMeta.textContent = 'Installer exited cleanly.';
                   dom.finishPanel.hidden = false;
                   dom.finishLocked.hidden = true;
-                  dom.finishSummary.textContent = 'Use the guide for the plain-language onboarding path, then run the command deck where the real work begins.';
+                  dom.finishSummary.textContent = 'Open START_HERE, then use the command deck.';
                   setStep(5);
                   return;
                 }
 
                 if (status.completed) {
                   dom.statusChip.className = 'chip fail';
-                  dom.statusChip.textContent = 'Needs attention';
-                  dom.statusText.textContent = status.error || `Installer exited with code ${status.exit_code}. Review the log above before retrying.`;
-                  dom.statusMeta.textContent = 'The guided shell stayed up so you can inspect the failure.';
+                  dom.statusChip.textContent = 'Failed';
+                  dom.statusText.textContent = status.error || `Installer exited with code ${status.exit_code}. Check the log.`;
+                  dom.statusMeta.textContent = 'The installer stayed open.';
                   dom.finishPanel.hidden = true;
                   dom.finishLocked.hidden = false;
                   setStep(4);
@@ -2209,9 +2435,9 @@ def build_html(preflight: dict[str, Any]) -> str:
                 }
 
                 dom.statusChip.className = 'chip';
-                dom.statusChip.textContent = 'Ready to launch';
-                dom.statusText.textContent = 'Review the preflight cards, then start the install when the machine shape looks right.';
-                dom.statusMeta.textContent = 'Guided foundations + compact mode, repo-owned installer truth.';
+                dom.statusChip.textContent = 'Ready';
+                dom.statusText.textContent = 'Review the plan, then install.';
+                dom.statusMeta.textContent = 'Local installer. Repo-owned plan.';
                 dom.finishPanel.hidden = true;
                 dom.finishLocked.hidden = false;
                 setStep(currentStep);

@@ -31,7 +31,7 @@ We will check your environment for:
   - Agents
     claude-code · codex · gemini-cli
   - Additional tools
-    zellji · mise · starship · atuin · zoxide
+    zellij · mise · starship · atuin · zoxide
 """
 cmd = [
     "python3",
@@ -67,7 +67,7 @@ cmd = [
     "-c",
     '''
 bash skills/vc-agents/scripts/install-frontier-config.sh --source "." || printf '[warn] Frontier config skipped (non-fatal)\n'
-python3 scripts/vetcoders_install.py install --source "." --with-shell --compact --non-interactive
+python3 scripts/vetcoders_install.py install --source "." --with-shell --compact --non-interactive --mirror
 ''',
 ]
 

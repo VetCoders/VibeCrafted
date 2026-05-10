@@ -64,6 +64,9 @@ def _write_stateful_zellij(
                 '    if "--force-run-commands" in args:',
                 '        state_file.write_text("live", encoding="utf-8")',
                 "    sys.exit(0)",
+                'if args[:1] == ["kill-session"]:',
+                '    state_file.write_text("missing", encoding="utf-8")',
+                "    sys.exit(0)",
                 'if args[:1] == ["delete-session"]:',
                 '    state_file.write_text("missing", encoding="utf-8")',
                 "    sys.exit(0)",
@@ -71,6 +74,9 @@ def _write_stateful_zellij(
                 '    state_file.write_text("live", encoding="utf-8")',
                 "    sys.exit(0)",
                 'if "action" in args and ("new-pane" in args or "new-tab" in args):',
+                '    if state != "live":',
+                '        print("There is no active session!", file=sys.stderr)',
+                "        sys.exit(1)",
                 "    sys.exit(0)",
                 "sys.exit(0)",
             ]
@@ -194,6 +200,94 @@ def test_helper_exports_vc_skill_wrappers() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_vc_init_finds_bundled_zellij_and_creates_missing_operator_session(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    bundled_bin = crafted_home / "bin"
+    fake_bin = tmp_path / "bin"
+    capture_file = tmp_path / "capture.log"
+    session_state_file = tmp_path / "session-state.txt"
+
+    home.mkdir()
+    bundled_bin.mkdir(parents=True)
+    fake_bin.mkdir()
+    _write_stateful_zellij(bundled_bin, capture_file, session_state_file)
+    (fake_bin / "osascript").write_text(
+        "#!/usr/bin/env bash\nexit 1\n", encoding="utf-8"
+    )
+    (fake_bin / "osascript").chmod(0o755)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["VIBECRAFTED_HOME"] = str(crafted_home)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "xdg")
+    env["VIBECRAFTED_ROOT"] = str(REPO_ROOT)
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["SESSION_STATE_FILE"] = str(session_state_file)
+    env["VIBECRAFTED_OSASCRIPT_BIN"] = str(fake_bin / "osascript")
+    env["FAKE_ZELLIJ_SESSION"] = _expected_operator_session()
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_PANE_ID", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'source "{HELPER_SCRIPT}"; vc-init claude --prompt "Check runtime"',
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = capture_file.read_text(encoding="utf-8")
+    expected_session = _expected_operator_session()
+    assert f"--session {expected_session} --new-session-with-layout" in payload
+    assert f"--session {expected_session} action new-tab" in payload
+    assert "There is no active session!" not in result.stderr
+
+
+def test_vc_init_missing_zellij_message_has_fresh_install_path_hint(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+
+    home.mkdir()
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["VIBECRAFTED_HOME"] = str(crafted_home)
+    env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+    env["VIBECRAFTED_ROOT"] = str(REPO_ROOT)
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_PANE_ID", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f'source "{HELPER_SCRIPT}"; vc-init claude --prompt "Check runtime"',
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "zellij is required for the Vibecrafted operator runtime." in result.stderr
+    assert f'export PATH="{crafted_home}/bin:$PATH"' in result.stderr
+    assert f"Expected bundled binary: {crafted_home}/bin/zellij" in result.stderr
+
+
 def test_marbles_from_operator_mode_spawns_launcher_in_fresh_tab_and_loops_right(
     tmp_path: Path,
 ) -> None:
@@ -232,7 +326,7 @@ def test_marbles_from_operator_mode_spawns_launcher_in_fresh_tab_and_loops_right
     assert any("vibecrafted-marbles." in line for line in payload)
 
 
-def test_marbles_manual_spawn_prints_l1_transcript_tail_in_same_terminal(
+def test_marbles_manual_spawn_emits_probe_without_l1_transcript_tail(
     tmp_path: Path,
 ) -> None:
     home = tmp_path / "home"
@@ -255,6 +349,11 @@ def test_marbles_manual_spawn_prints_l1_transcript_tail_in_same_terminal(
     fake_bin.mkdir()
     reports_dir.mkdir(parents=True)
     _write_capture_command(fake_bin, "zellij", capture_file)
+    (fake_bin / "osascript").write_text(
+        "#!/usr/bin/env bash\nexit 0\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "osascript").chmod(0o755)
 
     transcript.write_text(
         "\n".join(f"line {idx}" for idx in range(1, 21)) + "\n",
@@ -279,7 +378,7 @@ def test_marbles_manual_spawn_prints_l1_transcript_tail_in_same_terminal(
     env["VIBECRAFTED_RUN_ID"] = "marb-014521"
     env["ZELLIJ_SESSION_NAME"] = _expected_operator_session(env["VIBECRAFTED_RUN_ID"])
     env["VIBECRAFTED_MARBLES_RUN_ID"] = run_id
-    env["VIBECRAFTED_MARBLES_TAIL_DELAY"] = "0"
+    env["VIBECRAFTED_MARBLES_PROBE_TTL"] = "10"
     env["VIBECRAFTED_PREFER_REPO_SPAWN"] = "1"
 
     result = subprocess.run(
@@ -295,9 +394,10 @@ def test_marbles_manual_spawn_prints_l1_transcript_tail_in_same_terminal(
         text=True,
     )
 
-    assert "--- marbles L1 transcript tail" in result.stdout
-    assert "line 6" in result.stdout
-    assert "line 20" in result.stdout
+    assert "--- marbles L1 transcript tail" not in result.stdout
+    assert "line 6" not in result.stdout
+    assert "line 20" not in result.stdout
+    assert result.stderr == ""
 
 
 def test_spawn_script_prefers_repo_runtime_over_installed_copy(tmp_path: Path) -> None:
@@ -453,8 +553,9 @@ def test_skill_bootstraps_operator_session_before_spawning(tmp_path: Path) -> No
 
     payload = capture_file.read_text(encoding="utf-8")
     assert "OSA " in payload
+    assert "zellij attach" in payload
     assert "new-session-with-layout" in payload
-    assert re.search(r"\bv-[0-9a-f]{4}-fwup-\d{6}-\d+\b", payload)
+    assert re.search(r"\bfwup-\d{6}-\d+\b", payload)
 
 
 def test_skill_bootstraps_fresh_operator_session_when_existing_one_is_dead(
@@ -506,6 +607,7 @@ def test_skill_bootstraps_fresh_operator_session_when_existing_one_is_dead(
     assert result.stdout.strip().endswith(expected_session)
     payload = capture_file.read_text(encoding="utf-8")
     assert f"kill-session {expected_session}" in payload
+    assert "zellij attach" in payload
     assert "--new-session-with-layout" in payload and expected_session in payload
     assert "OSA " in payload
     # Session name appears in the osascript zellij command (possibly escaped)

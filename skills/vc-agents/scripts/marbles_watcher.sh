@@ -50,8 +50,16 @@ import tempfile
 state_path = sys.argv[1]
 args = sys.argv[2:]
 mutator = os.environ["STATE_JSON_MUTATOR"]
+dir_path = os.path.dirname(state_path) or "."
 
-lock = open(state_path + ".lock", "a+", encoding="utf-8")
+if not os.path.isdir(dir_path):
+    raise SystemExit(0)
+
+try:
+    lock = open(state_path + ".lock", "a+", encoding="utf-8")
+except FileNotFoundError:
+    raise SystemExit(0)
+
 try:
     fcntl.flock(lock, fcntl.LOCK_EX)
     try:
@@ -66,7 +74,6 @@ try:
         {"payload": payload, "args": args},
     )
 
-    dir_path = os.path.dirname(state_path) or "."
     fd, tmp_path = tempfile.mkstemp(
         prefix=os.path.basename(state_path) + ".", dir=dir_path
     )
@@ -325,6 +332,8 @@ if meta_path and os.path.isfile(meta_path):
             if "usage" in m: telemetry["usage"] = m["usage"]
             if "tools" in m: telemetry["tools"] = m["tools"]
             if "model" in m: telemetry["model"] = m["model"]
+            if exit_code is None and m.get("exit_code") is not None:
+                exit_code = int(m["exit_code"])
     except Exception:
         pass
 
@@ -597,6 +606,8 @@ _wait_for_loop_meta() {
   local elapsed=0
   local meta_path=""
   local expected_run_id="${run_id}-$(printf '%03d' "$loop_nr")"
+  local final_grace_s="${VIBECRAFTED_MARBLES_META_FINAL_GRACE_S:-4}"
+  local grace_elapsed=0
 
   while true; do
     meta_path="$(spawn_find_meta_for_run_id "$store/reports" "$expected_run_id")"
@@ -610,6 +621,18 @@ _wait_for_loop_meta() {
     fi
 
     if (( timeout_s > 0 && elapsed >= timeout_s )); then
+      while (( final_grace_s > 0 && grace_elapsed < final_grace_s )); do
+        sleep 1
+        (( grace_elapsed += 1 ))
+        meta_path="$(spawn_find_meta_for_run_id "$store/reports" "$expected_run_id")"
+        if [[ -n "$meta_path" ]]; then
+          printf '%s\n' "$meta_path"
+          return 0
+        fi
+        if [[ -f "$state_dir/stop" ]]; then
+          return 1
+        fi
+      done
       return 2
     fi
 
@@ -658,6 +681,8 @@ _wait_for_report_path() {
             spawn_reap_dead_run "$meta_path"
             return 4
           fi
+        else
+          spawn_mark_unknown_liveness "$meta_path"
         fi
       fi
     fi
@@ -747,6 +772,7 @@ timed_out=0
 timed_out_loop=0
 failed=0
 failed_loop=0
+terminal_status=""
 
 for ((loop_nr = 1; loop_nr <= total_count; loop_nr++)); do
   if ! _check_stop; then
@@ -931,11 +957,18 @@ PY
   report_status="$(_report_frontmatter_status "$actual_report")"
   if [[ "$actual_meta_status" == "failed" || "$report_status" == "failed" ]]; then
     exit_code_hint="$(spawn_read_meta_field "$meta_path" "exit_code")"
+    if [[ -z "$exit_code_hint" ]]; then
+      for _exit_wait_i in 1 2 3 4 5 6 7 8; do
+        sleep 0.25
+        exit_code_hint="$(spawn_read_meta_field "$meta_path" "exit_code")"
+        [[ -n "$exit_code_hint" ]] && break
+      done
+    fi
     failure_reason="spawn-failed"
     if [[ "$report_status" == "failed" && "$actual_meta_status" != "failed" ]]; then
       failure_reason="report-failed"
     fi
-    _record_loop_failed "$loop_nr" "$failure_reason" "$duration" "$actual_report" "$exit_code_hint"
+    _record_loop_failed "$loop_nr" "$failure_reason" "$duration" "$actual_report" "$exit_code_hint" "$meta_path"
     detail="$duration_fmt  failed before convergence report"
     if [[ -z "$failure_hint" ]]; then
       failure_hint="$(_marbles_failure_hint "$actual_report" "$actual_transcript" "$meta_path")"
@@ -991,6 +1024,7 @@ PY
 fi
 
 if (( converged )); then
+  terminal_status="converged"
   _update_status "converged"
   loops_saved=$((total_count - loop_nr))
   printf '\n %b⚒  Converged · %s/%s loops · %s%b\n' "$_bold$_green" "$loop_nr" "$total_count" "$total_fmt" "$_reset"
@@ -1000,6 +1034,7 @@ if (( converged )); then
   printf '  ████████████████████████████████████████████████\n'
   (( loops_saved > 0 )) && printf '\n  loops saved: %s (converged early)\n' "$loops_saved"
 elif (( timed_out )); then
+  terminal_status="failed"
   _update_status "failed"
   completed_loops=$((timed_out_loop - 1))
   printf '\n %b⚒  Failed · timeout at L%s/%s · %s%b\n' "$_bold$_red" "$timed_out_loop" "$total_count" "$total_fmt" "$_reset"
@@ -1007,6 +1042,7 @@ elif (( timed_out )); then
   printf '  %s\n' "$(_render_chain "$completed_loops" "$total_count")"
   printf '  report pathing is meta.json-only; loop not consumed\n'
 elif (( failed )); then
+  terminal_status="failed"
   _update_status "failed"
   completed_loops=$((failed_loop - 1))
   printf '\n %b⚒  Failed · loop failure at L%s/%s · %s%b\n' "$_bold$_red" "$failed_loop" "$total_count" "$total_fmt" "$_reset"
@@ -1019,11 +1055,13 @@ elif (( failed )); then
     printf '  loop consumed truthfully; failure surfaced from launch metadata\n'
   fi
 elif (( stopped )); then
+  terminal_status="stopped"
   _update_status "stopped"
   printf '\n %b⚒  Stopped · %s%b\n' "$_bold$_yellow" "$total_fmt" "$_reset"
   printf '%b──────────────────────────────────%b\n' "$_steel" "$_reset"
   printf '  %s\n' "$(_render_chain "$((loop_nr-1))" "$total_count")"
 else
+  terminal_status="completed"
   _update_status "completed"
   printf '\n %b⚒  Complete · %s loops · %s%b\n' "$_bold$_copper" "$total_count" "$total_fmt" "$_reset"
   printf '%b──────────────────────────────────%b\n' "$_steel" "$_reset"
@@ -1075,3 +1113,10 @@ printf '\n  lock released: %s\n' "$run_id"
 printf '%b──────────────────────────────────%b\n\n' "$_steel" "$_reset"
 
 rm -f "$session_lock" 2>/dev/null || true
+
+if [[ -n "$terminal_status" ]]; then
+  archived_state_dir="$(spawn_archive_marbles_state_dir "$run_id" "$terminal_status" 2>/dev/null || true)"
+  if [[ -n "$archived_state_dir" ]]; then
+    printf '  state archived: %s\n' "$archived_state_dir"
+  fi
+fi
