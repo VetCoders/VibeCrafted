@@ -10,7 +10,7 @@ SOURCE   := $(CURDIR)
 BRANCH   ?= main
 VERSION_FILE := VERSION
 
-.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij test-iterm2-migrate install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall iterm-plugin-migrate demo demo-full commit-safe test-race-protection skill-new
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij test-iterm2-migrate test-memex test-aicx-sync install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall iterm-plugin-migrate demo demo-full commit-safe test-race-protection skill-new
 
 help:
 	@printf "\n"
@@ -41,6 +41,8 @@ help:
 	@printf "  \033[32m✓\033[0m  make test-parity   \033[2mVerify AGENT MODEL PARITY enforcement (Plan 06)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-zellij   \033[2mVerify zellij layouts + AICX status + mesh themes (Plan 12)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-iterm2-migrate \033[2mVerify iTerm2 experimental -> GA migration (Plan 10)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-memex    \033[2mVerify memex cross-session retrieval client (Plan 09)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-aicx-sync \033[2mVerify AICX cross-machine sync v2 + authority conflict resolution (Plan 08)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
 	@printf "  \033[32m◆\033[0m  make commit-safe MSG=\"...\" FILES=\"...\" \033[2mRace-protected commit (single-line)\033[0m\n"
 	@printf "  \033[32m◆\033[0m  make commit-safe MSG_FILE=<path> FILES=\"...\" \033[2mMulti-line commit body via file (Plan 07-b)\033[0m\n"
@@ -406,3 +408,60 @@ test-zellij:
 
 test-iterm2-migrate:
 	@bash tests/iterm2_migration_test.sh
+
+# -----------------------------------------------------------------------------
+# Plan 09 (META_22) — memex cross-session retrieval client smoke gate.
+#
+# Two tiers run together:
+#   1. bash integration smoke (tests/memex_integration_test.sh) — asserts
+#      SKILL.md Sense 1 documentation, public surface, populated-memex
+#      fallthrough via injected MCP stub, graceful degradation on
+#      unreachable endpoint, config precedence (TOML > env), pure
+#      defaults disable cleanly, empty-query short-circuit.
+#   2. pytest unit tier (vibecrafted-core/tests/test_memex_client.py) —
+#      covers HTTP success/failure parsing, MCP bridge transport,
+#      config layer precedence, malformed responses, limit clamping.
+#
+# The bash tier owns the OPERATOR-VISIBLE contract (markdown + sandbox
+# shell). The pytest tier owns the implementation correctness contract.
+# Both must pass for `make test-memex` to be green.
+# -----------------------------------------------------------------------------
+
+test-memex:
+	@bash tests/memex_integration_test.sh
+	@if command -v uv >/dev/null 2>&1; then \
+		uv run --project vibecrafted-core --with pytest python -m pytest vibecrafted-core/tests/test_memex_client.py -q; \
+	else \
+		PYTHONPATH="$(SOURCE)/vibecrafted-core" $(PYTHON) -m pytest vibecrafted-core/tests/test_memex_client.py -q; \
+	fi
+
+# -----------------------------------------------------------------------------
+# Plan 08 (META_22) — AICX cross-machine sync v2 smoke gate.
+#
+# Two tiers run together:
+#   1. bash end-to-end smoke (tests/aicx_sync_smoke.sh) — asserts the
+#      two-machine fixture: dual-add discovery, dry-run is read-only,
+#      authority-tier conflict resolution (repo_verified > aicx_agent),
+#      same-tier tie surfacing, prior conflict-log decision honoured on
+#      subsequent runs, corrupted chunk reported + skipped without crash,
+#      CLI wrapper (scripts/aicx-sync.sh) help + unknown-command rejection
+#      + TOML config-file fallback.
+#   2. pytest unit tier (vibecrafted-core/tests/test_aicx_sync.py) —
+#      covers Authority enum + aliases, AicxChunk normalization,
+#      discover_chunks adds/conflicts/corrupted, resolve_conflict full
+#      tier ladder + log honouring + last-write-wins on decisions,
+#      apply_plan dry-run read-only invariant, record_decision validation,
+#      CLI surface.
+#
+# The bash tier owns the OPERATOR-VISIBLE contract (CLI wrapper + cross-
+# machine fixture). The pytest tier owns the implementation correctness
+# contract. Both must pass for `make test-aicx-sync` to be green.
+# -----------------------------------------------------------------------------
+
+test-aicx-sync:
+	@bash tests/aicx_sync_smoke.sh
+	@if command -v uv >/dev/null 2>&1; then \
+		uv run --project vibecrafted-core --with pytest python -m pytest vibecrafted-core/tests/test_aicx_sync.py -q; \
+	else \
+		PYTHONPATH="$(SOURCE)/vibecrafted-core" $(PYTHON) -m pytest vibecrafted-core/tests/test_aicx_sync.py -q; \
+	fi

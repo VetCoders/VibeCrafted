@@ -91,6 +91,48 @@ retrieval by run_id/prompt_id/agent/kind/project/date).
 CLI: `aicx intents -p <project> --emit json | tee intents.json`, then `jq` to
 summarize. Full reference in `vc-intents` and `vc-aicx` skills, or `aicx --help`.
 
+#### Memex fallthrough (added 2026-05-12, Plan 09)
+
+When local AICX search returns fewer than **5 chunks for the current scope**
+(the `SPARSE_AICX_THRESHOLD` constant in `vibecrafted_core.memex_client`), the
+agent SHOULD fall through to the operator's mesh-hosted memex endpoint for
+cross-session semantic retrieval. This catches the cases where the current
+checkout's `.aicx/` is fresh, but the wider operator memory (silver, sztudio,
+div0 clients of the dragon-hosted memex per kronika 2026-05-05 mesh topology)
+holds prior sessions that answer the open question.
+
+```python
+from vibecrafted_core import memex_client
+
+chunks = memex_client.search(
+    "vc-init sparse AICX fallthrough",
+    namespace="vibecrafted",
+    limit=10,
+)
+for chunk in chunks:
+    # chunk.authority == "memex_derived" — lower trust than aicx_operator
+    ...
+```
+
+**Authority tier.** Memex chunks carry the new label `memex_derived`. The trust
+ranking now reads (high → low): `repo_verified` · `loctree_derived` ·
+`aicx_operator` · `aicx_agent` · **`memex_derived` (new)** · `aicx_failure` ·
+`semantic_guess` · `stale_or_unknown`. Memex sits below first-party AICX
+labels because it pulls from cross-machine sessions whose operator-intent
+authority is weaker; treat memex hits as candidate context to verify against
+Sense 2 (perception) or Sense 3 (ground truth), not as final-tier directives.
+
+**Configuration.** Operator-opt-in via either:
+
+- `~/.config/vetcoders/memex.toml` (see `config/memex.toml.example`), or
+- environment vars `MEMEX_ENDPOINT`, `MEMEX_TOKEN`, `MEMEX_NAMESPACE`,
+  `MEMEX_TIMEOUT_SECONDS`.
+
+Without configuration the client stays disabled and `search()` short-circuits
+to an empty list — **vibecrafted works without memex**; memex enriches agent
+perception when present. See [`docs/MEMEX.md`](../../docs/MEMEX.md) for the
+operator guide and trust-tier rationale.
+
 ### Sense 2 — Perception (over memory)
 
 **MCP-first, atlas-shaped.** `loctree-mcp` is the agent's primary discovery
@@ -123,7 +165,9 @@ relevance), or `changed: true` (Living Tree WIP). CI guards: `no_scan`,
 
 `repo_verified` (snapshot fact, top trust) · `loctree_derived` (analyzer
 inference) · `aicx_operator` (sticky operator intent) · `aicx_agent` (prior
-agent outcome) · `aicx_failure` (prior failed path — don't repeat) ·
+agent outcome) · `memex_derived` (cross-session memex retrieval — Plan 09,
+lower trust than `aicx_*` because operator-intent authority is weaker for
+non-local sessions) · `aicx_failure` (prior failed path — don't repeat) ·
 `semantic_guess` (heuristic — verify) · `stale_or_unknown` (re-check).
 
 #### Drill-down (after the atlas, when scope is known)
