@@ -13,5 +13,6 @@ cargo run -- generate \
     --library ../../../target/release/libvibecrafted_shell_ffi.dylib \
     --language swift \
     --out-dir ../app/Vibecrafted/Bridge/
+../scripts/normalize-bindings.sh ../app/Vibecrafted/Bridge
 
 echo "=== Done ==="

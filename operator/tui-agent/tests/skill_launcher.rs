@@ -14,9 +14,14 @@ use std::os::unix::fs::symlink;
 
 #[test]
 fn catalog_covers_existing_vibecrafted_skill_directories() {
-    let skill_root = Path::new("/Users/polyversai/Libraxis/vc-runtime/vibecrafted/skills");
-    let mut existing = fs::read_dir(skill_root)
-        .unwrap()
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .expect("tui-agent crate should live under operator/tui-agent");
+    let skill_root = repo_root.join("skills");
+    let mut existing = fs::read_dir(&skill_root)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", skill_root.display()))
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let path = entry.path();

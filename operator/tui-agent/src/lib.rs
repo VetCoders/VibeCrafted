@@ -163,28 +163,27 @@ fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
             _ => {}
         },
         LaunchFocus::Error => match key.code {
-            KeyCode::Char('f') | KeyCode::Char('F') => {
+            KeyCode::Char('f') | KeyCode::Char('F')
                 if app
                     .error_lines
                     .iter()
-                    .any(|l| l.contains("Client drift detected"))
-                {
-                    let agent = app.selected_agent().to_string();
-                    let _ = std::process::Command::new("zellij")
-                        .args([
-                            "run",
-                            "--name",
-                            "auto-rewire",
-                            "--",
-                            "rust-mux",
-                            "wizard",
-                            "--strategy",
-                            "auto-rewire",
-                            &agent,
-                        ])
-                        .spawn();
-                    app.focus = LaunchFocus::Browse;
-                }
+                    .any(|l| l.contains("Client drift detected")) =>
+            {
+                let agent = app.selected_agent().to_string();
+                let _ = std::process::Command::new("zellij")
+                    .args([
+                        "run",
+                        "--name",
+                        "auto-rewire",
+                        "--",
+                        "rust-mux",
+                        "wizard",
+                        "--strategy",
+                        "auto-rewire",
+                        &agent,
+                    ])
+                    .spawn();
+                app.focus = LaunchFocus::Browse;
             }
             KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
                 app.focus = LaunchFocus::Browse;

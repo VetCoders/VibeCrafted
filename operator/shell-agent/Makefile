@@ -1,13 +1,16 @@
 # shell-agent - UniFFI bridge + SwiftUI app
 # Created by VetCoders (c)2026 LibraxisAI
 
+export MACOSX_DEPLOYMENT_TARGET ?= 14.0
+
 .PHONY: bindings xcode app dmg dmg-signed
 
 bindings:
-	@echo "Building shell-agent-ffi (release)..."
+	@echo "Building vibecrafted-shell-ffi (release)..."
 	@cargo build -p vibecrafted-shell-ffi --release
 	@echo "Generating Swift bindings..."
 	@cargo run -p vibecrafted-uniffi-bindgen -- generate --library ../target/release/libvibecrafted_shell_ffi.dylib --language swift --out-dir app/Vibecrafted/Bridge/
+	@./scripts/normalize-bindings.sh app/Vibecrafted/Bridge
 	@echo "Bindings ready: app/Vibecrafted/Bridge/"
 
 xcode:
@@ -34,13 +37,11 @@ dmg-signed:
 
 app-debug: bindings xcode
 	@cargo build --workspace --release
-	@xcodebuild -project app/Vibecrafted.xcodeproj -scheme Vibecrafted -configuration Debug build
-	@BUILT_APP=$$(find app/build/DerivedData -name Vibecrafted.app -type d | head -1); \
+	@xcodebuild -project app/Vibecrafted.xcodeproj -scheme Vibecrafted -configuration Debug -derivedDataPath build/DerivedData build
+	@BUILT_APP=$$(find build/DerivedData -name Vibecrafted.app -type d | head -1); \
 	if [ -n "$$BUILT_APP" ]; then \
 		cp ../target/release/rust-mux "$$BUILT_APP/Contents/MacOS/vc-mux-daemon"; \
 		cp ../target/release/vc-mux-tray "$$BUILT_APP/Contents/MacOS/vc-mux-tray"; \
 		cp ../target/release/vc-operator "$$BUILT_APP/Contents/MacOS/vc-operator-tui"; \
 		chmod +x "$$BUILT_APP/Contents/MacOS/"*; \
 	fi
-
-

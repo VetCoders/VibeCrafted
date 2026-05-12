@@ -122,31 +122,64 @@ pub trait EventCallback: Send + Sync {
 #[uniffi::export]
 pub async fn subscribe_events(callback: Box<dyn EventCallback>) -> Result<(), MuxError> {
     let socket = get_socket_path()?;
-    // We launch a background task to stream events to avoid blocking or issues with returning streams.
-    tokio::spawn(async move {
-        use tokio::io::AsyncBufReadExt;
-        let stream_res = tokio::net::UnixStream::connect(&socket).await;
-        if let Err(e) = stream_res {
-            callback.on_error(e.to_string());
-            return;
-        }
-        let stream = stream_res.unwrap();
-        let (reader, mut writer) = stream.into_split();
-        let command = MuxControlCommand::Subscribe;
-        let encoded = serde_json::to_string(&command).unwrap() + "\n";
+    std::thread::Builder::new()
+        .name("vibecrafted-event-subscription".to_string())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(e) => {
+                    callback.on_error(format!("Failed to start event runtime: {e}"));
+                    return;
+                }
+            };
 
-        use tokio::io::AsyncWriteExt;
-        if let Err(e) = writer.write_all(encoded.as_bytes()).await {
-            callback.on_error(e.to_string());
-            return;
-        }
+            runtime.block_on(async move {
+                use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
-        let mut lines = tokio::io::BufReader::new(reader).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            callback.on_event(line);
-        }
-        callback.on_error("Stream closed".to_string());
-    });
+                let stream = match tokio::net::UnixStream::connect(&socket).await {
+                    Ok(stream) => stream,
+                    Err(e) => {
+                        callback.on_error(e.to_string());
+                        return;
+                    }
+                };
+                let (reader, mut writer) = stream.into_split();
+                let command = MuxControlCommand::Subscribe;
+                let encoded = match serde_json::to_string(&command) {
+                    Ok(encoded) => encoded + "\n",
+                    Err(e) => {
+                        callback.on_error(format!("Failed to encode subscription command: {e}"));
+                        return;
+                    }
+                };
+
+                if let Err(e) = writer.write_all(encoded.as_bytes()).await {
+                    callback.on_error(e.to_string());
+                    return;
+                }
+
+                let mut lines = tokio::io::BufReader::new(reader).lines();
+                loop {
+                    match lines.next_line().await {
+                        Ok(Some(line)) => callback.on_event(line),
+                        Ok(None) => {
+                            callback.on_error("Stream closed".to_string());
+                            return;
+                        }
+                        Err(e) => {
+                            callback.on_error(e.to_string());
+                            return;
+                        }
+                    }
+                }
+            });
+        })
+        .map_err(|e| MuxError::Core {
+            msg: format!("Failed to start event subscription thread: {e}"),
+        })?;
     Ok(())
 }
 
