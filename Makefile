@@ -40,7 +40,8 @@ help:
 	@printf "  \033[32m✓\033[0m  make test-race-protection \033[2mVerify Living Tree commit race detection helper\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-parity   \033[2mVerify AGENT MODEL PARITY enforcement (Plan 06)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
-	@printf "  \033[32m◆\033[0m  make commit-safe MSG=\"...\" FILES=\"...\" \033[2mRace-protected commit under concurrent agent activity\033[0m\n"
+	@printf "  \033[32m◆\033[0m  make commit-safe MSG=\"...\" FILES=\"...\" \033[2mRace-protected commit (single-line)\033[0m\n"
+	@printf "  \033[32m◆\033[0m  make commit-safe MSG_FILE=<path> FILES=\"...\" \033[2mMulti-line commit body via file (Plan 07-b)\033[0m\n"
 	@printf "  \033[32m◆\033[0m  make skill-new NAME=vc-<name> \033[2mScaffold a new vc-* skill from skills/_template/\033[0m\n"
 	@printf "  \033[32m◇\033[0m  make version-show  \033[2mShow VERSION and release tag state\033[0m\n"
 	@printf "  \033[32m↟\033[0m  make version-bump VERSION=X \033[2mBump VERSION; X={patch|minor|major|x.y.z}\033[0m\n"
@@ -274,22 +275,48 @@ init-hooks:
 # -----------------------------------------------------------------------------
 # Living Tree race protection (Plan 07 — kronika 2026-04-16/17 incident learning)
 #
-# `make commit-safe MSG="..." FILES="path1 path2"` wraps
-# scripts/lib/living-tree-commit.sh: stages the named files, snapshots the
-# index, commits, and verifies no concurrent agent commit interleaved
-# between stage and commit. Exits nonzero on detected race.
+# Two invocation modes:
+#
+#   Single-line:
+#     make commit-safe MSG="<subject>" FILES="path1 path2"
+#
+#   Multi-line (Plan 07-b — closes Limitation #2):
+#     make commit-safe MSG_FILE=/tmp/msg.txt FILES="path1 path2"
+#
+# MSG_FILE reads the commit message from a file (subject + blank line + body).
+# Use this for any multi-line message — avoids Makefile $$ escaping vs. shell
+# expansion interaction that historically broke MSG="..." with embedded
+# newlines/quotes/dollars.
+#
+# Helper handles three race detectors: HEAD shift, foreign-file inclusion,
+# and (informationally) tree-hash mismatch. Plan 07-b relaxed tree-hash
+# alone from race-signal to informational notice (pre-commit hooks like
+# prettier --write legitimately mutate staged content; that is not a race).
 # -----------------------------------------------------------------------------
 
 commit-safe:
-	@if [ -z "$(MSG)" ] || [ -z "$(FILES)" ]; then \
-		echo "usage: make commit-safe MSG=\"<commit message>\" FILES=\"path1 path2 ...\"" >&2; \
+	@if [ -z "$(FILES)" ]; then \
+		echo "usage:" >&2; \
+		echo "  make commit-safe MSG=\"<subject>\" FILES=\"path1 path2 ...\"" >&2; \
+		echo "  make commit-safe MSG_FILE=<path>  FILES=\"path1 path2 ...\"" >&2; \
 		echo "" >&2; \
 		echo "Race-protected commit helper for Living Tree workflow." >&2; \
-		echo "Detects HEAD shift, staged-tree mismatch, and foreign-file" >&2; \
-		echo "inclusion under concurrent agent activity." >&2; \
+		echo "MSG_FILE supports multi-line commit bodies (Plan 07-b)." >&2; \
 		exit 1; \
 	fi
-	@bash scripts/lib/living-tree-commit.sh "$(MSG)" -- $(FILES)
+	@if [ -n "$(MSG_FILE)" ] && [ -n "$(MSG)" ]; then \
+		echo "make commit-safe: pass MSG OR MSG_FILE, not both" >&2; \
+		exit 1; \
+	fi
+	@if [ -z "$(MSG)" ] && [ -z "$(MSG_FILE)" ]; then \
+		echo "make commit-safe: MSG=\"...\" or MSG_FILE=<path> is required" >&2; \
+		exit 1; \
+	fi
+	@if [ -n "$(MSG_FILE)" ]; then \
+		bash scripts/lib/living-tree-commit.sh --message-file "$(MSG_FILE)" -- $(FILES); \
+	else \
+		bash scripts/lib/living-tree-commit.sh "$(MSG)" -- $(FILES); \
+	fi
 
 test-race-protection:
 	@bash tests/race_protection_test.sh

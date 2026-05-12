@@ -21,17 +21,60 @@
 #
 # Usage:
 #   scripts/lib/living-tree-commit.sh "commit message" -- path1 path2 ...
+#   scripts/lib/living-tree-commit.sh --message-file /tmp/msg.txt -- path1 ...
 #
 # This script is intentionally append-only: it never amends, never rebases,
 # never force-pushes. Recovery on race is operator-driven.
+#
+# -----------------------------------------------------------------------------
+# CHANGELOG
+# -----------------------------------------------------------------------------
+# v1.1 (Plan 07-b, 2026-05-12) — closes two limitations confirmed across
+# Plans 04, 03, 06 marble rounds:
+#
+#   * Limitation #1 (prettier false-positive, 3 confirmations).
+#     Repo's `scripts/hooks/pre-commit` runs `prettier --write` + `git add`
+#     on .md/.yaml files AFTER the helper's `git write-tree` snapshot.
+#     Tree-hash mismatch detector tripped because the staged index got
+#     cosmetic auto-fixes between snapshot and commit. Parent SHA + foreign
+#     files both stayed green — actual commit was correct, but helper
+#     exited 3 (race) and confused operators.
+#
+#     CHOSEN FIX: relax the tree-hash detector. Mismatch alone is no longer
+#     a race signal. It is only a race signal in combination with foreign
+#     files OR HEAD shift. Tree mismatch with identical file set and
+#     stable HEAD is classified as "hook-modified content" — informational
+#     notice, exit 0. The foreign-file and HEAD-shift detectors remain
+#     unchanged and continue to catch real concurrent-commit races.
+#
+#     Trade-off: a hypothetical race that mutates only the *content* of
+#     staged files (without adding/removing files and without shifting
+#     HEAD) would now slip through. We accept this trade because (a) no
+#     such race has been observed in 4 plan rounds, (b) the false-positive
+#     it eliminates was hit in 3 of those 4 rounds, (c) the foreign-file
+#     detector still catches concurrent staging via pre-commit hooks (the
+#     actual injection vector from kronika 2026-04-16/17).
+#
+#   * Limitation #2 (multi-line MSG quoting, 1 confirmation in Plan 06).
+#     `make commit-safe MSG="..."` failed on multi-line bodies due to
+#     Makefile $$ escaping vs. shell expansion interaction. Plan 06
+#     worked around by invoking the helper directly with a heredoc.
+#
+#     CHOSEN FIX: helper now accepts `--message-file <path>` as an
+#     alternative to the positional message argument. Multi-line bodies
+#     written to a file (e.g. `git commit -F` style) avoid quoting hell
+#     entirely. Makefile `commit-safe` target adds MSG_FILE="..." support
+#     alongside the existing MSG="..." single-line path; both work.
 
 set -euo pipefail
 
 # ----- argument parsing -------------------------------------------------------
 
-if [[ $# -lt 3 ]]; then
+usage() {
     cat >&2 <<'USAGE'
-usage: living-tree-commit.sh "<commit message>" -- <file> [<file>...]
+usage:
+  living-tree-commit.sh "<commit message>" -- <file> [<file>...]
+  living-tree-commit.sh --message-file <path> -- <file> [<file>...]
 
 Race-protected commit helper for VetCoders Living Tree workflow.
 
@@ -39,17 +82,56 @@ Captures pre-flight HEAD, stages only the named files, commits with the
 given message, then verifies no concurrent agent commit interleaved between
 stage and commit.
 
+Multi-line commit bodies: use --message-file <path> to read the message
+from a file (avoids shell-quoting hell on subject + body messages).
+
 Exits nonzero on race; the racing commit is left in place for operator
 review (no auto-rebase, no auto-reset).
 USAGE
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
     exit 2
 fi
 
-MESSAGE=$1
-shift
+MESSAGE=""
+MESSAGE_FILE=""
 
-if [[ $1 != "--" ]]; then
-    echo "living-tree-commit: expected '--' after message, got '$1'" >&2
+case "$1" in
+    --message-file)
+        if [[ $# -lt 2 ]]; then
+            echo "living-tree-commit: --message-file requires a path argument" >&2
+            exit 2
+        fi
+        MESSAGE_FILE=$2
+        shift 2
+        if [[ ! -f "$MESSAGE_FILE" ]]; then
+            echo "living-tree-commit: message file not found: $MESSAGE_FILE" >&2
+            exit 2
+        fi
+        if [[ ! -s "$MESSAGE_FILE" ]]; then
+            echo "living-tree-commit: message file is empty: $MESSAGE_FILE" >&2
+            exit 2
+        fi
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        if [[ $# -lt 3 ]]; then
+            usage
+            exit 2
+        fi
+        MESSAGE=$1
+        shift
+        ;;
+esac
+
+if [[ $# -lt 1 || $1 != "--" ]]; then
+    echo "living-tree-commit: expected '--' before file list" >&2
+    usage
     exit 2
 fi
 shift
@@ -112,10 +194,19 @@ fi
 # the parent's index. That is exactly the safety we want under Living Tree.
 COMMIT_STDERR=$(mktemp)
 trap 'rm -f "$COMMIT_STDERR"' EXIT
-if ! git commit -m "$MESSAGE" --only -- "${FILES[@]}" 2>"$COMMIT_STDERR"; then
-    cat "$COMMIT_STDERR" >&2
-    echo "living-tree-commit: git commit failed — leaving worktree as-is" >&2
-    exit 1
+
+if [[ -n "$MESSAGE_FILE" ]]; then
+    if ! git commit -F "$MESSAGE_FILE" --only -- "${FILES[@]}" 2>"$COMMIT_STDERR"; then
+        cat "$COMMIT_STDERR" >&2
+        echo "living-tree-commit: git commit failed — leaving worktree as-is" >&2
+        exit 1
+    fi
+else
+    if ! git commit -m "$MESSAGE" --only -- "${FILES[@]}" 2>"$COMMIT_STDERR"; then
+        cat "$COMMIT_STDERR" >&2
+        echo "living-tree-commit: git commit failed — leaving worktree as-is" >&2
+        exit 1
+    fi
 fi
 
 NEW_HEAD=$(git rev-parse --verify HEAD)
@@ -141,20 +232,25 @@ else
 fi
 
 # ----- race detection ---------------------------------------------------------
+#
+# Plan 07-b: tree-hash mismatch alone is NOT a race signal. Pre-commit
+# hooks (prettier --write, ruff format, etc.) legitimately mutate the
+# content of staged files between our snapshot and the final commit. The
+# real race signals are:
+#
+#   (a) HEAD shift — another commit slipped in via ref update.
+#   (c) Foreign files — files appeared in the commit that we did not stage.
+#
+# Tree-hash mismatch with stable HEAD and identical file set is classified
+# as informational "hook-modified content" and does NOT trip a race.
 
 race_reasons=()
+hook_modified_notice=""
 
 # (a) HEAD shift: pre-flight HEAD must equal the parent of the new commit
 # (or both empty for the root-commit case).
 if [[ "$PRE_HEAD" != "$NEW_PARENT" ]]; then
     race_reasons+=("HEAD moved during commit: pre=${PRE_HEAD:-<root>} parent-of-new=${NEW_PARENT:-<root>}")
-fi
-
-# (b) Staged-tree mismatch: the tree we staged before committing must equal
-# the tree of the new commit. If another agent's commit landed in between
-# and somehow our message latched onto their tree, this catches it.
-if [[ "$STAGED_TREE" != "$NEW_TREE" ]]; then
-    race_reasons+=("tree-hash mismatch: staged=$STAGED_TREE committed=$NEW_TREE")
 fi
 
 # (c) Foreign-file detection: every file in the commit's diff must be in
@@ -174,8 +270,22 @@ if [[ ${#foreign_files[@]} -gt 0 ]]; then
     race_reasons+=("foreign files in commit: ${foreign_files[*]}")
 fi
 
+# (b) Staged-tree fingerprint: informational only as of Plan 07-b. Only
+# adds context to a race already detected above, OR emits an informational
+# "hook-modified content" notice when no race signal fired.
+if [[ "$STAGED_TREE" != "$NEW_TREE" ]]; then
+    if [[ ${#race_reasons[@]} -gt 0 ]]; then
+        race_reasons+=("tree-hash mismatch: staged=$STAGED_TREE committed=$NEW_TREE")
+    else
+        hook_modified_notice="staged=$STAGED_TREE committed=$NEW_TREE (pre-commit hooks rewrote content; not a race)"
+    fi
+fi
+
 if [[ ${#race_reasons[@]} -eq 0 ]]; then
     echo "living-tree-commit: clean commit $NEW_HEAD (${#STAGED_FILES[@]} file(s))"
+    if [[ -n "$hook_modified_notice" ]]; then
+        echo "living-tree-commit: notice — $hook_modified_notice"
+    fi
     exit 0
 fi
 

@@ -202,12 +202,144 @@ check "negative-B exit code is nonzero" \
 check "negative-B blocked the unsafe commit (helper or git diagnostic)" \
     "$(grep -Eq 'RACE DETECTED|cannot lock ref|git commit failed|tree-hash mismatch|foreign files' "$WORKDIR/neg_b.stderr" && echo 0 || echo 1)"
 
+# ----- positive case C: prettier-style hook modifies staged file content -----
+#
+# Plan 07-b closure of Limitation #1 (3 confirmations: Plans 04, 03, 06).
+# The repo's pre-commit hook runs `prettier --write` then `git add` on
+# .md/.yaml files AFTER the helper's `git write-tree` snapshot. Pre-Plan-07-b
+# this tripped the tree-hash detector as a false race. With the relaxed
+# detector, helper must exit 0 (clean) and emit an informational
+# "hook-modified content" notice.
+
+echo "[positive-C] pre-commit hook rewrites staged file content (Plan 07-b)"
+POS_C_REPO="$WORKDIR/positive_c"
+setup_repo "$POS_C_REPO"
+
+HOOK_FILE_C="$POS_C_REPO/.git/hooks/pre-commit"
+cat >"$HOOK_FILE_C" <<'HOOK'
+#!/usr/bin/env bash
+# Simulate prettier --write on .md files: rewrite content and re-add.
+set -euo pipefail
+flag="$(git rev-parse --git-dir)/hook-fired"
+if [[ -f "$flag" ]]; then
+    exit 0
+fi
+touch "$flag"
+
+# Iterate over staged .md files, normalize trailing whitespace + add a
+# trailing newline, then re-stage. This mirrors prettier's behaviour
+# without requiring node/npx in the test environment.
+mapfile -t md_files < <(git diff --cached --name-only --diff-filter=ACM | grep '\.md$' || true)
+for f in "${md_files[@]}"; do
+    if [[ -f "$f" ]]; then
+        # Append a cosmetic line so the tree hash MUST change.
+        printf "\n<!-- prettier touched this -->\n" >>"$f"
+        git add -- "$f"
+    fi
+done
+exit 0
+HOOK
+chmod +x "$HOOK_FILE_C"
+
+(
+    cd "$POS_C_REPO"
+    echo "# epsilon"  >epsilon.md
+    if "$HELPER" "plan-07b prettier-modify case" -- epsilon.md >"$WORKDIR/pos_c.stdout" 2>"$WORKDIR/pos_c.stderr"; then
+        echo "POS_C_EXIT=0" >"$WORKDIR/pos_c.exit"
+    else
+        echo "POS_C_EXIT=$?" >"$WORKDIR/pos_c.exit"
+    fi
+)
+
+# shellcheck disable=SC1091
+source "$WORKDIR/pos_c.exit"
+check "positive-C exit code is 0 (no false race on prettier-modify)" \
+    "$(( POS_C_EXIT == 0 ? 0 : 1 ))"
+check "positive-C stdout reports clean commit" \
+    "$(grep -q 'clean commit' "$WORKDIR/pos_c.stdout" && echo 0 || echo 1)"
+check "positive-C emits hook-modified content notice" \
+    "$(grep -q 'hook-modified\|pre-commit hooks rewrote' "$WORKDIR/pos_c.stdout" && echo 0 || echo 1)"
+
+POS_C_HEAD_SUBJECT=$(cd "$POS_C_REPO" && git log -1 --format=%s)
+check "positive-C commit subject is helper message" \
+    "$([[ "$POS_C_HEAD_SUBJECT" == "plan-07b prettier-modify case" ]] && echo 0 || echo 1)"
+
+POS_C_DIFF_FILES=$(cd "$POS_C_REPO" && git diff-tree --no-commit-id --name-only -r HEAD | LC_ALL=C sort -u | tr '\n' ' ')
+check "positive-C commit contains exactly epsilon.md" \
+    "$([[ "$POS_C_DIFF_FILES" == "epsilon.md " ]] && echo 0 || echo 1)"
+
+POS_C_CONTENT=$(cd "$POS_C_REPO" && git show HEAD:epsilon.md)
+check "positive-C committed content includes hook modification" \
+    "$(echo "$POS_C_CONTENT" | grep -q 'prettier touched this' && echo 0 || echo 1)"
+
+# ----- positive case D: multi-line commit message via --message-file ---------
+#
+# Plan 07-b closure of Limitation #2 (1 confirmation in Plan 06).
+# `make commit-safe MSG="..."` failed on multi-line message bodies due to
+# Makefile $$ escaping. Plan 07-b adds `--message-file <path>` support to
+# the helper as an alternative invocation path. Exercises a body with
+# embedded newlines, double quotes, dollar signs, and single quotes — the
+# combination that historically broke shell expansion.
+
+echo "[positive-D] multi-line commit message via --message-file (Plan 07-b)"
+POS_D_REPO="$WORKDIR/positive_d"
+setup_repo "$POS_D_REPO"
+
+MSG_FILE="$WORKDIR/multiline_msg.txt"
+cat >"$MSG_FILE" <<'MSGEOF'
+plan-07b multi-line subject line
+
+Body paragraph one with "double quotes" and 'single quotes'.
+
+Body paragraph two with $shell $vars and $(would-be-subshell).
+
+- bullet one
+- bullet two with embedded `backticks`
+MSGEOF
+
+(
+    cd "$POS_D_REPO"
+    echo "zeta-content" >zeta.txt
+    if "$HELPER" --message-file "$MSG_FILE" -- zeta.txt >"$WORKDIR/pos_d.stdout" 2>"$WORKDIR/pos_d.stderr"; then
+        echo "POS_D_EXIT=0" >"$WORKDIR/pos_d.exit"
+    else
+        echo "POS_D_EXIT=$?" >"$WORKDIR/pos_d.exit"
+    fi
+)
+
+# shellcheck disable=SC1091
+source "$WORKDIR/pos_d.exit"
+check "positive-D exit code is 0" \
+    "$(( POS_D_EXIT == 0 ? 0 : 1 ))"
+check "positive-D stdout reports clean commit" \
+    "$(grep -q 'clean commit' "$WORKDIR/pos_d.stdout" && echo 0 || echo 1)"
+
+POS_D_SUBJECT=$(cd "$POS_D_REPO" && git log -1 --format=%s)
+check "positive-D commit subject matches first line of message file" \
+    "$([[ "$POS_D_SUBJECT" == "plan-07b multi-line subject line" ]] && echo 0 || echo 1)"
+
+POS_D_BODY=$(cd "$POS_D_REPO" && git log -1 --format=%B)
+# Literal fragments expected verbatim in the committed body. Held in vars
+# so shellcheck doesn't see literal $ / backtick inside single quotes (SC2016).
+expect_dq='"double quotes"'
+expect_dollar=$'shell \x24vars'
+expect_subshell=$'\x24(would-be-subshell)'
+expect_backtick=$'embedded \x60backticks\x60'
+check "positive-D commit body preserves double quotes verbatim" \
+    "$(printf '%s' "$POS_D_BODY" | grep -qF -- "$expect_dq" && echo 0 || echo 1)"
+check "positive-D commit body preserves dollar-shell-vars verbatim" \
+    "$(printf '%s' "$POS_D_BODY" | grep -qF -- "$expect_dollar" && echo 0 || echo 1)"
+check "positive-D commit body preserves would-be-subshell literal" \
+    "$(printf '%s' "$POS_D_BODY" | grep -qF -- "$expect_subshell" && echo 0 || echo 1)"
+check "positive-D commit body preserves backticks literal" \
+    "$(printf '%s' "$POS_D_BODY" | grep -qF -- "$expect_backtick" && echo 0 || echo 1)"
+
 # ----- summary ----------------------------------------------------------------
 
 echo
 echo "race_protection_test: $PASS pass, $FAIL fail"
 if [[ $FAIL -gt 0 ]]; then
-    for slot in pos neg_a neg_b; do
+    for slot in pos neg_a neg_b pos_c pos_d; do
         for stream in stdout stderr; do
             f="$WORKDIR/$slot.$stream"
             if [[ -s "$f" ]]; then

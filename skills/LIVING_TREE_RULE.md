@@ -88,3 +88,87 @@ make test-race-protection
 The test suite at `tests/race_protection_test.sh` exercises both the
 clean-commit path and two synthetic race injections (concurrent ref update
 and foreign-index mutation).
+
+## Plan 07-b helper limitations closure (2026-05-12)
+
+Plan 07's first cut shipped the race detector with two known limitations
+that were confirmed across four follow-up marble rounds. Plan 07-b closes
+both. Cross-references: marble reports for Plan 04 (Cut D), Plan 03
+(Cut F), and Plan 06 (Cut H) document the false-positives that prompted
+this work; the Plan 07-b report at
+`.vibecrafted/reports/marbles/2026_0512/plan-07b-helper-limitations-fix.md`
+captures the closure evidence.
+
+### Limitation #1 — pre-commit hook false-positive (3 confirmations)
+
+The repo's `scripts/hooks/pre-commit` runs `prettier --write` followed by
+`git add` on `.md`/`.yaml` files. That happens AFTER the helper's
+`git write-tree` snapshot but BEFORE the commit's final tree is sealed.
+The original tree-hash detector tripped on the cosmetic content change
+and reported a race even though the commit was correct. Operators saw
+exit code 3 + "RACE DETECTED" diagnostics on perfectly legitimate
+commits.
+
+**Fix**: tree-hash mismatch alone is no longer a race signal. The race
+detector now treats the three primitives asymmetrically:
+
+- **HEAD shift** — hard race signal (another commit landed via ref update).
+- **Foreign files** — hard race signal (extra files in the commit envelope).
+- **Tree-hash mismatch** — informational. Only contributes to a race
+  diagnostic when one of the hard signals also fires. With clean HEAD
+  and matching file set, the helper now emits `notice — pre-commit hooks
+rewrote content; not a race` and exits 0.
+
+**Trade-off**: a hypothetical race that mutates ONLY the content of staged
+files (without adding/removing files and without shifting HEAD) would
+now slip through. We accept this — no such race has been observed in
+four plan rounds, and the original kronika 2026-04-16/17 incident is
+caught by the foreign-file detector (which remains strict).
+
+### Limitation #2 — multi-line MSG quoting (1 confirmation in Plan 06)
+
+`make commit-safe MSG="..."` failed on multi-line message bodies due to
+Makefile `$$` escaping vs. shell expansion. Plan 06 worked around by
+calling `scripts/lib/living-tree-commit.sh` directly with a heredoc.
+
+**Fix**: the helper now accepts `--message-file <path>` as an alternative
+to the positional message argument. The Makefile target gains a
+`MSG_FILE=<path>` parameter that maps to it. Both invocation modes work;
+they are mutually exclusive per invocation.
+
+**Multi-line usage**:
+
+```
+cat >/tmp/commit.msg <<'EOF'
+plan-XX subject line
+
+Body paragraph one with "quotes" and $shell-style references intact.
+
+- bullet one
+- bullet two
+EOF
+
+make commit-safe MSG_FILE=/tmp/commit.msg FILES="path1 path2"
+```
+
+**Direct shell**:
+
+```
+scripts/lib/living-tree-commit.sh --message-file /tmp/commit.msg -- path1 path2
+```
+
+Single-line `MSG="..."` continues to work unchanged. Plans 04/03/06
+fallback paths that called the helper directly are not affected.
+
+### Verification
+
+The expanded `tests/race_protection_test.sh` adds two positive cases:
+
+- `[positive-C]` simulates a pre-commit hook that prettier-style rewrites
+  staged `.md` content. Helper must exit 0 and emit the hook-modified
+  notice.
+- `[positive-D]` exercises `--message-file` with a body containing
+  embedded newlines, single/double quotes, `$shell` references, and
+  backticks. All preserved verbatim in the committed body.
+
+Existing 10 assertions (clean-commit + 2 race injections) preserved.
