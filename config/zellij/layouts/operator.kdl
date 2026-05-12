@@ -20,6 +20,15 @@ layout {
             plugin location="compact-bar"
         }
         children
+        // Plan 12 — agent-native status row: AICX session counter + loctree drift.
+        pane size=1 split_direction="vertical" {
+            pane name="aicx-status" size="50%" borderless=true command="bash" {
+                args "-lc" "for root in \"${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tools/vibecrafted-current/config/zellij\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/config/zellij}\" \"./config/zellij\"; do if [[ -n \"$root\" && -x \"$root/aicx-status.sh\" ]]; then exec \"$root/aicx-status.sh\"; fi; done; printf 'aicx: status helper not found\\n'; sleep 86400"
+            }
+            pane name="loctree-drift" size="50%" borderless=true command="bash" {
+                args "-lc" "for root in \"${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tools/vibecrafted-current/config/zellij\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/config/zellij}\" \"./config/zellij\"; do if [[ -n \"$root\" && -x \"$root/loctree-drift.sh\" ]]; then exec \"$root/loctree-drift.sh\"; fi; done; printf 'loctree: drift helper not found\\n'; sleep 86400"
+            }
+        }
         pane size=1 borderless=true {
             plugin location="status-bar"
         }

@@ -10,7 +10,7 @@ SOURCE   := $(CURDIR)
 BRANCH   ?= main
 VERSION_FILE := VERSION
 
-.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall demo demo-full commit-safe test-race-protection skill-new
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall demo demo-full commit-safe test-race-protection skill-new
 
 help:
 	@printf "\n"
@@ -39,6 +39,7 @@ help:
 	@printf "  \033[32m✓\033[0m  make test-install  \033[2mRun install.sh / install.ps1 cross-platform smoke (Plan 03)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-race-protection \033[2mVerify Living Tree commit race detection helper\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-parity   \033[2mVerify AGENT MODEL PARITY enforcement (Plan 06)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-zellij   \033[2mVerify zellij layouts + AICX status + mesh themes (Plan 12)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
 	@printf "  \033[32m◆\033[0m  make commit-safe MSG=\"...\" FILES=\"...\" \033[2mRace-protected commit (single-line)\033[0m\n"
 	@printf "  \033[32m◆\033[0m  make commit-safe MSG_FILE=<path> FILES=\"...\" \033[2mMulti-line commit body via file (Plan 07-b)\033[0m\n"
@@ -357,3 +358,22 @@ skill-new:
 		exit 2; \
 	fi
 	@bash tools/vc-skill-new.sh "$(NAME)"
+
+# -----------------------------------------------------------------------------
+# Plan 12 (META_22) — zellij multi-agent layouts smoke gate.
+#
+# Verifies:
+#   - all shipped layouts under config/zellij/layouts/*.kdl parse via
+#     `zellij --layout <name> setup --check`
+#   - all four mesh themes (vetcoders-dragon/sztudio/silver/div0) load
+#   - helper scripts (aicx-status.sh, loctree-drift.sh, auto-theme.sh)
+#     pass bash -n + shellcheck and emit status lines in oneshot mode
+#   - auto-theme.sh maps each canonical host (dragon, sztudio, silver, div0,
+#     mgbook16 alias) to the correct mesh theme and falls back to neutral
+#     for unknown hosts
+#
+# Tolerant of missing zellij — falls back to script-level checks only.
+# -----------------------------------------------------------------------------
+
+test-zellij:
+	@bash tests/zellij_layouts_smoke.sh
