@@ -10,7 +10,7 @@ SOURCE   := $(CURDIR)
 BRANCH   ?= main
 VERSION_FILE := VERSION
 
-.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij test-iterm2-migrate test-memex test-aicx-sync install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall iterm-plugin-migrate demo demo-full commit-safe test-race-protection skill-new
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij test-iterm2-migrate test-memex test-aicx-sync test-hammerspoon install install-hammerspoon skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall iterm-plugin-migrate demo demo-full commit-safe test-race-protection skill-new
 
 help:
 	@printf "\n"
@@ -43,6 +43,7 @@ help:
 	@printf "  \033[32m✓\033[0m  make test-iterm2-migrate \033[2mVerify iTerm2 experimental -> GA migration (Plan 10)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-memex    \033[2mVerify memex cross-session retrieval client (Plan 09)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-aicx-sync \033[2mVerify AICX cross-machine sync v2 + authority conflict resolution (Plan 08)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-hammerspoon \033[2mVerify Hammerspoon URL handler stack + injection sanitization (Plan 11)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
 	@printf "  \033[32m◆\033[0m  make commit-safe MSG=\"...\" FILES=\"...\" \033[2mRace-protected commit (single-line)\033[0m\n"
 	@printf "  \033[32m◆\033[0m  make commit-safe MSG_FILE=<path> FILES=\"...\" \033[2mMulti-line commit body via file (Plan 07-b)\033[0m\n"
@@ -62,6 +63,8 @@ help:
 	@printf "  \033[33m◇\033[0m  make iterm-plugin-show      \033[2mPrint generated JSON to stdout\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make iterm-plugin-uninstall \033[2mRemove the installed file\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make iterm-plugin-migrate   \033[2mMigrate v1.7 vibecrafted-experimental.json → vibecrafted.json (Plan 10)\033[0m\n"
+	@printf "  \033[2m── Hammerspoon URL handlers (Plan 11) ──\033[0m\n"
+	@printf "  \033[33m◇\033[0m  make install-hammerspoon    \033[2mCopy config/hammerspoon/init.lua to ~/.hammerspoon/init.lua + reload (Plan 11)\033[0m\n"
 	@printf "  \033[2m── operator dashboards ─────────────────\033[0m\n"
 	@printf "  \033[33m✦\033[0m  make demo                   \033[2mLive terminal dashboard z klikalnymi akcjami (vc-* URL handlers)\033[0m\n"
 	@printf "  \033[33m✦\033[0m  make demo-full              \033[2mDashboard + aicx HTML serve w tle (browser)\033[0m\n"
@@ -465,3 +468,28 @@ test-aicx-sync:
 	else \
 		PYTHONPATH="$(SOURCE)/vibecrafted-core" $(PYTHON) -m pytest vibecrafted-core/tests/test_aicx_sync.py -q; \
 	fi
+
+# -----------------------------------------------------------------------------
+# Plan 11 (META_22) — Hammerspoon URL handler stack install + smoke gate.
+#
+# install-hammerspoon: copies config/hammerspoon/init.lua to
+#   ~/.hammerspoon/init.lua, offering a .bak overwrite when an existing
+#   config is present, and reloads Hammerspoon. macOS-only — exits 0 with
+#   a notice on Linux/CI.
+#
+# test-hammerspoon: structural lints + sanitization unit tests (8 positive
+#   + 4 negative cases) against the Lua param validator. Includes static
+#   analysis (bash -n, shellcheck, optional luac -p) + handler-registration
+#   grep checks. Live macOS integration is operator-driven (the test
+#   surfaces the manual command rather than spawning iTerm2 tabs during CI).
+#
+# Stack agent-native runtime context (kronika 2026-05-08): OSC 8 hyperlink
+# → iTerm2 Cmd+Click → macOS open URL → Hammerspoon URL handler →
+# AppleScript spawn iTerm2 tab → CLI dispatch. See docs/HAMMERSPOON.md.
+# -----------------------------------------------------------------------------
+
+install-hammerspoon:
+	@bash scripts/install-hammerspoon.sh
+
+test-hammerspoon:
+	@bash tests/hammerspoon_smoke.sh
