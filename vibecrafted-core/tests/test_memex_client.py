@@ -8,7 +8,8 @@ Covers:
 - ``MemexChunk`` authority label invariant.
 
 The HTTP path is exercised through monkey-patching of
-``urllib.request.urlopen`` so no real network I/O is performed.
+``memex_client._http_search`` so no real network I/O is performed
+(the transport now uses ``http.client`` directly with a scheme allowlist).
 """
 
 from __future__ import annotations
