@@ -1,0 +1,103 @@
+---
+name: {{SKILL_NAME}}
+version: 0.1.0
+description: >
+  One-paragraph description of what this skill does, who triggers it, and the
+  decisive outcome it produces. Replace this paragraph entirely before shipping.
+  Trigger phrases: "{{SKILL_NAME_NO_PREFIX}}", "TODO add primary trigger",
+  "TODO add Polish trigger", "TODO add operator-natural-language trigger".
+---
+
+# {{SKILL_NAME}} — TODO one-line tagline
+
+> Scaffolded {{CREATED_DATE}} via `tools/vc-skill-new.sh`.
+> Replace every TODO marker before opening a PR.
+
+---
+
+## Operator Entry
+
+### Living Tree / Worktree Rule
+
+This workflow runs in the operator's current checkout and current branch. Do not
+create, switch to, or move execution into a git worktree unless the operator
+explicitly asks for one in this prompt. Re-read files before editing, adapt to
+concurrent changes, and report substrate failure if the tree is too poisoned to
+continue safely.
+
+See [Living Tree Rule](../LIVING_TREE_RULE.md).
+
+Standard launcher:
+
+```bash
+vibecrafted start
+vc-{{SKILL_NAME_NO_PREFIX}} claude
+vc-{{SKILL_NAME_NO_PREFIX}} codex --prompt 'TODO concrete operator example'
+```
+
+---
+
+## Purpose
+
+TODO — Replace this section. State the **one** outcome this skill produces.
+Skills exist to compress a recurring operator move into a named, repeatable
+surface. If this section reads like a list of capabilities, narrow it.
+
+The bar from `CONTRIBUTING-SKILLS.md`: one sharp axis, not a Swiss-army knife.
+
+---
+
+## When To Use
+
+Trigger conditions (replace all bullets):
+
+- TODO — primary operator situation where this skill is the right call
+- TODO — secondary situation, if any
+- TODO — explicit non-overlap with existing vc-* skills
+
+**When NOT to use:**
+
+- TODO — adjacent skill that handles a similar-but-distinct situation
+- TODO — situation that should escalate to `vc-implement` or `vc-marbles` instead
+
+---
+
+## Pipeline Position
+
+Where does this fit in the VetCoders workflow chain?
+
+- Upstream: TODO (e.g. follows `vc-init`, runs after `vc-research`)
+- Downstream: TODO (e.g. emits handoff for `vc-release` or `vc-dou`)
+
+---
+
+## Acceptance Criteria
+
+The skill run is **done** when:
+
+- [ ] TODO — concrete, falsifiable check #1
+- [ ] TODO — concrete, falsifiable check #2
+- [ ] TODO — operator-visible deliverable (file, report, commit)
+
+If any acceptance bullet cannot be ticked with evidence, the skill has not
+completed — say so explicitly in the final report.
+
+---
+
+## Anti-Patterns
+
+- TODO — common failure mode #1 (e.g. running this skill before `vc-init`)
+- TODO — common failure mode #2 (e.g. expanding scope beyond the one sharp axis)
+- Skipping the Living Tree re-read before edit when concurrent agents are active
+- Claiming "done" without ticking the acceptance criteria above
+
+---
+
+## Examples
+
+See [`examples/example-prompt.md`](examples/example-prompt.md) for a minimal
+trigger phrase + expected behavior pair.
+
+---
+
+_𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents by VetCoders (c)2024-2026 LibraxisAI_

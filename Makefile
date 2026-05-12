@@ -10,7 +10,7 @@ SOURCE   := $(CURDIR)
 BRANCH   ?= main
 VERSION_FILE := VERSION
 
-.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall demo demo-full commit-safe test-race-protection
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall demo demo-full commit-safe test-race-protection skill-new
 
 help:
 	@printf "\n"
@@ -39,6 +39,7 @@ help:
 	@printf "  \033[32m✓\033[0m  make test-race-protection \033[2mVerify Living Tree commit race detection helper\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
 	@printf "  \033[32m◆\033[0m  make commit-safe MSG=\"...\" FILES=\"...\" \033[2mRace-protected commit under concurrent agent activity\033[0m\n"
+	@printf "  \033[32m◆\033[0m  make skill-new NAME=vc-<name> \033[2mScaffold a new vc-* skill from skills/_template/\033[0m\n"
 	@printf "  \033[32m◇\033[0m  make version-show  \033[2mShow VERSION and release tag state\033[0m\n"
 	@printf "  \033[32m↟\033[0m  make version-bump VERSION=X \033[2mBump VERSION; X={patch|minor|major|x.y.z}\033[0m\n"
 	@printf "\n"
@@ -284,3 +285,22 @@ commit-safe:
 
 test-race-protection:
 	@bash tests/race_protection_test.sh
+
+# -----------------------------------------------------------------------------
+# Plan 04 — skill-authoring scaffolder.
+#
+# `make skill-new NAME=vc-my-skill` wraps tools/vc-skill-new.sh. The script
+# enforces name validation (vc- prefix, lowercase, no collisions) and copies
+# skills/_template/ with placeholder substitution. See
+# docs/CONTRIBUTING-SKILLS.md for the full operator authoring guide.
+# -----------------------------------------------------------------------------
+
+skill-new:
+	@if [ -z "$(NAME)" ]; then \
+		echo "usage: make skill-new NAME=vc-<skill-name>" >&2; \
+		echo "" >&2; \
+		echo "Scaffold a new vc-* skill from skills/_template/." >&2; \
+		echo "See docs/CONTRIBUTING-SKILLS.md for the authoring guide." >&2; \
+		exit 2; \
+	fi
+	@bash tools/vc-skill-new.sh "$(NAME)"

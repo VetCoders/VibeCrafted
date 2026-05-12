@@ -290,6 +290,95 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# Phase 7 — scaffolder (Plan 04) positive + negative
+#
+# Verifies tools/vc-skill-new.sh:
+#   (a) scaffolds a temp skill whose SKILL.md passes the same frontmatter
+#       check as every shipped skill,
+#   (b) rejects an invalid name with nonzero exit and emits no skill dir.
+#
+# The skill_loader_smoke phase-1 glob is `skills/vc-*/` — that means the
+# `skills/_template/` scaffold source is auto-skipped (it does not match
+# the prefix). The phase below is the explicit gate on the scaffolder
+# tooling itself rather than on its output as cargo-cult.
+# -----------------------------------------------------------------------------
+
+printf '\n%s\n' "$(dim '─── phase 7: scaffolder (vc-skill-new.sh) ───')"
+
+SCAFFOLDER="$REPO_ROOT/tools/vc-skill-new.sh"
+SCAFFOLD_TEMPLATE_DIR="$SKILLS_DIR/_template"
+
+if [[ ! -x "$SCAFFOLDER" ]]; then
+  log_fail "scaffolder: $SCAFFOLDER missing or not executable"
+elif [[ ! -d "$SCAFFOLD_TEMPLATE_DIR" ]]; then
+  log_fail "scaffolder: template missing at $SCAFFOLD_TEMPLATE_DIR"
+else
+  # Pick a unique throwaway name. Suffix uses $$ + epoch so concurrent
+  # smoke runs don't collide.
+  SCAFFOLD_TMP_NAME="vc-smoke-tmp-$$-$(date +%s)"
+  SCAFFOLD_TMP_DIR="$SKILLS_DIR/$SCAFFOLD_TMP_NAME"
+
+  # Cleanup: always remove the scaffolded throwaway, even on early exit.
+  cleanup_scaffold_tmp() {
+    if [[ -d "$SCAFFOLD_TMP_DIR" ]]; then
+      rm -rf "$SCAFFOLD_TMP_DIR"
+    fi
+  }
+  # Chain the cleanup onto the existing trap target (doctor log) so neither
+  # handler clobbers the other.
+  trap 'rm -f "$doctor_log"; cleanup_scaffold_tmp' EXIT
+
+  # (a) Positive path: scaffold + verify frontmatter parses.
+  if scaffold_output="$("$SCAFFOLDER" "$SCAFFOLD_TMP_NAME" 2>&1)"; then
+    if [[ -f "$SCAFFOLD_TMP_DIR/SKILL.md" ]]; then
+      if reason="$(check_frontmatter "$SCAFFOLD_TMP_DIR/SKILL.md" 2>&1 >/dev/null)"; then
+        log_pass "scaffolder: scaffolded $SCAFFOLD_TMP_NAME and SKILL.md frontmatter valid"
+      else
+        log_fail "scaffolder: scaffolded SKILL.md failed frontmatter check: $reason"
+      fi
+      # Verify placeholders were substituted (no stray '{{' tokens left).
+      if grep -rq '{{' "$SCAFFOLD_TMP_DIR" 2>/dev/null; then
+        log_fail "scaffolder: placeholders remain in $SCAFFOLD_TMP_NAME — substitution incomplete"
+      else
+        log_pass "scaffolder: all placeholders substituted in $SCAFFOLD_TMP_NAME"
+      fi
+    else
+      log_fail "scaffolder: positive path reported success but $SCAFFOLD_TMP_DIR/SKILL.md missing"
+      printf '%s\n' "$scaffold_output" | sed 's/^/    /'
+    fi
+  else
+    log_fail "scaffolder: positive path failed unexpectedly (exit=$?)"
+    printf '%s\n' "$scaffold_output" | sed 's/^/    /'
+  fi
+
+  # (b) Negative path: invalid name must exit nonzero and leave no dir.
+  BAD_NAME="not-vc-prefix-$$"
+  if "$SCAFFOLDER" "$BAD_NAME" >/dev/null 2>&1; then
+    log_fail "scaffolder: invalid name '$BAD_NAME' was ACCEPTED — validator is broken"
+    # Defensive cleanup if the validator silently created the dir.
+    rm -rf "${SKILLS_DIR:?}/${BAD_NAME:?}" 2>/dev/null || true
+  else
+    if [[ -e "$SKILLS_DIR/$BAD_NAME" ]]; then
+      log_fail "scaffolder: rejected '$BAD_NAME' but created a stray dir anyway"
+      rm -rf "${SKILLS_DIR:?}/${BAD_NAME:?}" 2>/dev/null || true
+    else
+      log_pass "scaffolder: invalid name '$BAD_NAME' correctly rejected, no stray dir"
+    fi
+  fi
+
+  # (c) Collision path: scaffolding the same name twice must fail the
+  # second time without touching the first scaffolded copy.
+  if "$SCAFFOLDER" "$SCAFFOLD_TMP_NAME" >/dev/null 2>&1; then
+    log_fail "scaffolder: collision on existing skill '$SCAFFOLD_TMP_NAME' was ACCEPTED"
+  else
+    log_pass "scaffolder: collision on existing skill '$SCAFFOLD_TMP_NAME' correctly rejected"
+  fi
+
+  # Tear down the throwaway so the next smoke run starts clean.
+  cleanup_scaffold_tmp
+fi
+
+# -----------------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------------
 
