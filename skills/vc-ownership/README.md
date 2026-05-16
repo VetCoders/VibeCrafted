@@ -45,5 +45,5 @@ This skill often composes with:
 
 ## Files
 
-- `SKILL.md` — canonical instructions
+- `SKILL.md` — default instructions
 - `README.md` — quick orientation

@@ -172,7 +172,7 @@ Legend: `(.)` = `vibecrafted/` (framework engine) · `(io)` = `../vibecrafted-io
 #### 01. polarize-identity-icp-dou-template — `(both)`
 
 `/vc-polarize` over the 5 framings in §3. Emit decision-of-record:
-`docs/POLARIZE_v2.md` in both repos (canonical in `vibecrafted/`, cross-link
+`docs/POLARIZE_v2.md` in both repos (default in `vibecrafted/`, cross-link
 in `vibecrafted-io/docs/roadmap/`). Output:
 
 - Primary axis (one of 5 framings or a synthesis)
@@ -421,7 +421,7 @@ sanitization regex coverage.
 6 layouts shipped (research, workflow, marbles, dashboard, operator + one
 more per kronika). v2: add AICX status tap (live count of in-progress agent
 sessions per workstation) + drift indicator (loctree snapshot age across
-panes) + canonical color scheme per workstation host (dragon=red, sztudio=purple,
+panes) + default color scheme per workstation host (dragon=red, sztudio=purple,
 silver=cyan, div0=green — kronika 2026-05-05 mesh-aware identity).
 
 **Files:** `config/zellij/layouts/*.kdl` (refresh each); `config/zellij/aicx-status.sh` (NEW status bar plugin); `config/zellij/themes/vetcoders-mesh.kdl` (NEW).
@@ -466,7 +466,7 @@ scanlines (kronika 2026-04 doctrine).
 
 #### 14. manifesto-bilingual-en-pl-unified — `(io)`
 
-`vibecrafted/docs/THE_VIBE_HANGOVER.md` is the canonical EN manifesto. PL
+`vibecrafted/docs/THE_VIBE_HANGOVER.md` is the default EN manifesto. PL
 translation partial in `vibecrafted-io/pl/`. Unify both into a single
 public-facing `/manifesto` route in vibecrafted-io with language toggle. Add
 CTA to install (`https://loct.io/install.sh` per BRAND.md).
@@ -838,7 +838,7 @@ Per the audit-22 inheritance pattern, every plan in this roadmap closes at
    pytest `-q`, pnpm `run check`.
 5. **Living Tree etiquette:** appended fields on shared structs; re-read
    before edit; commit per task with operator-honest message; no Co-Authored-By
-   `noreply@anthropic.com`; canonical signature per CLAUDE.md.
+   `noreply@anthropic.com`; default signature per CLAUDE.md.
 6. **Non-goals respected.** The fix does not silently add other surface.
 7. **Report** in `.vibecrafted/reports/<repo>/<plan-id>-<name>.md` with
    findings + verification log + recommended follow-ups.

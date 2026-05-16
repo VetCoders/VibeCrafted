@@ -34,7 +34,7 @@ See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
 Before this workflow performs repo-specific analysis, planning, implementation, review, release, or delegation, it MUST run or consume the `vc-init` procedure for the assigned repo. If fresh `vc-init` evidence is absent, perform the init pass first and treat workflow-specific work as blocked until repo truth exists.
 
-`Loctree:loctree` is the canonical structural perception skill for that pass. Use Loctree before grep or docs-driven claims to produce or refresh the Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant. Search for existing symbols and contracts before creating new ones; run impact before delete or major refactor; run slice before editing.
+`Loctree:loctree` is the default structural perception skill for that pass. Use Loctree before grep or docs-driven claims to produce or refresh the Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant. Search for existing symbols and contracts before creating new ones; run impact before delete or major refactor; run slice before editing.
 
 The point is to find the hooks: load-bearing hubs, twins, dead code, drift, runtime entrypoints, and blast-radius traps. If the task is explicitly non-repo or no-code, state the no-repo exception in the report. Otherwise, missing `vc-init`/Loctree evidence is a process failure.
 
@@ -103,6 +103,29 @@ Also use it when the request clearly spans multiple layers at once:
 - backend + desktop + browser flows
 - feature + docs + packaging
 - product shell + agent workflow + testing surface
+
+### Cross-reference: when ownership becomes multi-dispatch
+
+`vc-ownership` is **solo-thread** delivery: one feature, one branch,
+push-ready as the stop point. When the task grows into a multi-prompt
+chain across multiple agents (wave A → B → C → D, AGENT FAIRNESS
+rotation, recovery dispatch, await-via-notify), the charter shifts to
+`vc-operator`.
+
+Signals that the work has outgrown ownership and wants operator-mode:
+
+- the operator hands you a master dispatch plan (10+ prompt bodies)
+- the work spans 4+ branches that need wave-shaped merge coordination
+- you'd be firing 3+ peer-tier agents and synthesising their reports
+- the operator says _"orchestrate the rest"_, _"prowadź fleet"_,
+  _"dirygentura"_, or hands over `vc-deliveries/` materials
+
+When the shift happens, load [`../vc-operator/SKILL.md`](../vc-operator/SKILL.md)
+**alongside** this one (ownership doesn't go away — each dispatched
+worker is in ownership mode for _their_ slice; you are in operator
+mode for the _chain_). See [`../vc-operator/FRAME.md`](../vc-operator/FRAME.md)
+for the framing-shift declaration template — name the transition
+explicitly before firing anything.
 
 ## Default Behavior
 
