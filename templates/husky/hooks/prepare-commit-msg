@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# vibecrafted-husky-template :: prepare-commit-msg
+#
+# Appends a Vibecrafted-Warn-Signature trailer if pre-commit ran in WARN mode
+# and demoted a failure. Allows reviewers (and grep) to spot warned commits.
+#
+# Vibecrafted with AI Agents by VetCoders (c)2024-2026 LibraxisAI
+
+set -euo pipefail
+
+HUSKY_LIB="${BASH_SOURCE[0]%/*}/lib"
+# shellcheck disable=SC1090,SC1091
+. "$HUSKY_LIB/core.sh"
+husky_init
+
+MSG_FILE="$1"
+COMMIT_SOURCE="${2:-}"
+
+# Skip during merge / amend / message / template / squash / cherry-pick.
+case "$COMMIT_SOURCE" in
+  merge|squash|commit|message|template) exit 0 ;;
+esac
+
+latest_warn="$(ls -1t "$(husky_warns_dir)"/pre-commit-*.log 2>/dev/null | head -1 || true)"
+[ -z "$latest_warn" ] && exit 0
+
+sig="$(grep '^signature=' "$latest_warn" | head -1 | cut -d= -f2-)"
+when="$(grep '^captured_at=' "$latest_warn" | head -1 | cut -d= -f2-)"
+head_sha="$(grep '^git_head=' "$latest_warn" | head -1 | cut -d= -f2-)"
+
+[ -z "$sig" ] && exit 0
+
+# Don't duplicate if already present (amend / edit re-runs).
+if grep -q "^Vibecrafted-Warn-Signature: $sig$" "$MSG_FILE" 2>/dev/null; then
+  exit 0
+fi
+
+{
+  echo ""
+  echo "Vibecrafted-Warn-Signature: $sig"
+  echo "Vibecrafted-Warn-Captured-At: $when"
+  echo "Vibecrafted-Warn-Head: $head_sha"
+} >> "$MSG_FILE"
+exit 0
