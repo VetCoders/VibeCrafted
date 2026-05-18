@@ -650,9 +650,39 @@ _find_convergence_report() {
   return 1
 }
 
+_wait_for_convergence_report() {
+  local attempts="$1"
+  local backoff_s="$2"
+  local backoff_max_s="$3"
+  local attempt=1
+  local delay="$backoff_s"
+
+  if _find_convergence_report >/dev/null; then
+    return 0
+  fi
+
+  while (( attempt <= attempts )); do
+    (( delay > 0 )) && sleep "$delay"
+    if _find_convergence_report >/dev/null; then
+      return 0
+    fi
+    (( delay > 0 )) || delay=1
+    delay=$((delay * 2))
+    if (( backoff_max_s > 0 && delay > backoff_max_s )); then
+      delay="$backoff_max_s"
+    fi
+    ((attempt++))
+  done
+
+  return 1
+}
+
 _write_reception_convergence_guard() {
   local observed_status="$1"
   local reason="$2"
+  local fallback_attempts="${3:-0}"
+  local backoff_initial_s="${4:-0}"
+  local backoff_max_s="${5:-0}"
   local convergence="$store/reports/$(spawn_timestamp)_marbles-$(spawn_slug_from_path "$ancestor_plan")_CONVERGENCE.md"
   local agent_name=""
 
@@ -666,6 +696,15 @@ agent: $agent_name
 status: FAILED
 observed_status: $observed_status
 reason: $reason
+guard: pani_krysia
+guard_kind: reception_guard
+failure_kind: missing_convergence_handoff
+effect: guard_failure
+guard_policy: convergence_handoff_backoff_v1
+fallback_attempts: $fallback_attempts
+backoff_initial_s: $backoff_initial_s
+backoff_max_s: $backoff_max_s
+failover: reception_guard_failure_report
 total_loops: $total_count
 god_plan: $god_plan
 ancestor_plan: $ancestor_plan
@@ -677,6 +716,12 @@ Reception guard observed terminal watcher status without a convergence report.
 
 - Observed watcher status: $observed_status
 - Reason: $reason
+- Guard: Pani Krysia
+- Failure kind: missing_convergence_handoff
+- Policy: convergence_handoff_backoff_v1
+- Fallback attempts: $fallback_attempts
+- Backoff: ${backoff_initial_s}s initial, ${backoff_max_s}s max
+- Failover: reception_guard_failure_report
 - Effect: the run is treated as failed until the missing convergence handoff is explained
 - GOD: $god_plan
 - ANCESTOR: $ancestor_plan
@@ -1158,18 +1203,41 @@ else
 fi
 
 if [[ -n "$terminal_status" ]]; then
-  convergence_grace_s="${VIBECRAFTED_MARBLES_CONVERGENCE_GRACE_S:-2}"
-  case "$convergence_grace_s" in
+  convergence_grace_s="${VIBECRAFTED_MARBLES_CONVERGENCE_GRACE_S:-}"
+  convergence_attempts="${VIBECRAFTED_MARBLES_CONVERGENCE_ATTEMPTS:-4}"
+  convergence_backoff_s="${VIBECRAFTED_MARBLES_CONVERGENCE_BACKOFF_S:-1}"
+  convergence_backoff_max_s="${VIBECRAFTED_MARBLES_CONVERGENCE_BACKOFF_MAX_S:-8}"
+
+  # Backward compatibility: the old single-grace knob remains a deterministic
+  # one-shot policy when explicitly set by tests/operators.
+  if [[ -n "$convergence_grace_s" ]]; then
+    convergence_attempts=1
+    convergence_backoff_s="$convergence_grace_s"
+  fi
+
+  case "$convergence_attempts" in
     ''|*[!0-9]*)
-      convergence_grace_s=2
+      convergence_attempts=4
       ;;
   esac
-  if ! _find_convergence_report >/dev/null; then
-    (( convergence_grace_s > 0 )) && sleep "$convergence_grace_s"
-  fi
-  if ! _find_convergence_report >/dev/null; then
+  case "$convergence_backoff_s" in
+    ''|*[!0-9]*)
+      convergence_backoff_s=1
+      ;;
+  esac
+  case "$convergence_backoff_max_s" in
+    ''|*[!0-9]*)
+      convergence_backoff_max_s=8
+      ;;
+  esac
+  if ! _wait_for_convergence_report "$convergence_attempts" "$convergence_backoff_s" "$convergence_backoff_max_s"; then
     guard_reason="missing_convergence_after_${terminal_status}"
-    _write_reception_convergence_guard "$terminal_status" "$guard_reason"
+    _write_reception_convergence_guard \
+      "$terminal_status" \
+      "$guard_reason" \
+      "$convergence_attempts" \
+      "$convergence_backoff_s" \
+      "$convergence_backoff_max_s"
     terminal_status="failed"
   fi
 fi
@@ -1186,7 +1254,8 @@ if command -v python3 >/dev/null 2>&1 && [[ -f "$state_file" ]]; then
   if (( verification_grace_s > 0 )); then
     sleep "$verification_grace_s"
   fi
-  python3 - "$state_file" <<'PY'
+  if [[ -f "$state_file" ]]; then
+    python3 - "$state_file" <<'PY'
 import json
 import sys
 
@@ -1212,6 +1281,9 @@ if timed:
     parts.append(f"{timed} timed out")
 print(", ".join(parts) if parts else "none tracked")
 PY
+  else
+    printf 'state archived before verification summary'
+  fi
 fi
 
 printf '\n  lock released: %s\n' "$run_id"

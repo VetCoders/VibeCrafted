@@ -1254,6 +1254,7 @@ def test_marbles_watcher_waits_for_meta_completion_before_advancing(
 
     events = _load_spawn_events(capture_file)
     assert len(events) == 2
+    assert [event["loop"] for event in events] == [1, 2]
     assert all(event["suppress_report_hint"] == "1" for event in events)
 
     meta_paths = list((crafted_home / "artifacts").rglob("*.meta.json"))
@@ -1441,7 +1442,10 @@ def test_marbles_watcher_reception_guard_flags_missing_convergence(
     env["VIBECRAFTED_HOME"] = str(crafted_home)
     env["MARBLES_SPAWN_CAPTURE"] = str(capture_file)
     env["VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S"] = "0"
-    env["VIBECRAFTED_MARBLES_CONVERGENCE_GRACE_S"] = "0"
+    env.pop("VIBECRAFTED_MARBLES_CONVERGENCE_GRACE_S", None)
+    env["VIBECRAFTED_MARBLES_CONVERGENCE_ATTEMPTS"] = "3"
+    env["VIBECRAFTED_MARBLES_CONVERGENCE_BACKOFF_S"] = "0"
+    env["VIBECRAFTED_MARBLES_CONVERGENCE_BACKOFF_MAX_S"] = "0"
     env["MARBLES_TEST_SKIP_SUCCESS_HOOK_LOOP"] = "1"
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_PANE_ID", None)
@@ -1484,10 +1488,19 @@ def test_marbles_watcher_reception_guard_flags_missing_convergence(
     convergence = convergence_reports[0].read_text(encoding="utf-8")
     assert "status: FAILED" in convergence
     assert "reason: missing_convergence_after_completed" in convergence
+    assert "guard: pani_krysia" in convergence
+    assert "guard_kind: reception_guard" in convergence
+    assert "failure_kind: missing_convergence_handoff" in convergence
+    assert "guard_policy: convergence_handoff_backoff_v1" in convergence
+    assert "fallback_attempts: 3" in convergence
+    assert "backoff_initial_s: 0" in convergence
+    assert "failover: reception_guard_failure_report" in convergence
     assert (
         "Reception guard observed terminal watcher status without a convergence report"
         in convergence
     )
+    assert "- Guard: Pani Krysia" in convergence
+    assert "- Policy: convergence_handoff_backoff_v1" in convergence
 
 
 def test_marbles_verification_poll_survives_watcher_exit_without_job_noise(

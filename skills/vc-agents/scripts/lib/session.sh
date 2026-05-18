@@ -167,6 +167,13 @@ spawn_prepare_paths() {
   local lock_file=""
   local discovered_session=""
   local ambient_store_root="${VIBECRAFTED_STORE_ROOT:-${SPAWN_ROOT:-}}"
+  local requested_loop_nr="${VIBECRAFTED_LOOP_NR:-${SPAWN_LOOP_NR:-0}}"
+
+  case "$requested_loop_nr" in
+    ''|*[!0-9]*)
+      requested_loop_nr=0
+      ;;
+  esac
 
   if [[ -n "$root" ]]; then
     SPAWN_ROOT="$(spawn_abspath "$root")"
@@ -192,12 +199,7 @@ spawn_prepare_paths() {
     SPAWN_SKILL_CODE="$(spawn_skill_prefix "$skill_name")"
   fi
   SPAWN_SKILL_NAME="$skill_name"
-  SPAWN_LOOP_NR="${VIBECRAFTED_LOOP_NR:-0}"
-  case "$SPAWN_LOOP_NR" in
-    ''|*[!0-9]*) 
-      SPAWN_LOOP_NR=0
-      ;;
-  esac
+  SPAWN_LOOP_NR="$requested_loop_nr"
   SPAWN_RUN_ID="$(spawn_effective_run_id 2>/dev/null || true)"
   if [[ -n "$SPAWN_RUN_ID" ]]; then
     : 

@@ -149,6 +149,69 @@ def test_runtime_prompt_guards_report_path_from_bare_slash(tmp_path: Path) -> No
     assert f"\n{report_path}\n" not in payload
 
 
+def test_spawn_prepare_paths_preserves_loop_nr_before_ambient_cleanup(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    plan = tmp_path / "plan.md"
+    bogus_lock = tmp_path / "bogus.lock"
+    home.mkdir()
+    crafted_home.mkdir(parents=True)
+    plan.write_text("# Loop\n", encoding="utf-8")
+    bogus_lock.write_text("", encoding="utf-8")
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export HOME="{home}"
+        export VIBECRAFTED_HOME="{crafted_home}"
+        export SPAWN_LOOP_NR=2
+        export VIBECRAFTED_LOOP_NR=2
+        export VIBECRAFTED_RUN_ID=marb-test-002
+        export VIBECRAFTED_RUN_LOCK="{bogus_lock}"
+        spawn_prepare_paths codex "{plan}" "{REPO_ROOT}" implement
+        printf '%s\n' "$SPAWN_LOOP_NR"
+        '''
+    )
+
+    assert result.stdout.strip() == "2"
+
+
+def test_generated_launcher_preserves_marbles_watcher_mode(tmp_path: Path) -> None:
+    launcher = tmp_path / "launch.sh"
+    meta = tmp_path / "run.meta.json"
+    report = tmp_path / "report.md"
+    transcript = tmp_path / "transcript.log"
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_ROOT="{REPO_ROOT}"
+        export SPAWN_AGENT=codex
+        export SPAWN_PROMPT_ID=prompt
+        export SPAWN_RUN_ID=marb-test-002
+        export SPAWN_RUN_LOCK="{tmp_path / "marb-test.lock"}"
+        export SPAWN_LOOP_NR=2
+        export SPAWN_SKILL_CODE=marb
+        export SPAWN_SKILL_NAME=marbles
+        export VIBECRAFTED_MARBLES_WATCHER=1
+        export VIBECRAFTED_MARBLES_TAB_NAME=marbles-marb-test
+        export VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right
+        spawn_generate_launcher "{launcher}" "{meta}" "{report}" "{transcript}" "{COMMON_SH}" "true"
+        grep -E 'SPAWN_LOOP_NR|VIBECRAFTED_MARBLES_WATCHER' "{launcher}"
+        '''
+    )
+
+    assert "export SPAWN_LOOP_NR=2" in result.stdout
+    assert (
+        "export VIBECRAFTED_MARBLES_WATCHER=${VIBECRAFTED_MARBLES_WATCHER:-1}"
+        in result.stdout
+    )
+
+
 def test_runtime_prompt_includes_vc_agents_worker_charter(tmp_path: Path) -> None:
     source_file = tmp_path / "source.md"
     runtime_file = tmp_path / "runtime.md"

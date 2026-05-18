@@ -758,6 +758,7 @@ _launch_next_loop() {
   fi
 
   VIBECRAFTED_LOOP_NR="$loop_nr" \
+  SPAWN_LOOP_NR="$loop_nr" \
   VIBECRAFTED_RUN_ID="$loop_run_id" \
   VIBECRAFTED_SKILL_CODE="marb" \
   VIBECRAFTED_SKILL_NAME="marbles" \
