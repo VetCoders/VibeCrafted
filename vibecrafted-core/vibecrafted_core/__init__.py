@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from .control_plane import (
     RunStatus,
+    await_run,
     control_plane_home,
     event_stream_path,
+    lookup_run,
     read_event_tail,
     run_snapshot_dir,
     sync_state,
@@ -67,6 +69,7 @@ __all__ = [
     "ProfileSpec",
     "RunStatus",
     "WorkflowLaunchSpec",
+    "await_run",
     "block_end",
     "block_start",
     "build_launch_command",
@@ -88,6 +91,7 @@ __all__ = [
     "install_profiles",
     "invalidate_buttons",
     "launch_workflow",
+    "lookup_run",
     "normalize_launch_spec",
     "post_notification",
     "progress",
