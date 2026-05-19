@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/common.sh"
 
 usage() {
   cat <<'EOF_USAGE'
-Usage: await.sh [claude|codex|gemini] [--last] [--run-id <id>] [--research] [--describe] [--interval <sec>] [--timeout <sec>] [targets...]
+Usage: await.sh [claude|codex|gemini] [--last] [--run-id <id>] [--research] [--describe] [--interval <sec>] [--timeout <sec>] [--startup-grace <sec>] [targets...]
 
 Targets may be:
   - *.meta.json
@@ -36,13 +36,15 @@ import os
 import shlex
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 def usage() -> None:
     print(
         "Usage: await.sh [claude|codex|gemini] [--last] [--run-id <id>] "
-        "[--research] [--describe] [--interval <sec>] [--timeout <sec>] [targets...]"
+        "[--research] [--describe] [--interval <sec>] [--timeout <sec>] "
+        "[--startup-grace <sec>] [targets...]"
     )
 
 
@@ -54,6 +56,7 @@ research_mode = False
 run_id = ""
 interval = 30
 timeout = 0
+startup_grace = int(os.environ.get("VIBECRAFTED_AWAIT_STARTUP_GRACE", "90") or "90")
 targets: list[str] = []
 
 i = 0
@@ -85,6 +88,12 @@ while i < len(argv):
             print("Missing value for --timeout", file=sys.stderr)
             sys.exit(1)
         timeout = max(int(argv[i]), 0)
+    elif arg == "--startup-grace":
+        i += 1
+        if i >= len(argv):
+            print("Missing value for --startup-grace", file=sys.stderr)
+            sys.exit(1)
+        startup_grace = max(int(argv[i]), 0)
     elif arg in {"-h", "--help", "help"}:
         usage()
         sys.exit(0)
@@ -138,7 +147,7 @@ def backfill_from_meta(descriptor: dict[str, str]) -> dict[str, str]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return descriptor
-    for key in ("agent", "status", "mode", "model", "input", "report", "transcript", "launcher", "exit_code", "updated_at", "run_id"):
+    for key in ("agent", "status", "mode", "model", "input", "report", "transcript", "launcher", "exit_code", "updated_at", "run_id", "launcher_pid", "liveness"):
         value = data.get(key)
         if value is None:
             continue
@@ -194,6 +203,34 @@ def load_meta(path: Path):
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def is_empty(value: object) -> bool:
+    return value in (None, "", "None", "null")
+
+
+def meta_age_seconds(item: dict[str, str]) -> float:
+    updated_at = item.get("updated_at", "")
+    if updated_at:
+        try:
+            updated_dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            if updated_dt.tzinfo is None:
+                updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+            return max(0.0, (datetime.now(timezone.utc) - updated_dt.astimezone(timezone.utc)).total_seconds())
+        except ValueError:
+            pass
+    meta_path = item.get("meta", "")
+    if meta_path and Path(meta_path).is_file():
+        return max(0.0, time.time() - Path(meta_path).stat().st_mtime)
+    return 0.0
+
+
+def transcript_empty(item: dict[str, str]) -> bool:
+    transcript = item.get("transcript", "")
+    if not transcript:
+        return True
+    path = Path(transcript)
+    return not path.is_file() or path.stat().st_size == 0
 
 
 def descriptors_for_last() -> list[dict[str, str]]:
@@ -264,6 +301,62 @@ def print_card(items: list[dict[str, str]]) -> None:
                 print(f"  {key:10s} {value}")
 
 
+def heartbeat_line(item: dict[str, str]) -> str:
+    return (
+        "heartbeat "
+        f"run_id={item.get('run_id', '-') or '-'} "
+        f"status={item.get('status', '-') or '-'} "
+        f"liveness={item.get('liveness', '-') or '-'} "
+        f"updated_at={item.get('updated_at', '-') or '-'} "
+        f"report={item.get('report', '-') or '-'} "
+        f"transcript={item.get('transcript', '-') or '-'}"
+    )
+
+
+def print_heartbeat(items: list[dict[str, str]]) -> None:
+    for item in items:
+        print(heartbeat_line(item), flush=True)
+
+
+def false_launched(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    stale: list[dict[str, str]] = []
+    live_statuses = {"launching", "running", "in-progress"}
+    for item in items:
+        current = backfill_from_meta(dict(item))
+        if current.get("status") not in live_statuses:
+            continue
+        if current.get("exit_code", "") not in {"", "None", "null"}:
+            continue
+        launcher_pid = current.get("launcher_pid", "")
+        liveness = current.get("liveness", "")
+        if not (is_empty(launcher_pid) or liveness == "pid_pending"):
+            continue
+        if not transcript_empty(current):
+            continue
+        if meta_age_seconds(current) < startup_grace:
+            continue
+        stale.append(current)
+    return stale
+
+
+def print_false_launch(items: list[dict[str, str]]) -> None:
+    print("Detected false-launched run: launch metadata exists but no worker became observable.", file=sys.stderr)
+    for item in items:
+        run = item.get("run_id", "-") or "-"
+        meta = item.get("meta", "-") or "-"
+        launcher = item.get("launcher", "") or ""
+        print(f"run_id={run} status={item.get('status', '-') or '-'} liveness={item.get('liveness', '-') or '-'} updated_at={item.get('updated_at', '-') or '-'}", file=sys.stderr)
+        print(f"meta={meta}", file=sys.stderr)
+        if item.get("report"):
+            print(f"report={item['report']}", file=sys.stderr)
+        if item.get("transcript"):
+            print(f"transcript={item['transcript']}", file=sys.stderr)
+        if launcher:
+            print(f"Recovery: bash {shlex.quote(launcher)}", file=sys.stderr)
+        else:
+            print("Recovery: launcher path unavailable in metadata; inspect the meta path above.", file=sys.stderr)
+
+
 def all_completed(items: list[dict[str, str]]) -> tuple[bool, list[dict[str, str]]]:
     resolved: list[dict[str, str]] = []
     for item in items:
@@ -294,6 +387,11 @@ if not items:
 while True:
     items = resolve_descriptors()
     if items:
+        print_heartbeat([backfill_from_meta(dict(item)) for item in items])
+        false_launches = false_launched(items)
+        if false_launches:
+            print_false_launch(false_launches)
+            sys.exit(2)
         done, resolved = all_completed(items)
         if done:
             print_card(resolved)
