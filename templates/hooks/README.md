@@ -64,12 +64,12 @@ Re-run is idempotent — existing `.husky/config.env`, `lefthook.yml`,
 
 ## Picking an activator
 
-| Activator      | Best fit                                                                                | Install                                    |
-| -------------- | --------------------------------------------------------------------------------------- | ------------------------------------------ |
-| **lefthook**   | Polyglot repos (Rust+TS, Python+TS, mixed).                                             | `brew install lefthook`                    |
-| **husky**      | TS/JS repos that already use npm/pnpm/yarn.                                             | `pnpm add -D husky && pnpm exec husky`     |
-| **pre-commit** | Python-first repos, repos consuming the huge ready-made hooks ecosystem.                | `pip install pre-commit` / `brew install …` |
-| **manual**     | Tiny repos without a package manager.                                                   | (nothing — installer sets `core.hooksPath`) |
+| Activator      | Best fit                                                                 | Install                                     |
+| -------------- | ------------------------------------------------------------------------ | ------------------------------------------- |
+| **lefthook**   | Polyglot repos (Rust+TS, Python+TS, mixed).                              | `brew install lefthook`                     |
+| **husky**      | TS/JS repos that already use npm/pnpm/yarn.                              | `pnpm add -D husky && pnpm exec husky`      |
+| **pre-commit** | Python-first repos, repos consuming the huge ready-made hooks ecosystem. | `pip install pre-commit` / `brew install …` |
+| **manual**     | Tiny repos without a package manager.                                    | (nothing — installer sets `core.hooksPath`) |
 
 All four activators run the **same** hook scripts in `.husky/` — the
 choice only affects how git discovers them and how new contributors get

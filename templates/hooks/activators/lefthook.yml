@@ -30,7 +30,7 @@ skip_output:
 # pre-commit — stage-scoped gates
 # ---------------------------------------------------------------------------
 pre-commit:
-  parallel: false   # template runs steps sequentially (lint-staged ordering)
+  parallel: false # template runs steps sequentially (lint-staged ordering)
   commands:
     template:
       run: bash .husky/pre-commit
