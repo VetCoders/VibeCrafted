@@ -6,6 +6,8 @@ Source of truth for `RUNNER.md` step 4. Pick `recommended_agent` by lookup:
 `(task_kind, sensitivity)` -> ranked agents. Then write the selected agent plus
 one lookup rationale into the dispatch frontmatter. This table routes all three
 frontier peers by strength; Gemini is never excluded because of tooling friction.
+Ranked order is highest-fit first; choose rank 1 unless a sensitivity override
+or honest tie applies.
 
 | task_kind                           | default sensitivity                                                   | ranked agents                | lookup rationale                                                                                                                                                                        |
 | ----------------------------------- | --------------------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
