@@ -21,10 +21,10 @@ layout {
         children
         // Plan 12 — agent-native status row: AICX session counter + loctree drift.
         pane size=1 split_direction="vertical" {
-            pane name="aicx-status" size="50%" borderless=true command="bash" {
+            pane name="aicx-status" size="50%" borderless=true command="bash" start_suspended=false {
                 args "-lc" "for root in \"${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tools/vibecrafted-current/config/zellij\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/config/zellij}\" \"./config/zellij\"; do if [[ -n \"$root\" && -x \"$root/aicx-status.sh\" ]]; then exec \"$root/aicx-status.sh\"; fi; done; printf 'aicx: status helper not found\\n'; sleep 86400"
             }
-            pane name="loctree-drift" size="50%" borderless=true command="bash" {
+            pane name="loctree-drift" size="50%" borderless=true command="bash" start_suspended=false {
                 args "-lc" "for root in \"${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tools/vibecrafted-current/config/zellij\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/config/zellij}\" \"./config/zellij\"; do if [[ -n \"$root\" && -x \"$root/loctree-drift.sh\" ]]; then exec \"$root/loctree-drift.sh\"; fi; done; printf 'loctree: drift helper not found\\n'; sleep 86400"
             }
         }
@@ -36,18 +36,18 @@ layout {
     tab name="𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. MC" {
         pane split_direction="horizontal" {
             pane split_direction="vertical" size="50%" {
-                pane name="agents" focus=true command="bash" {
+                pane name="agents" focus=true command="bash" start_suspended=false {
                     args "-lc" "for root in \"${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/skills/vc-agents\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/.vibecrafted/skills/vc-agents}\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/skills/vc-agents}\" \"./skills/vc-agents\"; do if [[ -n \"$root\" && -x \"$root/scripts/mission-control/active-agents.sh\" ]]; then exec \"$root/scripts/mission-control/active-agents.sh\"; fi; done; printf 'Mission control helper not found: active-agents.sh\\n'; exec /bin/zsh -l"
                 }
-                pane name="transcript" command="bash" {
+                pane name="transcript" command="bash" start_suspended=false {
                     args "-lc" "for root in \"${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/skills/vc-agents\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/.vibecrafted/skills/vc-agents}\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/skills/vc-agents}\" \"./skills/vc-agents\"; do if [[ -n \"$root\" && -x \"$root/scripts/mission-control/live-transcript.sh\" ]]; then exec \"$root/scripts/mission-control/live-transcript.sh\"; fi; done; printf 'Mission control helper not found: live-transcript.sh\\n'; exec /bin/zsh -l"
                 }
             }
             pane split_direction="vertical" size="50%" {
-                pane name="convergence" command="bash" {
+                pane name="convergence" command="bash" start_suspended=false {
                     args "-lc" "for root in \"${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/skills/vc-agents\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/.vibecrafted/skills/vc-agents}\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/skills/vc-agents}\" \"./skills/vc-agents\"; do if [[ -n \"$root\" && -x \"$root/scripts/mission-control/convergence-trend.sh\" ]]; then exec \"$root/scripts/mission-control/convergence-trend.sh\"; fi; done; printf 'Mission control helper not found: convergence-trend.sh\\n'; exec /bin/zsh -l"
                 }
-                pane name="sessions" command="bash" {
+                pane name="sessions" command="bash" start_suspended=false {
                     args "-lc" "for root in \"${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/skills/vc-agents\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/.vibecrafted/skills/vc-agents}\" \"${VIBECRAFTED_ROOT:+$VIBECRAFTED_ROOT/skills/vc-agents}\" \"./skills/vc-agents\"; do if [[ -n \"$root\" && -x \"$root/scripts/mission-control/recent-sessions.sh\" ]]; then exec \"$root/scripts/mission-control/recent-sessions.sh\"; fi; done; printf 'Mission control helper not found: recent-sessions.sh\\n'; exec /bin/zsh -l"
                 }
             }
