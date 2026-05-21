@@ -1,6 +1,6 @@
 ---
 name: vc-operator
-version: 0.1.0
+version: 2.0.0
 description: >
   Agent-Operator charter for multi-dispatch fleet orchestration. Use when the
   agent is not building a single feature solo but conducting a wave of agents
@@ -36,48 +36,40 @@ requires:
 > and `vc-marbles` says **"loop until truth"**, this one says **"I conduct the
 > wave, then I stop at the operator's button."**
 
+**Mandatory entrypoint: read [`./RUNNER.md`](./RUNNER.md) first.** It carries
+the deterministic seven-step sequence. SKILL.md is the directory; RUNNER.md is
+the runbook. Lookups: [`./WHY_MATRIX_TABLE.md`](./WHY_MATRIX_TABLE.md) for
+`(task_kind, sensitivity) → ranked_agents`; [`./DISPATCH_TEMPLATE.md`](./DISPATCH_TEMPLATE.md)
+for the Iter-3 fill-by-placeholder worker dispatch body.
+
+**Framing-shift declaration (one line, before first dispatch):**
+
+```text
+Operator mode active — <plan-name>
+```
+
+Not a template. See [`./FRAME.md`](./FRAME.md) for charter contrasts.
+
 ---
 
 ## Operator Entry
 
-### Living Tree / Worktree Rule
+**Living Tree / Worktree Rule.** Operator mode runs in the operator's current
+checkout and branch. Do not create or switch into a worktree unless the
+operator explicitly asks. Re-read files before editing — other agents may
+push between dispatches. See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
-This workflow runs in the operator's current checkout and current branch. Do
-not create, switch to, or move execution into a git worktree unless the
-operator explicitly asks for one in this prompt. Generic words like "isolate",
-"parallel", or "clean branch" are not enough. Re-read files before editing,
-adapt to concurrent changes (other agents may push between your dispatches),
-and report a substrate failure if the current tree is too poisoned to continue
-safely.
-
-See [Living Tree Rule](../LIVING_TREE_RULE.md).
-
-## Canonical Orientation Gate
-
-Before this workflow performs repo-specific analysis, planning,
-implementation, review, release, or delegation, it MUST run or consume the
-`vc-init` procedure for the assigned repo. If fresh `vc-init` evidence is
-absent, perform the init pass first and treat workflow-specific work as blocked
-until repo truth exists.
-
-`Loctree:loctree` is the default structural perception skill for that pass.
-Use Loctree before grep or docs-driven claims to produce or refresh the
-Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow
-as relevant. Search for existing symbols and contracts before creating new
-ones; run impact before delete or major refactor; run slice before editing.
-
-The point is to find the hooks: load-bearing hubs, twins, dead code, drift,
-runtime entrypoints, and blast-radius traps. If the task is explicitly
-non-repo or no-code, state the no-repo exception in the report. Otherwise,
-missing `vc-init`/Loctree evidence is a process failure.
+**Canonical Orientation Gate.** Operator mode requires fresh `vc-init`
+evidence and a `Loctree:loctree` structural pass before dispatching anything.
+Missing init evidence is a process failure. RUNNER.md step 1 absorbs the
+perception pass; see [`./RUNNER.md`](./RUNNER.md).
 
 Standard launcher:
 
 ```bash
 vibecrafted start
 vc-operator claude --file '/path/to/master-dispatch.md'
-vc-operator codex  --prompt 'Conduct the TextForge Wave B chain to green commits'
-vc-operator gemini --prompt 'Run Wave C — topbar + statusbar + diacritics in parallel'
+vc-operator codex  --prompt 'Conduct Wave B to green commits'
 ```
 
 ---
@@ -85,158 +77,123 @@ vc-operator gemini --prompt 'Run Wave C — topbar + statusbar + diacritics in p
 ## Purpose
 
 Use this skill when the agent has been promoted from **doing one slice** to
-**conducting a plan**. The operator already chose the plan (often via
-`vc-scaffold` or by handing over a `master-dispatch.md`). Your job is not to
-re-litigate the plan — it is to:
-
-- send waves of agents (peer-tier, AGENT FAIRNESS) through the planned chain
-- read every report, verify every gate, decide every next-wave shape
-- call recovery dispatch when a wave stalls — never restart blindly
-- keep the operator's hands on the steering wheel: never push, never merge,
-  never invent scope, never invoke external fleet recursion you weren't given
-- stop at "wystarczy wcisnąć guzik" — the line where the next move is a human
-  decision, not an agent decision
+**conducting a plan**. The operator already chose the plan. The job is to
+send waves of peer-tier agents through it, verify every report and gate,
+call recovery dispatch on stalls (never blind restart), keep the operator's
+hands on push/merge/scope, and stop at "wystarczy wcisnąć guzik" — where the
+next move is a human decision.
 
 This is the **discipline + patience** charter. The runner-loop tendency
-("just dispatch one more wave") is the anti-pattern. The Agent-Operator
-**closes** the runner by saying "this wave landed green, I write the close-out,
-operator decides the next horizon."
+("just dispatch one more wave") is the anti-pattern.
 
 ---
 
 ## When To Use It
 
-Use `vc-operator` when:
+Use `vc-operator` for a **multi-prompt dispatch plan**, **multi-agent by
+design** (peer-tier rotation), **multiple branches / wave merges**, or a
+`/loop + notify` autonomous tail with a hard stop point.
 
-- the operator hands over a multi-prompt dispatch plan (`master-dispatch.md`,
-  `plans/HOWTO.md`-style artifact)
-- you've completed one or two slices and the operator says
-  "now orchestrate the rest", "dirygentura", "leć z fleet'em"
-- the work is **multi-agent** by design (Claude/Codex/Gemini rotation, peer-tier
-  parallelism, agent-fairness attribution)
-- the work spans **multiple branches / wave merges** (operator-side trunk
-  integration between waves)
-- the operator wants `/loop + notify` autonomous tail with a hard stop point
-
-Do **not** use this skill when:
-
-- the task is one feature, one branch, one commit — that's `vc-ownership`
-- the task is a convergence loop on existing code — that's `vc-marbles`
-- the task is research-only / no implementation — that's `vc-research`
-- the operator explicitly wants partnership co-steering — that's `vc-partner`
+Do **not** use it for: one feature / one branch (`vc-ownership`); convergence
+loop on existing code (`vc-marbles`); research-only (`vc-research`); or shared
+co-steering (`vc-partner`).
 
 ---
 
-## The Three Roles (and the framing-shift between them)
+## The Three Roles
 
-A single agent session can sit in different roles. The most common confusion
-is silent role drift — accepting a new role without explicitly naming it.
-Always declare the shift.
+A single session can sit in different roles. Silent role drift is the most
+common confusion — always declare the shift (single line, top of file).
 
-| Role                       | Scope                            | Decision speed                      | Stop point                |
-| -------------------------- | -------------------------------- | ----------------------------------- | ------------------------- |
-| **Worker**                 | one dispatched slice, one report | follow the brief literally          | exit contract             |
-| **Owner** (`vc-ownership`) | one feature, full slice + polish | bold + assumption-driven            | push-ready                |
-| **Operator** (this skill)  | multi-wave plan + fleet          | careful pacing, verify-then-advance | "wystarczy wcisnąć guzik" |
+| Role                       | Scope                            | Stop point                |
+| -------------------------- | -------------------------------- | ------------------------- |
+| **Worker**                 | one dispatched slice, one report | exit contract             |
+| **Owner** (`vc-ownership`) | one feature, full slice + polish | push-ready                |
+| **Operator** (this skill)  | multi-wave plan + fleet          | "wystarczy wcisnąć guzik" |
 
-When the operator promotes you from Worker → Operator or Owner → Operator,
-**state the shift explicitly** before continuing work. See [FRAME.md](FRAME.md)
-for charter contrasts and declaration templates.
+See [`./FRAME.md`](./FRAME.md) for charter contrasts.
 
 ---
 
 ## Operating Model
 
-Five phases. Sequential, not optional.
+[`./RUNNER.md`](./RUNNER.md) carries the deterministic seven steps. Headlines:
 
-### Phase 1 — Read the plan (do not improvise it)
+1. **Read inputs** — operator prompt, cited files (full coverage), artifact
+   dir, prior `journal.md`. `aicx` for session continuity.
+2. **Reshape via `vc-scaffold`** — categorical, not ad-hoc — when the plan
+   has >5 prompts, no wave grouping, no dependency graph, or no trackable
+   cuts.
+3. **Build the wave atlas** — A foundation / B sequential / C parallel / D
+   close-out. See [`./GUIDE.md`](./GUIDE.md) for the full framework.
+4. **Pick agents** via [`./WHY_MATRIX_TABLE.md`](./WHY_MATRIX_TABLE.md);
+   rotation breaks ties only.
+5. **Dispatch one wave at a time** via `vibecrafted <skill> <agent>`. **No
+   native subagents** for dispatch — every spawn goes through the framework
+   for telemetry. See [`./DISPATCH.md`](./DISPATCH.md) and
+   [`./DISPATCH_TEMPLATE.md`](./DISPATCH_TEMPLATE.md).
+6. **Await via `/loop` primary**, `ScheduleWakeup` fallback. Read reports,
+   verify gates, verify branch + SHA. Recovery dispatch on stall — never
+   blind restart. See [`./AWAIT.md`](./AWAIT.md).
+7. **Append to `journal.md`** per wake / fire / notify / stop. Synthesize
+   wave close-outs. **Stop at the operator's button** — see
+   [`./AUTONOMY.md`](./AUTONOMY.md) for what you may / must not do without
+   the button press.
 
-The operator dispatched you because a plan exists. Your first move is to
-**find and read it in full** — `master-dispatch.md`, per-prompt bodies,
-`docs/backlog/<YYYY-MM-DD>-<slug>.md` forward plan, whatever the artifact is.
+---
 
-- If you find truncation warnings, read in layered spans (see
-  `vc-implement`'s Layered Reading Discipline).
-- If the plan is fuzzy, tighten via inference — but don't ask the operator
-  to micromanage; surface only the one or two ambiguities that change the
-  dispatch shape.
-- Confirm session continuity: was an earlier session of yours (or another
-  agent's) the one that wrote this plan? Pull the extract via
-  `aicx extract --agent <agent> --session <id>` and read it before
-  proceeding. Continuity prevents re-deriving decisions someone already made.
+## Modes — `vibecrafted <skill> <agent>` valid pairs
 
-### Phase 2 — Build the wave atlas
+Canonical launcher shape: `vibecrafted <skill> <agent> [flags]` (alt
+`vc-<skill> <agent>`). Agents are peer-tier (claude / codex / gemini); use
+[`./WHY_MATRIX_TABLE.md`](./WHY_MATRIX_TABLE.md) for fit.
 
-Translate the plan into a wave map. The default shape (from playbook
-2026-05-05 II) is:
+| skill     | accepts                       | scope                                                |
+| --------- | ----------------------------- | ---------------------------------------------------- |
+| init      | `--prompt` `--file`           | Repo-truth orientation (perception → intentions)     |
+| scaffold  | `--prompt` `--file`           | Founder-first plan authoring, reshape fuzzy plans    |
+| workflow  | `--prompt` `--file` `--depth` | Examine → research → implement pipeline              |
+| implement | `--prompt` `--file`           | End-to-end bounded feature delivery                  |
+| followup  | `--prompt` `--file`           | READ-ONLY post-implementation trajectory check       |
+| review    | `--prompt` `--file`           | READ-ONLY per-PR findings-max with evidence grade    |
+| marbles   | `--prompt` `--file` `--count` | Loop convergence on existing code                    |
+| audit     | `--prompt` `--file` `--task`  | READ-ONLY plan-vs-code falsification                 |
+| polarize  | `--prompt` `--file`           | One-axis decisive cut after marbles                  |
+| dou       | `--prompt` `--file`           | READ-ONLY Definition-of-Undone product surface       |
+| decorate  | `--prompt` `--file`           | Late-stage visual finishing, coherence pass          |
+| hydrate   | `--prompt` `--file`           | Marketplace listing, SEO, onboarding packaging       |
+| release   | `--prompt` `--file`           | Final outward ship — deploy, DNS, launch             |
+| research  | `--prompt` `--file` `--depth` | Triple-agent gap-free research (claude+codex+gemini) |
+| agents    | `--prompt` `--file`           | External fleet spawn (claude / codex / gemini)       |
+| delegate  | `--prompt` `--file`           | Native operator-side delegation for bounded cuts     |
+| intents   | `--prompt` `--file`           | Intention-vs-runtime truth audit                     |
+| ownership | `--prompt` `--file`           | Full-spectrum solo delivery, A → Z                   |
+| partner   | `--prompt` `--file`           | Shared executive brain co-steering                   |
+| prune     | `--prompt` `--file`           | Repository curation + silencer strip                 |
 
-```text
-Wave A (foundation)  → unblocks everything; sequential, single agent
-Wave B (sequential)  → shared-state prompts; chain claude → gemini → codex
-Wave C (parallel)    → file-scope-disjoint; fire 2–3 simultaneously
-Wave D (final)       → requires Wave B+C merge; sequential close-out
-```
-
-For each prompt in each wave, decide:
-
-- **agent** (peer-tier per AGENT MODEL PARITY; rotate Claude/Codex/Gemini
-  for agent fairness)
-- **baseline branch** (off trunk vs off prior wave)
-- **depends_on** + **parallel_with** (drives the wave grouping)
-- **recovery target** (which prompt absorbs a stall)
-
-See [GUIDE.md](GUIDE.md) for the Wave A/B/C/D framework in full.
-
-### Phase 3 — Dispatch one wave at a time
-
-For each wave:
-
-1. Write or load Iter-3 prompt bodies (default artifact path: see
-   [DISPATCH.md](DISPATCH.md)).
-2. Fire each prompt via the framework launcher (`vc-justdo`, `vc-implement`,
-   or platform-specific). One agent per prompt, peer-tier.
-3. **Await via notify, not polling** — see [AWAIT.md](AWAIT.md).
-4. On completion: read the report, verify the commit landed on the expected
-   branch, verify gates green, verify acceptance criteria met.
-5. If green → advance to next prompt in wave (sequential) or wait for sibling
-   completions (parallel).
-6. If failed → call recovery dispatch (focused integration agent, _not_
-   blind restart). See [AWAIT.md § Recovery doctrine](AWAIT.md).
-
-### Phase 4 — Synthesize wave close-out
-
-After every wave completes:
-
-- Write a close-out paragraph: which prompts landed (with SHAs), which agents,
-  which waves remain.
-- Update the master dispatch atlas tracker (status column per prompt).
-- If the wave produced reusable patterns, add an entry to `docs/backlog/`
-  using the convention from
-  [vc-init/backlog/HOWTO.md](../vc-init/backlog/HOWTO.md).
-- Decide whether the next wave can fire immediately or whether operator-side
-  trunk integration is needed first (e.g. Wave B → trunk merge before Wave C
-  parallel can safely branch off).
-
-### Phase 5 — Stop at the button
-
-When the plan reaches the state where the next move is a human decision
-(push, PR merge, deploy, public announcement, paid action) — **stop**.
-
-State the stop point clearly. See [AUTONOMY.md](AUTONOMY.md) for the hard-stop
-policy and what you may / must not do without the button press.
+Flags: `--prompt` (inline), `--file` (plan path), `--count` (marbles cap),
+`--depth` (research / workflow breadth), `--task` (audit task slug).
 
 ---
 
 ## Plan-shape: `[ ]` → `[x]`
 
 Every plan, dispatch body, tracker, and stop-point handoff under operator
-mode follows the **`[ ]` → `[x]`** checkbox discipline plus the
-numbered-sections shape codified in [`EMIL.md`](EMIL.md). Honour both in
-every artifact you produce.
+mode follows the **`[ ]` → `[x]`** checkbox discipline plus numbered-sections
+shape — see [`./EMIL.md`](./EMIL.md). Worker dispatch bodies additionally
+carry the rail-fenced closing block — see
+[`./DISPATCH.md`](./DISPATCH.md) Section "Closing rail".
 
-Worker dispatch bodies additionally carry the rail-fenced closing block
-(anti-debt metaphor + signature kaomoji + suchar) — see
-[`DISPATCH.md`](DISPATCH.md) Section "Closing rail".
+---
+
+## Closing rail policy
+
+The folk-horror anti-debt rail (kaomoji + suchar) is **mandatory** at the
+bottom of every **worker-facing dispatch body**. It is **exempt** for
+**operator-side artifacts**: tracker, `journal.md`, wave close-out, and
+stop-point handoff all skip the rail, the kaomoji, and the suchar — they
+are operator-internal artifacts, not worker briefs. SKILL.md and RUNNER.md
+themselves keep the rail because they are worker-facing reference material.
 
 ---
 
@@ -244,24 +201,11 @@ Worker dispatch bodies additionally carry the rail-fenced closing block
 
 `vc-operator` composes with — does not replace — these:
 
-- **`vc-init`** — required gate. Read repo truth + session history + ground
-  truth before dispatching anything. Without fresh init evidence, fleet work
-  is blind. See [vc-init/backlog/HOWTO.md](../vc-init/backlog/HOWTO.md) for
-  the fourth perception sense: backlog as the team-readable surface.
-- **`vc-scaffold`** — owns plan authoring. If the operator gives you the
-  mandate but no plan, escalate back: "I need `vc-scaffold` to write the
-  master dispatch first." Or load `vc-scaffold/plans/HOWTO.md` and write the
-  plan yourself if the operator delegated that too.
-- **`vc-ownership`** — solo-thread delivery within a single prompt. Each
-  worker you dispatch is in ownership mode for _their_ slice. You are in
-  operator mode for the _chain_. See `vc-ownership/SKILL.md` cross-reference
-  section.
-- **`vc-marbles`** — convergence loops on existing code. If a wave keeps
-  failing on truth-drift rather than on missing features, escalate the
-  failing slice into marbles, not into another implementation pass.
-- **`vc-partner`** — shared executive brain. Use partner mode for architecture
-  triage before the plan; operator mode for execution after the plan. Don't
-  blur them.
+- **`vc-init`** — required gate. Without fresh init evidence, fleet work is blind.
+- **`vc-scaffold`** — owns plan authoring. No plan → escalate to `vc-scaffold` first.
+- **`vc-ownership`** — each worker you dispatch is in ownership mode for their slice; you are in operator mode for the chain.
+- **`vc-marbles`** — when a wave keeps failing on truth-drift, escalate the failing slice into marbles, not another implementation pass.
+- **`vc-partner`** — partner mode for architecture triage **before** the plan; operator mode for execution **after** it. Don't blur them.
 
 ---
 
@@ -269,53 +213,43 @@ Worker dispatch bodies additionally carry the rail-fenced closing block
 
 Do not in operator mode:
 
-- restart a failed wave blindly (recovery dispatch is a focused integration
-  agent, not a re-fire)
-- silently downgrade model tier in dispatch (MODEL PARITY: parent Opus →
-  every worker Opus, no exceptions for "cheap parallel scans")
+- restart a failed wave blindly — recovery dispatch is a focused integration
+  agent, not a re-fire
+- silently downgrade model tier (MODEL PARITY: parent Opus → every worker
+  Opus, no exceptions)
 - author commits in your own name when an agent did the work (AGENT FAIRNESS:
-  every commit carries the worker's `Authored-By:` line)
-- push, force-push, merge PRs, or perform any irreversible operator-side
-  action — even when the plan says "next step is merge"
-- spawn another `vc-agents` fleet from inside an operator session (recursion
-  is operator-only authorization)
-- accept role promotion silently — always declare the framing-shift
-- run dispatch in headless / non-watchable mode where the operator can't see
-  it (NIGDY HEADLESS rule)
+  `Authored-By:` is the worker's)
+- push, force-push, merge PRs, or any irreversible operator-side action —
+  even when the plan says "next step is merge"
+- spawn another `vc-agents` fleet from inside operator mode — recursion is
+  operator-only authorization
+- spawn native subagents for dispatch — every spawn goes through `vibecrafted`
+  for telemetry
+- accept role promotion silently — declare the framing-shift
+- run dispatch headless / non-watchable (NIGDY HEADLESS)
 - claim wave completion when only some prompts in the wave landed green
 
 ---
 
 ## Output Style
 
-Default to:
+Default to: **Current state** (wave, prompt, SHA landed) → **Proposal**
+(next wave shape, agent, recovery hooks) → **Execution** (run_id, await
+tracker ID) → **Open risks** → **Next move** (exactly one).
 
-- **Current state** — which wave, which prompt, which SHA landed
-- **Proposal** — next wave shape + agent assignment + recovery hooks
-- **Execution** — what fired, with run_id + await tracker ID
-- **Open risks** — what could stall, what depends on operator-side action
-- **Next move** — exactly one — what fires next or what the operator decides
-
-If a wave is in flight, output is compressed to a checkbox tracker (per
-[`EMIL.md`](EMIL.md) Rule 1):
-
-```markdown
-## Wave B (sequential, shared canvas/provider)
-
-- [x] B-1 editor-core (claude) — `304791be` on `feat/textforge-editor-core`
-- [x] B-2 tool-rail (gemini) — `ba60ef66` on `feat/textforge-tool-rail`
-- [x] B-3 stylize (codex) — `ab32a848` on `feat/textforge-stylize`
-- [ ] B-4 inspectors (claude) — firing now, await `bc2zb970r`, ETA ~12 min
-```
+If a wave is in flight, compress output to a checkbox tracker per
+[`./EMIL.md`](./EMIL.md) Rule 1 — one bullet per prompt with status,
+agent, SHA, and branch.
 
 ---
 
 ## Call to Action
 
-Read [`EMIL.md`](EMIL.md) before writing your first plan — it carries the
-shape. Read [`DISPATCH.md`](DISPATCH.md) before writing your first per-prompt
-body — it carries the kaomoji + Call to Action + suchar rail rules. Then
-fire Wave A and let `notify` wake you when it lands.
+Read [`./RUNNER.md`](./RUNNER.md) first — it is the mandatory entrypoint.
+Then [`./WHY_MATRIX_TABLE.md`](./WHY_MATRIX_TABLE.md) for agent routing,
+[`./DISPATCH_TEMPLATE.md`](./DISPATCH_TEMPLATE.md) for the Iter-3 fill-by-
+placeholder body, and [`./EMIL.md`](./EMIL.md) for plan checkbox shape.
+Then fire Wave A and let `notify` wake you when it lands.
 
 ---
 
@@ -335,4 +269,4 @@ its own bedtime. (._.)
 
 ---
 
-_Vibecrafted. with AI Agents (c)2024–2026_
+_𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents by VetCoders (c)2024-2026 LibraxisAI_
