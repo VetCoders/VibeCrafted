@@ -398,9 +398,47 @@ spawn_in_zellij_pane() {
     fi
     spawn_release_zellij_launch_slot "$launch_lock"
     [[ "$launch_status" == "0" ]] || return "$launch_status"
+
+    # Auto-tail-await side pane in the same run tab. Silent no-op if the
+    # helper is missing, jq is unavailable, or we are not in new-tab mode
+    # (same-tab grid spawn is operator-explicit and should not be polluted).
+    if [[ "$direction" == "new-tab" ]]; then
+      spawn_await_watch_pane "${run_tab_id:-}" "${run_tab_name:-}" "$pane_name"
+    fi
     return 0
   fi
   return 1
+}
+
+# Spawn the vibecrafted-await-watch helper as a stacked side-pane in the
+# worker's run tab so the operator gets live transcript tail + automatic
+# self-exit when the worker is done. Hard requirement: SPAWN_RUN_ID env,
+# jq available, the helper script executable, and the run tab actually
+# exists (we re-query if the post-tab-creation race left run_tab_id empty).
+spawn_await_watch_pane() {
+  local run_tab_id="$1" run_tab_name="$2" worker_pane_name="$3"
+  command -v jq >/dev/null 2>&1 || return 0
+  [[ -n "${SPAWN_RUN_ID:-}" ]] || return 0
+
+  local helper="${_SPAWN_LIB_DIR}/../vibecrafted-await-watch.sh"
+  [[ -x "$helper" ]] || return 0
+
+  # Re-query tab id when missing: the parent path may have created a fresh
+  # tab via `zellij action new-tab` which does not return the id.
+  if [[ -z "$run_tab_id" && -n "$run_tab_name" ]]; then
+    # Tiny grace for the just-created tab to be enumerable.
+    sleep 1
+    run_tab_id="$(spawn_tab_id_by_name "$run_tab_name" 2>/dev/null || true)"
+  fi
+  [[ -n "$run_tab_id" ]] || return 0
+
+  local pane_name="await:${SPAWN_AGENT:-?}:${SPAWN_RUN_ID##*-}"
+  zellij action new-pane --tab-id "$run_tab_id" \
+    --stacked \
+    --close-on-exit \
+    --name "$pane_name" \
+    --cwd "${SPAWN_ROOT:-$(pwd)}" \
+    -- "$helper" --run-id "$SPAWN_RUN_ID" >/dev/null 2>&1 || true
 }
 
 spawn_in_operator_session() {
