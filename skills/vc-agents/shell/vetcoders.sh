@@ -1735,6 +1735,44 @@ _vetcoders_skill() {
   fi
 
   _vetcoders_dispatch_skill_prompt "$tool" "$skill" "$skill_code" "$loop_nr" "$run_id" "$run_lock" "$prompt" "${spawn_args[@]}"
+  local _dispatch_rc=$?
+  _vetcoders_maybe_spawn_await_pane "$tool" "$skill" "$run_id" "$root"
+  return "$_dispatch_rc"
+}
+
+# Spawn a zellij side-pane running vibecrafted-await-watch for the just-fired
+# worker, so the operator gets live transcript tail + automatic exit when the
+# worker is done (status=completed/failed, or wrapper dies + transcript idle).
+#
+# Silent no-op unless:
+#   - the operator is inside an active zellij session
+#   - the await-watch helper is installed and executable
+#   - jq is available (helper needs it to parse meta.json)
+#
+# Resolves meta.json by greping the artifacts dir for a meta whose .run_id
+# matches the freshly-launched dispatch's run_id. Worker filename is
+# prompt_id-based, not run_id-based, so content grep is the only reliable
+# resolver.
+_vetcoders_maybe_spawn_await_pane() {
+  local tool="$1" skill="$2" run_id="$3" root="$4"
+  command -v zellij >/dev/null 2>&1 || return 0
+  _vetcoders_in_zellij || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local helper
+  helper="$(_vetcoders_frontier_file "skills/vc-agents/scripts/vibecrafted-await-watch.sh" 2>/dev/null || true)"
+  [[ -n "$helper" && -x "$helper" ]] || return 0
+
+  # Best effort: short delay so the wrapper has a moment to drop meta.json.
+  ( sleep 1
+    local pane_name="await:${tool}:${run_id##*-}"
+    local cwd="${root:-$PWD}"
+    zellij action new-pane \
+      --name "$pane_name" \
+      --close-on-exit \
+      --cwd "$cwd" \
+      -- "$helper" --run-id "$run_id" >/dev/null 2>&1 || true
+  ) &
 }
 
 _vetcoders_skill_entry() {
