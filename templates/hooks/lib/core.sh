@@ -238,15 +238,29 @@ husky_warns_print_backlog() {
 # Tracks STEP_LAST_FAILED + STEP_FAILURE_COUNT for the caller.
 STEP_LAST_FAILED=0
 STEP_FAILURE_COUNT=0
+# IMPORTANT bash gotchas — two of them, both burned us once:
+#
+#   1. After a non-taken `if cmd; then ... fi` (no else branch), `$?`
+#      reflects the exit of `fi` itself (always 0), NOT of `cmd`. Don't
+#      refactor to `if "$@"; then ... fi; rc=$?` — that silently makes
+#      every step appear successful.
+#
+#   2. With `set -e` active in the enclosing subshell, `"$@"` returning
+#      non-zero immediately exits the shell, BEFORE the next statement
+#      (the `rc=$?` capture) can run. We use `"$@" || rc=$?` so that the
+#      non-zero return is suppressed at this site (via `||`) while still
+#      being captured into `rc` — set -e does not trigger for the
+#      left-hand side of `||`.
 husky_run_step() {
   local label="$1"
   shift
   husky_step "$label"
-  if "$@"; then
+  local rc=0
+  "$@" || rc=$?
+  if [ "$rc" -eq 0 ]; then
     STEP_LAST_FAILED=0
     return 0
   fi
-  local rc=$?
   STEP_LAST_FAILED=1
   STEP_FAILURE_COUNT=$((STEP_FAILURE_COUNT + 1))
   if husky_warn_mode_active; then
@@ -255,6 +269,52 @@ husky_run_step() {
   fi
   husky_err "[$label] failed with exit $rc — blocking commit/push (strict mode)."
   return "$rc"
+}
+
+# Strict variant — ALWAYS fails the hook, regardless of WARN mode.
+#
+# Reserved for steps where demotion to a warning would be unsafe: a leaked
+# secret or a staged .env file cannot be "warned about and let through" on
+# a feature branch — the credential is in the commit object either way, and
+# branches get force-pushed / cherry-picked / merged without re-running the
+# guard. Use this for guards where the failure mode is permanent damage,
+# not just a quality regression.
+#
+# Communication with the hook tail logic: this function runs inside the
+# subshell that pipes through redact + tee, so an exported variable would
+# not propagate back to the outer hook. Instead we write a marker to
+# $HUSKY_STRICT_FAILED_FILE (tempfile created by the hook entry point).
+# The tail logic reads that file and refuses WARN-mode override when set.
+husky_run_strict_step() {
+  local label="$1"
+  shift
+  husky_step "$label (strict — non-demotable)"
+  # See husky_run_step for why we use `|| rc=$?` instead of capturing
+  # `$?` directly — set -e would otherwise exit the subshell before the
+  # marker file gets written, defeating the whole point of strict-mode.
+  local rc=0
+  "$@" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    STEP_LAST_FAILED=0
+    return 0
+  fi
+  STEP_LAST_FAILED=1
+  STEP_FAILURE_COUNT=$((STEP_FAILURE_COUNT + 1))
+  if [ -n "${HUSKY_STRICT_FAILED_FILE:-}" ]; then
+    echo 1 > "$HUSKY_STRICT_FAILED_FILE"
+  fi
+  husky_err "[$label] failed with exit $rc — STRICT step, no WARN-mode demotion."
+  return "$rc"
+}
+
+# Read the strict-failure marker. Returns 0 (true) if any strict step
+# failed during this hook run, 1 (false) otherwise.
+husky_strict_failed() {
+  [ -n "${HUSKY_STRICT_FAILED_FILE:-}" ] || return 1
+  [ -s "$HUSKY_STRICT_FAILED_FILE" ] || return 1
+  local val
+  val="$(cat "$HUSKY_STRICT_FAILED_FILE" 2>/dev/null)"
+  [ "$val" = "1" ]
 }
 
 # Step that is allowed to fail with a warning regardless of mode.
