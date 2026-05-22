@@ -49,11 +49,12 @@ Runs in the operator's current checkout and current branch. Do not
 move into a worktree unless explicitly asked. Re-read files before
 judging final state. See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
-### Canonical Orientation Gate
+## Canonical Orientation Gate
 
 Before review, consume fresh `vc-init` evidence for the repo. If
 absent, run `vc-init` first. Use `Loctree:loctree` (repo-view, focus,
-slice, impact, find, follow) before grep / docs / memory claims.
+slice, impact, find, follow) to refresh the
+Code-Derived Application Map before grep / docs / memory claims.
 Loctree-side questions (importer graphs, blast radius, dead code,
 symbol locations) bypassed via grep = process failure.
 

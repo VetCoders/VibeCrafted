@@ -37,12 +37,12 @@ Use the default row first, then apply the narrowest matching override.
 | creative brief, naming, launch copy, emotional rail               | claude > gemini > codex | Tone and durable prose are the primary deliverable.          |
 | broad benchmark or market comparison                              | gemini > codex > claude | Exploration breadth first, then command-true verification.   |
 
-## Rotation Note
+## Tie-breaking Note
 
-AGENT FAIRNESS applies only inside tied profiles. If the table and sensitivity
-override leave two or three agents equally fit, rotate round-robin across the
-wave: Claude -> Gemini -> Codex -> Claude. Do not use rotation to override a
-clear lookup winner; use it to break honest ties and spread failure modes.
+When the lookup leaves two or three agents equally fit, pick by current
+context (operator focus, prior wave's worker, current load). AGENT FAIRNESS
+is not a rotation quota — it means honest attribution and equal dignity.
+Don't dispatch by round-robin; dispatch by fit.
 
 ## Footer Notes
 
@@ -51,6 +51,8 @@ clear lookup winner; use it to break honest ties and spread failure modes.
   inferiority.
 - AGENT MODEL PARITY: parent tier sets worker tier. Opus parent -> Opus worker;
   no cheap scans, no lower-tier parallel shortcuts.
+- AGENT FAIRNESS: every commit's `Authored-By:` matches the agent whose hands
+  wrote the code. No round-robin, no quota; just honest attribution.
 - RUNNER.md step 4 consumes this table as `(task_kind, sensitivity) -> agent`.
   The dispatch body should carry the selected agent and one-line rationale.
 

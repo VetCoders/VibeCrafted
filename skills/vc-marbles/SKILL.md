@@ -50,14 +50,15 @@ move into a worktree unless explicitly asked. Re-read files before
 editing, adapt to concurrent changes (other workers may have written
 between your dispatches). See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
-### Canonical Orientation Gate
+## Canonical Orientation Gate
 
 Every round begins with `vc-init`. No exceptions. Perceive through
-live instruments before touching code: **loctree** (structural map,
-dependencies, dead code, hotspots), **aicx-steer** (project intentions,
-not prior round reports), **semgrep / linters** (current quality
-surface), **git status / recent commits**. Without `vc-init`, the
-agent invents its own reality.
+live instruments before touching code: `Loctree:loctree` builds the
+Code-Derived Application Map (structural map, dependencies, dead
+code, hotspots); **aicx-steer** (project intentions, not prior round
+reports); **semgrep / linters** (current quality surface); **git
+status / recent commits**. Without `vc-init`, the agent invents its
+own reality.
 
 Standard launcher:
 

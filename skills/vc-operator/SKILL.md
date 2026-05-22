@@ -59,10 +59,11 @@ checkout and branch. Do not create or switch into a worktree unless the
 operator explicitly asks. Re-read files before editing — other agents may
 push between dispatches. See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
-**Canonical Orientation Gate.** Operator mode requires fresh `vc-init`
-evidence and a `Loctree:loctree` structural pass before dispatching anything.
-Missing init evidence is a process failure. RUNNER.md step 1 absorbs the
-perception pass; see [`./RUNNER.md`](./RUNNER.md).
+## Canonical Orientation Gate
+
+Operator mode requires fresh `vc-init` and a `Loctree:loctree` pass
+(the Code-Derived Application Map) before dispatching anything.
+Missing init = process failure. RUNNER.md step 1 absorbs the pass.
 
 Standard launcher:
 

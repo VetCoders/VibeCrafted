@@ -45,14 +45,14 @@ Runs in the operator's current checkout and current branch. Do not
 move into a worktree unless explicitly asked. Re-read files before
 editing. See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
-### Canonical Orientation Gate
+## Canonical Orientation Gate
 
 Before polarize runs, consume fresh `vc-init` evidence. Use
 `Loctree:loctree` (repo-view, focus, slice, impact, find, follow)
-before grep / docs / "I remember" claims. Polarize is allowed to
-read recent marbles reports — this is deliberate. Workers stayed
-blind; polarize is the synthesis step that needs prior convergence
-evidence.
+to refresh the Code-Derived Application Map before grep / docs /
+"I remember" claims. Polarize is allowed to read recent marbles
+reports — this is deliberate. Workers stayed blind; polarize is the
+synthesis step that needs prior convergence evidence.
 
 Standard launcher:
 
