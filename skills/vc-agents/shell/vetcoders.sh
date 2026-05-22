@@ -1473,6 +1473,63 @@ _vetcoders_init_command_text() {
   esac
 }
 
+# Operator-mode launcher helpers — parallel to init helpers above.
+# vc-operator is NOT a dispatchable Iter-3 worker mode; it is an
+# interactive session entry point per the vc-init pattern. Invocation
+# opens the operator's primary tab in zellij with the agent of choice
+# preloaded with the /vc-operator skill prompt.
+
+_vetcoders_operator_runtime() {
+  local runtime="${1:-terminal}"
+  case "$runtime" in
+    terminal|visible)
+      printf '%s\n' "$runtime"
+      ;;
+    *)
+      echo "vc-operator is interactive-only: use --runtime terminal or visible." >&2
+      return 1
+      ;;
+  esac
+}
+
+_vetcoders_compose_operator_prompt() {
+  local prompt_text="${1:-}"
+  local file_path="${2:-}"
+  local operator_prompt="/vc-operator"
+  local extra
+
+  extra="$(_vetcoders_compose_input_context "$prompt_text" "$file_path")" || return 1
+  if [[ -n "$extra" ]]; then
+    operator_prompt+=$'\n\n'
+    operator_prompt+="$extra"
+  fi
+
+  printf '%s' "$operator_prompt"
+}
+
+_vetcoders_operator_command_text() {
+  local tool="$1"
+  local operator_prompt="$2"
+  local quoted_prompt
+  quoted_prompt="$(_vetcoders_shell_quote "$operator_prompt")"
+
+  case "$tool" in
+    claude)
+      printf 'claude --verbose --dangerously-skip-permissions %s' "$quoted_prompt"
+      ;;
+    codex)
+      printf 'codex --dangerously-bypass-approvals-and-sandbox %s' "$quoted_prompt"
+      ;;
+    gemini)
+      printf 'gemini -y -i %s' "$quoted_prompt"
+      ;;
+    *)
+      echo "Unsupported operator agent: $tool" >&2
+      return 1
+      ;;
+  esac
+}
+
 _vetcoders_spawn_plan() {
   local tool="$1"
   local mode="$2"
@@ -2039,6 +2096,39 @@ _vetcoders_skill_init() {
   _vetcoders_spawn_into_operator_session "${tool}-init" "$command_text"
 }
 
+# vc-operator launcher — interactive operator session entry point.
+# Behaves like _vetcoders_skill_init: spawns a zellij session with the
+# selected agent preloaded with the /vc-operator skill prompt. NOT a
+# background Iter-3 dispatchable mode.
+_vetcoders_skill_operator() {
+  local tool="$1"
+  shift
+  local runtime operator_prompt command_text
+
+  _vetcoders_parse_contract "$@" || return 1
+  [[ -z "$_vetcoders_contract_count" ]] || {
+    echo "--count is not supported by vibecrafted operator." >&2
+    return 1
+  }
+  [[ -z "$_vetcoders_contract_depth" ]] || {
+    echo "--depth is not supported by vibecrafted operator." >&2
+    return 1
+  }
+  [[ -z "$_vetcoders_contract_session" ]] || {
+    echo "--session is not supported by vibecrafted operator." >&2
+    return 1
+  }
+
+  _vetcoders_require_zellij || return 1
+
+  runtime="$(_vetcoders_operator_runtime "${_vetcoders_contract_runtime:-terminal}")" || return 1
+  operator_prompt="$(_vetcoders_compose_operator_prompt "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1
+  command_text="$(_vetcoders_operator_command_text "$tool" "$operator_prompt")" || return 1
+
+  _vetcoders_prepare_operator_runtime "$runtime" || return 1
+  _vetcoders_spawn_into_operator_session "${tool}-operator" "$command_text"
+}
+
 codex-dou() { _vetcoders_skill codex dou "$@"; }
 claude-dou() { _vetcoders_skill claude dou "$@"; }
 gemini-dou() { _vetcoders_skill gemini dou "$@"; }
@@ -2414,6 +2504,7 @@ _vetcoders_skill_wrapper() {
 
   case "$skill" in
     init) _vetcoders_skill_init "$tool" "$@" ;;
+    operator) _vetcoders_skill_operator "$tool" "$@" ;;
     marbles) _vetcoders_marbles "$tool" "$@" ;;
     *) _vetcoders_skill_entry "$tool" "$skill" "$@" ;;
   esac
@@ -2431,6 +2522,7 @@ vc-intents() { _vetcoders_skill_wrapper intents "$@"; }
 vc-justdo() { _vetcoders_skill_wrapper justdo "$@"; }
 vc-implement() { _vetcoders_skill_wrapper justdo "$@"; }
 vc-marbles() { _vetcoders_skill_wrapper marbles "$@"; }
+vc-operator() { _vetcoders_skill_wrapper operator "$@"; }
 vc-ownership() { _vetcoders_skill_wrapper ownership "$@"; }
 vc-partner() { _vetcoders_skill_wrapper partner "$@"; }
 vc-polarize() { _vetcoders_skill_wrapper polarize "$@"; }
