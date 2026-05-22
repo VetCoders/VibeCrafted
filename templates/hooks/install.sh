@@ -35,7 +35,8 @@ SOURCE_SCRIPTS="$SCRIPT_DIR/scripts"
 SOURCE_CONFIG="$SCRIPT_DIR/config/template.husky.env"
 SOURCE_ACTIVATORS="$SCRIPT_DIR/activators"
 
-ACTIVATOR="lefthook"
+ACTIVATOR=""        # empty = auto-suggest based on detection
+AUTO=1              # default: auto-detect repo profile + write config.env
 FORCE=0
 NO_GITIGNORE=0
 NO_ACTIVATE=0
@@ -45,6 +46,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --activator)        ACTIVATOR="${2:-}"; shift 2 ;;
     --activator=*)      ACTIVATOR="${1#--activator=}"; shift ;;
+    --no-auto)          AUTO=0; shift ;;          # keep stock template defaults
     --force)            FORCE=1; shift ;;
     --no-gitignore)     NO_GITIGNORE=1; shift ;;
     --no-activate)      NO_ACTIVATE=1; shift ;;
@@ -60,6 +62,19 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Source detection helpers so suggestion logic works before activator
+# validation. detect.sh is sourced from the template location, not the
+# target — we may not have installed lib/ yet.
+# shellcheck disable=SC1090,SC1091
+. "$SOURCE_LIB/detect.sh"
+
+# Auto-suggest activator from repo shape unless caller explicitly overrode.
+if [ -z "$ACTIVATOR" ]; then
+  ACTIVATOR="$(husky_suggest_activator "$REPO_ROOT")"
+fi
+
 case "$ACTIVATOR" in
   lefthook|husky|pre-commit|manual) ;;
   *)
@@ -69,7 +84,6 @@ case "$ACTIVATOR" in
     ;;
 esac
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 TARGET_HUSKY="$REPO_ROOT/.husky"
 TARGET_LIB="$TARGET_HUSKY/lib"
 TARGET_SCRIPTS="$TARGET_HUSKY/scripts"
@@ -97,6 +111,12 @@ do_mkdir() {
 
 say "Installing vibecrafted-hooks-template into: $REPO_ROOT"
 say "Activator: $ACTIVATOR"
+
+# Detection summary — emit before any file changes so the operator can ^C
+# if the profile looks wrong. Doesn't change behavior; just transparency.
+if [ "$AUTO" = "1" ]; then
+  husky_profile_summary "$REPO_ROOT" | sed 's/^/[hooks-install] /'
+fi
 
 # ---------------------------------------------------------------------------
 # target dirs
@@ -134,12 +154,19 @@ for hook in "${HOOKS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# config.env (preserve unless --force)
+# config.env (preserve unless --force; auto-detect unless --no-auto)
 # ---------------------------------------------------------------------------
 if [ -f "$TARGET_CONFIG" ] && [ "$FORCE" = "0" ]; then
   say "Keeping existing .husky/config.env (use --force to overwrite)"
+elif [ "$AUTO" = "1" ]; then
+  if [ "$DRY_RUN" = "1" ]; then
+    say "DRY: would write .husky/config.env (auto-detected from repo profile)"
+  else
+    say "Writing .husky/config.env (auto-detected from repo profile)"
+    husky_write_auto_config "$REPO_ROOT" "$TARGET_CONFIG"
+  fi
 else
-  say "Writing default .husky/config.env"
+  say "Writing default .husky/config.env (--no-auto)"
   do_cp "$SOURCE_CONFIG" "$TARGET_CONFIG" 0644
 fi
 
@@ -176,11 +203,25 @@ activator_lefthook() {
     say "Writing lefthook.yml"
     do_cp "$SOURCE_ACTIVATORS/lefthook.yml" "$target" 0644
   fi
+
+  # Resolve husky residue: if the repo previously used husky, git config
+  # still points core.hooksPath at .husky/_. Lefthook refuses to overwrite
+  # that path without --force. We detect the collision and pass --force so
+  # the installer succeeds without operator intervention.
+  local existing_hookspath
+  existing_hookspath="$( cd "$REPO_ROOT" && git config --get core.hooksPath 2>/dev/null || true )"
+  local force_flag=""
+  if [ -n "$existing_hookspath" ] && [ "$existing_hookspath" != ".git/hooks" ]; then
+    force_flag="--force"
+    say "Detected core.hooksPath='${existing_hookspath}' (likely husky residue) — using lefthook install --force"
+  fi
+
   if command -v lefthook >/dev/null 2>&1; then
     if [ "$DRY_RUN" = "1" ]; then
-      say "DRY: would run 'lefthook install'"
+      say "DRY: would run 'lefthook install ${force_flag}'"
     else
-      ( cd "$REPO_ROOT" && lefthook install ) \
+      # shellcheck disable=SC2086  # force_flag may be empty, intentional split
+      ( cd "$REPO_ROOT" && lefthook install $force_flag ) \
         || say "lefthook install reported a non-zero exit — check repo state"
     fi
   else
