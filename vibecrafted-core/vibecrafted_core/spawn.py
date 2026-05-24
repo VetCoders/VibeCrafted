@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from .agent_dispatch import extract_session_id
+from .agent_dispatch import extract_session_id, sandbox_supported
 from .events import append_event
 
 EventCallback = Callable[[dict[str, Any]], None]
@@ -23,7 +23,7 @@ class SpawnHandle:
     skill: str
     mode: str
     root: Path
-    process: subprocess.Popen[str]
+    process: Any
     pgid: int | None
     started_at: str
     command: list[str]
@@ -43,6 +43,14 @@ class SpawnHandle:
         if not self._done.wait(timeout):
             raise TimeoutError(f"spawn {self.run_id} still running")
         return int(self.exit_code if self.exit_code is not None else 1)
+
+
+class _SandboxProcess:
+    def __init__(self) -> None:
+        self.pid = os.getpid()
+
+    def wait(self) -> int:
+        return 0
 
 
 def _now_iso() -> str:
@@ -133,6 +141,9 @@ class Supervisor:
         run_id: str | None = None,
         meta_path: str | os.PathLike[str] | None = None,
         transcript_path: str | os.PathLike[str] | None = None,
+        sandbox: bool = False,
+        sandbox_policy: str | os.PathLike[str] | None = None,
+        sandbox_config: dict[str, Any] | None = None,
     ) -> SpawnHandle:
         root_path = Path(root).resolve()
         command_list = (
@@ -158,6 +169,45 @@ class Supervisor:
         if env:
             child_env.update(env)
         child_env.setdefault("VIBECRAFTED_RUN_ID", effective_run_id)
+
+        if sandbox:
+            if not sandbox_supported(agent):
+                raise ValueError(f"agent does not support sandbox dispatch: {agent}")
+            process = _SandboxProcess()
+            handle = SpawnHandle(
+                run_id=effective_run_id,
+                agent=agent,
+                skill=skill,
+                mode=mode,
+                root=root_path,
+                process=process,
+                pgid=None,
+                started_at=_now_iso(),
+                command=command_list,
+                meta_path=inferred_meta,
+                transcript_path=inferred_transcript,
+            )
+            self._emit(
+                "spawn-started",
+                handle,
+                "supervisor spawned sandbox child",
+                {"pid": process.pid, "pgid": None, "command": command_list},
+                on_event,
+            )
+            thread = threading.Thread(
+                target=self._run_sandbox,
+                args=(
+                    handle,
+                    child_env,
+                    sandbox_policy,
+                    sandbox_config or {},
+                    on_event,
+                ),
+                daemon=True,
+            )
+            handle._thread = thread
+            thread.start()
+            return handle
 
         process = subprocess.Popen(
             command_list,
@@ -197,6 +247,67 @@ class Supervisor:
         handle._thread = thread
         thread.start()
         return handle
+
+    def _run_sandbox(
+        self,
+        handle: SpawnHandle,
+        env: dict[str, str],
+        sandbox_policy: str | os.PathLike[str] | None,
+        sandbox_config: dict[str, Any],
+        on_event: EventCallback | None,
+    ) -> None:
+        try:
+            from .sandbox import SandboxAdapter, SandboxPolicy
+
+            policy = SandboxPolicy.load(sandbox_policy, root=handle.root)
+            adapter = SandboxAdapter(
+                policy=policy,
+                server_url=sandbox_config.get("server_url"),
+                api_key_path=sandbox_config.get("api_key_path"),
+            )
+            result = adapter.execute_sync(
+                handle.command,
+                env=env,
+                cwd=handle.root,
+                timeout=sandbox_config.get("timeout"),
+                run_id=handle.run_id,
+                agent=handle.agent,
+                skill=handle.skill,
+                mode=handle.mode,
+                on_event=on_event,
+            )
+            handle.exit_code = result.exit_code
+        except Exception as exc:  # pragma: no cover - defensive event path
+            handle.exit_code = 1
+            self._emit(
+                "spawn-failed",
+                handle,
+                f"sandbox execution failed: {exc}",
+                {"pid": handle.pid, "pgid": handle.pgid, "exit_code": 1},
+                on_event,
+            )
+            handle._done.set()
+            return
+
+        handle.completed_at = _now_iso()
+        handle.session_id = _maybe_extract_session_id(handle)
+        kind = "spawn-completed" if handle.exit_code == 0 else "spawn-failed"
+        self._emit(
+            kind,
+            handle,
+            f"sandbox child exited with {handle.exit_code}",
+            {
+                "pid": handle.pid,
+                "pgid": handle.pgid,
+                "exit_code": handle.exit_code,
+                "session_id": handle.session_id,
+                "meta": str(handle.meta_path or ""),
+                "transcript": str(handle.transcript_path or ""),
+                "substrate": "microsandbox",
+            },
+            on_event,
+        )
+        handle._done.set()
 
     def _wait_owner(self, handle: SpawnHandle, on_event: EventCallback | None) -> None:
         exit_code = handle.process.wait()

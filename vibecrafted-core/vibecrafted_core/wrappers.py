@@ -38,6 +38,25 @@ def _has_flag(args: Sequence[str], name: str) -> bool:
     return name in args or any(arg.startswith(f"{name}=") for arg in args)
 
 
+def _consume_sandbox_flags(args: Sequence[str]) -> tuple[list[str], bool, str | None]:
+    cleaned: list[str] = []
+    sandbox = False
+    policy: str | None = None
+    iterator = iter(args)
+    for arg in iterator:
+        if arg == "--sandbox":
+            sandbox = True
+            continue
+        if arg == "--sandbox-policy":
+            policy = next(iterator, None)
+            continue
+        if arg.startswith("--sandbox-policy="):
+            policy = arg.split("=", 1)[1]
+            continue
+        cleaned.append(arg)
+    return cleaned, sandbox, policy
+
+
 def _run_id(prefix: str) -> str:
     return f"{prefix}-{time.strftime('%H%M%S')}-{os.getpid()}"
 
@@ -85,9 +104,27 @@ def _await_run_forever(run_id: str, interval: float = 5.0) -> dict[str, Any]:
 
 
 def supervised_skill_main(skill: str, argv: Sequence[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
+    args, sandbox, sandbox_policy = _consume_sandbox_flags(
+        list(sys.argv[1:] if argv is None else argv)
+    )
     if args and args[0] in {"-h", "--help", "help"}:
         return subprocess.call([str(deck_path()), skill, "--help"])
+    if sandbox and args and args[0] not in AGENTS:
+        skill_code = SKILL_PREFIX.get(skill, skill[:4])
+        run_id = os.environ.get("VIBECRAFTED_RUN_ID") or _run_id(skill_code)
+        handle = Supervisor().spawn(
+            "command",
+            " ".join(args),
+            skill=skill,
+            mode="raw",
+            root=repo_root(),
+            command=args,
+            env=_env_for_run(run_id, skill_code),
+            run_id=run_id,
+            sandbox=True,
+            sandbox_policy=sandbox_policy,
+        )
+        return handle.wait()
     if not args or args[0] not in AGENTS:
         print(
             f"Usage: vc-{skill} <claude|codex|gemini> [--prompt <text>|--file <path>]",
@@ -113,6 +150,8 @@ def supervised_skill_main(skill: str, argv: Sequence[str] | None = None) -> int:
         command=command,
         env=_env_for_run(run_id, skill_code),
         run_id=run_id,
+        sandbox=sandbox,
+        sandbox_policy=sandbox_policy,
     )
     launch_code = handle.wait()
     if launch_code != 0:
@@ -148,7 +187,9 @@ def _launcher_paths(output: str) -> dict[str, Path]:
 
 
 def research_main(argv: Sequence[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
+    args, sandbox, sandbox_policy = _consume_sandbox_flags(
+        list(sys.argv[1:] if argv is None else argv)
+    )
     if any(arg in {"-h", "--help", "help"} for arg in args):
         return subprocess.call([str(deck_path()), "research", "--help"])
     run_id = os.environ.get("VIBECRAFTED_RUN_ID") or _run_id("rsch")
@@ -175,6 +216,8 @@ def research_main(argv: Sequence[str] | None = None) -> int:
             command=["bash", str(path)],
             env=_env_for_run(run_id, "rsch"),
             run_id=run_id,
+            sandbox=sandbox,
+            sandbox_policy=sandbox_policy,
         )
         for agent, path in sorted(launchers.items())
     ]

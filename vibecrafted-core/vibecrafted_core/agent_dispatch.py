@@ -34,6 +34,7 @@ __all__ = [
     "tier_family",
     "check_parity",
     "extract_session_id",
+    "sandbox_supported",
     "require_parity",
     "ParityError",
 ]
@@ -67,6 +68,8 @@ _SESSION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     for agent in ("claude", "codex", "gemini", "agy", "junie")
 }
 
+_SANDBOX_SUPPORTED_AGENTS = {"claude", "codex", "gemini", "command"}
+
 
 def detect_parent_model() -> Optional[str]:
     """Return the first non-empty parent-model identifier from the env, if any.
@@ -96,6 +99,11 @@ def extract_session_id(agent: str, transcript: str) -> str | None:
         if match:
             return match.group(1)
     return None
+
+
+def sandbox_supported(agent: str) -> bool:
+    """Return whether the dispatch surface can run as a CLI inside microsandbox."""
+    return agent in _SANDBOX_SUPPORTED_AGENTS
 
 
 def normalize_model(raw: str) -> tuple[str, bool]:
