@@ -23,6 +23,7 @@ auditable.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from typing import Optional
 
@@ -32,6 +33,7 @@ __all__ = [
     "tier_rank",
     "tier_family",
     "check_parity",
+    "extract_session_id",
     "require_parity",
     "ParityError",
 ]
@@ -49,6 +51,22 @@ _PARENT_ENV_VARS = (
     "GEMINI_MODEL",
 )
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_SESSION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    agent: (
+        re.compile(
+            r"(?:^|\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+)session: "
+            r"([A-Za-z0-9][A-Za-z0-9-]*)",
+            re.MULTILINE,
+        ),
+        re.compile(
+            r"(?:session[_ -]?id|session)\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9-]*)",
+            re.IGNORECASE,
+        ),
+    )
+    for agent in ("claude", "codex", "gemini", "agy", "junie")
+}
+
 
 def detect_parent_model() -> Optional[str]:
     """Return the first non-empty parent-model identifier from the env, if any.
@@ -61,6 +79,22 @@ def detect_parent_model() -> Optional[str]:
         value = os.environ.get(var)
         if value:
             return value
+    return None
+
+
+def extract_session_id(agent: str, transcript: str) -> str | None:
+    """Extract an agent session id from transcript text.
+
+    The primary pattern intentionally mirrors
+    ``skills/vc-agents/scripts/lib/meta.sh``:
+    ``(?:^|[HH:MM:SS] )session: <id>``.
+    """
+    clean = _ANSI_RE.sub("", transcript or "")
+    patterns = _SESSION_PATTERNS.get(agent, _SESSION_PATTERNS["codex"])
+    for pattern in patterns:
+        match = pattern.search(clean)
+        if match:
+            return match.group(1)
     return None
 
 

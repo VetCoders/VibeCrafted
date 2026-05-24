@@ -281,6 +281,24 @@ ensure_prefix() {
   esac
 }
 
+install_vc_wrappers() {
+  local source_bin="$SOURCE_DIR/bin"
+  local name src
+  [[ -d "$source_bin" ]] || return 0
+  ensure_prefix
+  for src in "$source_bin"/vc-* "$source_bin"/vibecrafted-resume; do
+    [[ -f "$src" ]] || continue
+    name="$(basename "$src")"
+    if (( CHECK_ONLY )); then
+      info "Would install $name -> $PREFIX/$name"
+      continue
+    fi
+    cp "$src" "$PREFIX/$name"
+    chmod +x "$PREFIX/$name"
+    ok "Installed $name -> $PREFIX/$name"
+  done
+}
+
 github_release_json() {
   local repo="$1" endpoint="$2"
   curl -fsSL -H 'Accept: application/vnd.github+json' \
@@ -811,6 +829,7 @@ install_prview() {
   # --- Attempt 0: bundled tarball (notarized drop-in) ---
   install_from_bundled "prview" && return 0
 
+  info "Installing prview from crate metadata; release repo is $PRVIEW_REPO"
   install_from_cargo "$PRVIEW_CRATE" "prview"
 }
 
@@ -875,6 +894,10 @@ for target in "${TARGETS[@]}"; do
   esac
   echo
 done
+
+if (( exit_code == 0 )) && (( !CHECK_ONLY )); then
+  install_vc_wrappers || exit_code=1
+fi
 
 if (( exit_code == 0 )) && (( !CHECK_ONLY )); then
   printf '\033[1mFoundation install complete.\033[0m\n'

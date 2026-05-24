@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/common.sh"
 
 usage() {
   cat <<'EOF_USAGE'
-Usage: await.sh [claude|codex|gemini] [--last] [--run-id <id>] [--research] [--describe] [--interval <sec>] [--timeout <sec>] [--startup-grace <sec>] [targets...]
+Usage: await.sh [claude|codex|gemini] [--last] [--run-id <id>] [--research] [--auto-synthesize] [--describe] [--interval <sec>] [--timeout <sec>] [--startup-grace <sec>] [targets...]
 
 Targets may be:
   - *.meta.json
@@ -29,11 +29,13 @@ store_dir="${VIBECRAFTED_AWAIT_STORE_DIR:-$(spawn_store_dir "$root")}"
 reports_dir="${VIBECRAFTED_AWAIT_REPORTS_DIR:-$store_dir/reports}"
 export VIBECRAFTED_AWAIT_STORE_DIR="$store_dir"
 export VIBECRAFTED_AWAIT_REPORTS_DIR="$reports_dir"
+export VIBECRAFTED_AWAIT_REPO_ROOT="$root"
 
 exec python3 - "$@" <<'PY'
 import json
 import os
 import shlex
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -43,7 +45,7 @@ from pathlib import Path
 def usage() -> None:
     print(
         "Usage: await.sh [claude|codex|gemini] [--last] [--run-id <id>] "
-        "[--research] [--describe] [--interval <sec>] [--timeout <sec>] "
+        "[--research] [--auto-synthesize] [--describe] [--interval <sec>] [--timeout <sec>] "
         "[--startup-grace <sec>] [targets...]"
     )
 
@@ -53,6 +55,7 @@ agent = ""
 use_last = False
 describe_only = False
 research_mode = False
+auto_synthesize = False
 run_id = ""
 interval = 30
 timeout = 0
@@ -69,6 +72,9 @@ while i < len(argv):
     elif arg == "--describe":
         describe_only = True
     elif arg == "--research":
+        research_mode = True
+    elif arg == "--auto-synthesize":
+        auto_synthesize = True
         research_mode = True
     elif arg == "--run-id":
         i += 1
@@ -147,7 +153,7 @@ def backfill_from_meta(descriptor: dict[str, str]) -> dict[str, str]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return descriptor
-    for key in ("agent", "status", "mode", "model", "input", "report", "transcript", "launcher", "exit_code", "updated_at", "run_id", "launcher_pid", "liveness"):
+    for key in ("agent", "status", "mode", "model", "input", "report", "transcript", "launcher", "exit_code", "updated_at", "completed_at", "run_id", "launcher_pid", "liveness"):
         value = data.get(key)
         if value is None:
             continue
@@ -371,6 +377,52 @@ def all_completed(items: list[dict[str, str]]) -> tuple[bool, list[dict[str, str
     return True, resolved
 
 
+def emit_event(kind: str, target_run_id: str, message: str, payload: dict[str, object]) -> None:
+    home = Path(os.environ.get("VIBECRAFTED_HOME", str(Path.home() / ".vibecrafted"))).expanduser()
+    stream = home / "control_plane" / "events.jsonl"
+    stream.parent.mkdir(parents=True, exist_ok=True)
+    event = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "run_id": target_run_id,
+        "kind": kind,
+        "message": message,
+        "payload": payload,
+    }
+    with stream.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
+def trigger_synthesis(items: list[dict[str, str]]) -> None:
+    if not auto_synthesize or not items:
+        return
+    target_run_id = run_id or items[0].get("run_id", "")
+    if not target_run_id:
+        return
+    last = max(items, key=lambda item: item.get("completed_at") or item.get("updated_at") or "")
+    reports = [item.get("report", "") for item in items if item.get("report")]
+    emit_event(
+        "synthesize-trigger",
+        target_run_id,
+        "all research tracks completed; synthesis spawn requested",
+        {
+            "last_agent": last.get("agent", ""),
+            "reports": reports,
+            "metas": [item.get("meta", "") for item in items if item.get("meta")],
+        },
+    )
+    synth = Path(os.environ.get("VIBECRAFTED_AWAIT_REPO_ROOT", "")) / "bin" / "vc-research-synthesize"
+    if os.environ.get("VIBECRAFTED_AUTO_SYNTHESIZE_NO_SPAWN") == "1":
+        return
+    if synth.is_file():
+        subprocess.Popen(
+            [str(synth), "--run-id", target_run_id],
+            cwd=str(synth.parent.parent),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+
 deadline = time.time() + timeout if timeout > 0 else None
 items = resolve_descriptors()
 
@@ -394,6 +446,7 @@ while True:
             sys.exit(2)
         done, resolved = all_completed(items)
         if done:
+            trigger_synthesis(resolved)
             print_card(resolved)
             all_zero = all(str(item.get("exit_code", "1")) == "0" for item in resolved)
             sys.exit(0 if all_zero else 1)

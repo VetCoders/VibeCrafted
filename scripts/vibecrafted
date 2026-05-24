@@ -35,6 +35,17 @@ _script_repo_root() {
   cd "$script_dir/.." && pwd
 }
 
+_prepend_repo_bin_path() {
+  local repo_source bin_dir
+  repo_source="$(_repo_source_root 2>/dev/null || _script_repo_root)"
+  bin_dir="$repo_source/bin"
+  [[ -d "$bin_dir" ]] || return 0
+  case ":${PATH:-}:" in
+    *":$bin_dir:"*) ;;
+    *) export PATH="$bin_dir${PATH:+:$PATH}" ;;
+  esac
+}
+
 _is_framework_source_root() {
   local candidate="${1:-}"
   [[ -n "$candidate" && -f "$candidate/VERSION" && -f "$candidate/scripts/vibecrafted" && -d "$candidate/skills" ]]
@@ -224,6 +235,11 @@ _run_helper() {
   fi
 
   printf '%b[error]%b Missing helper %s.\n' "$_red" "$_reset" "$helper" >&2
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    printf '  Non-interactive shells should use the standalone bin/vc-* wrappers.\n' >&2
+    printf '  Add this repo bin directory to PATH or run scripts/install-foundations.sh:\n' >&2
+    printf '    export PATH="%s/bin:$PATH"\n' "$(_repo_source_root 2>/dev/null || _script_repo_root)" >&2
+  fi
   return 1
 }
 
@@ -1260,6 +1276,7 @@ cmd_start() {
 
 cmd_init() {
   local agent="${1:-claude}"
+  _prepend_repo_bin_path
   _has_agent "$agent" || {
     printf '%b[error]%b Unknown agent: %s\n' "$_red" "$_reset" "$agent" >&2
     return 1

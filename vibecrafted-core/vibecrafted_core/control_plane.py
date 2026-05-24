@@ -82,6 +82,16 @@ class RunStatus:
     total_loops: int | None = None
 
 
+@dataclass(frozen=True)
+class Event:
+    ts: str
+    run_id: str
+    kind: str
+    message: str
+    payload: dict[str, Any]
+    cursor: int
+
+
 def control_plane_home() -> Path:
     return vibecrafted_home() / "control_plane"
 
@@ -472,6 +482,50 @@ def read_event_tail(limit: int = EVENT_TAIL_LIMIT) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
     return list(reversed(events))
+
+
+def subscribe_events(
+    since_cursor: int | None = None,
+    kinds: set[str] | list[str] | tuple[str, ...] | None = None,
+    callback=None,
+) -> Iterator[Event]:
+    """Yield control-plane events from events.jsonl, polling when needed."""
+    stream = event_stream_path()
+    cursor = max(int(since_cursor or 0), 0)
+    kinds_filter = set(kinds or [])
+
+    while True:
+        emitted = False
+        if stream.exists():
+            with stream.open("r", encoding="utf-8") as handle:
+                handle.seek(cursor)
+                while True:
+                    line = handle.readline()
+                    if not line:
+                        break
+                    cursor = handle.tell()
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    kind = str(payload.get("kind") or "")
+                    if kinds_filter and kind not in kinds_filter:
+                        continue
+                    event = Event(
+                        ts=str(payload.get("ts") or ""),
+                        run_id=str(payload.get("run_id") or ""),
+                        kind=kind,
+                        message=str(payload.get("message") or ""),
+                        payload=dict(payload.get("payload") or {}),
+                        cursor=cursor,
+                    )
+                    if callback is not None:
+                        callback(event)
+                    emitted = True
+                    yield event
+        if callback is None and not emitted:
+            return
+        time.sleep(1.0)
 
 
 def sync_state() -> dict[str, Any]:
