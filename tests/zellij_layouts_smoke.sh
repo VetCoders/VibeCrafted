@@ -7,11 +7,9 @@
 #      `zellij --layout <name> setup --check`.
 #   2. All four mesh themes in themes/vetcoders-mesh.kdl load alongside
 #      config.kdl without parse errors.
-#   3. aicx-status.sh, loctree-drift.sh, and auto-theme.sh pass
-#      `bash -n` and shellcheck (if shellcheck is installed).
-#   4. aicx-status.sh + loctree-drift.sh emit non-empty status lines in
-#      oneshot mode.
-#   5. auto-theme.sh maps each canonical host name to the expected theme
+#   3. auto-theme.sh passes `bash -n` and shellcheck (if shellcheck is
+#      installed).
+#   4. auto-theme.sh maps each canonical host name to the expected theme
 #      (dragon → vetcoders-dragon, sztudio → vetcoders-sztudio, etc.)
 #      including the mgbook16 → vetcoders-div0 alias from kronika 2026-05-05
 #      and the neutral fallback for unknown hosts.
@@ -58,8 +56,6 @@ skip() {
 printf '\n[1] shipped artifacts\n'
 
 for f in \
-    "$CFG_DIR/aicx-status.sh" \
-    "$CFG_DIR/loctree-drift.sh" \
     "$CFG_DIR/auto-theme.sh" \
     "$THEMES_FILE" \
     "$CFG_DIR/config.kdl"
@@ -71,33 +67,27 @@ do
     fi
 done
 
-for f in "$CFG_DIR/aicx-status.sh" "$CFG_DIR/loctree-drift.sh" "$CFG_DIR/auto-theme.sh"; do
-    if [[ -x "$f" ]]; then
-        ok "$(basename "$f") executable"
-    else
-        fail "$(basename "$f") not executable" "chmod +x $f"
-    fi
-done
+if [[ -x "$CFG_DIR/auto-theme.sh" ]]; then
+    ok "auto-theme.sh executable"
+else
+    fail "auto-theme.sh not executable" "chmod +x $CFG_DIR/auto-theme.sh"
+fi
 
 # ───── 2. bash -n + shellcheck ──────────────────────────────────────────────
 printf '\n[2] script lint\n'
 
-for f in "$CFG_DIR/aicx-status.sh" "$CFG_DIR/loctree-drift.sh" "$CFG_DIR/auto-theme.sh"; do
-    if bash -n "$f" 2>/dev/null; then
-        ok "bash -n $(basename "$f")"
-    else
-        fail "bash -n $(basename "$f")"
-    fi
-done
+if bash -n "$CFG_DIR/auto-theme.sh" 2>/dev/null; then
+    ok "bash -n auto-theme.sh"
+else
+    fail "bash -n auto-theme.sh"
+fi
 
 if command -v shellcheck >/dev/null 2>&1; then
-    for f in "$CFG_DIR/aicx-status.sh" "$CFG_DIR/loctree-drift.sh" "$CFG_DIR/auto-theme.sh"; do
-        if shellcheck "$f" >/dev/null 2>&1; then
-            ok "shellcheck $(basename "$f")"
-        else
-            fail "shellcheck $(basename "$f")"
-        fi
-    done
+    if shellcheck "$CFG_DIR/auto-theme.sh" >/dev/null 2>&1; then
+        ok "shellcheck auto-theme.sh"
+    else
+        fail "shellcheck auto-theme.sh"
+    fi
 else
     skip "shellcheck not installed — install with 'brew install shellcheck'"
 fi
@@ -151,25 +141,8 @@ else
     done
 fi
 
-# ───── 5. helper oneshot output ─────────────────────────────────────────────
-printf '\n[5] helper oneshot output\n'
-
-aicx_out=$(AICX_STATUS_ONESHOT=1 "$CFG_DIR/aicx-status.sh" 2>&1 || true)
-if [[ -n "$aicx_out" ]] && echo "$aicx_out" | grep -qE "^.*aicx:"; then
-    ok "aicx-status.sh emits status line"
-else
-    fail "aicx-status.sh produced no recognizable output" "got: $aicx_out"
-fi
-
-drift_out=$(LOCTREE_DRIFT_ONESHOT=1 "$CFG_DIR/loctree-drift.sh" 2>&1 || true)
-if [[ -n "$drift_out" ]] && echo "$drift_out" | grep -qE "^.*loctree:"; then
-    ok "loctree-drift.sh emits status line"
-else
-    fail "loctree-drift.sh produced no recognizable output" "got: $drift_out"
-fi
-
-# ───── 6. host-aware theme resolver ─────────────────────────────────────────
-printf '\n[6] auto-theme host mapping\n'
+# ───── 5. host-aware theme resolver ─────────────────────────────────────────
+printf '\n[5] auto-theme host mapping\n'
 
 declare -a host_cases=(
     "dragon:vetcoders-dragon"

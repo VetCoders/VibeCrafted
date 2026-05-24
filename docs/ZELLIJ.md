@@ -4,9 +4,8 @@
 
 VibeCrafted ships a zellij configuration tuned for the way VetCoders actually
 work: parallel agents, shared Living Tree, mesh of workstations, no babysitting.
-The shipped surface gives every layout a live AICX session counter, a loctree
-snapshot-age indicator, and host-aware identity colors so an operator instantly
-knows which machine they are looking at.
+The shipped surface gives every layout host-aware identity colors so an
+operator instantly knows which machine they are looking at.
 
 This document covers what is shipped, how it auto-discovers itself, and how to
 extend it.
@@ -16,8 +15,6 @@ extend it.
 ```
 config/zellij/
 ├── config.kdl                       # base config + neutral theme
-├── aicx-status.sh                   # live AICX session counter (1-line)
-├── loctree-drift.sh                 # loctree snapshot age (1-line, color)
 ├── auto-theme.sh                    # host detection -> theme name
 ├── themes/
 │   └── vetcoders-mesh.kdl           # 4 mesh themes (dragon/sztudio/silver/div0)
@@ -32,57 +29,6 @@ config/zellij/
 Once installed (`vibecrafted install` or `make install`), the framework symlinks
 this directory under `~/.config/vetcoders/frontier/zellij/` and the layouts
 become reachable through the `vibecrafted dashboard <layout>` family of CLIs.
-
-## Status row — what the operator sees
-
-Each layout's `default_tab_template` carries a thin one-line pane above the
-compact status-bar plugin, split 50/50:
-
-```
-[ aicx: 2/5 (claude+codex)   ][ loctree: drift vibecrafted (7m) ]
-```
-
-The two halves run independent shell loops; either failing is non-fatal — the
-helper prints a single-line warning and the rest of the layout keeps working.
-
-### `aicx-status.sh`
-
-Reads `~/.aicx/store/<org>/<project>/<YYYY_MMDD>/conversations/<agent>/*.{md,jsonl}`
-for the _current_ day. Counts **total** segments touched today and **active**
-segments modified within the last `AICX_STATUS_WINDOW` seconds (default 600).
-Output:
-
-| state                  | example                                  | color |
-| ---------------------- | ---------------------------------------- | ----- |
-| active sessions exist  | `aicx: 3/12 (claude+codex+gemini)`       | green |
-| idle but day populated | `aicx: 0/12`                             | amber |
-| empty / no store       | `aicx: 0/0 idle` / `aicx: store offline` | dim   |
-
-Knobs:
-
-- `AICX_STORE` — override the store root (default `~/.aicx/store`)
-- `AICX_STATUS_WINDOW` — "active" window in seconds (default 600)
-- `AICX_STATUS_REFRESH` — refresh interval in seconds (default 5)
-- `AICX_STATUS_ONESHOT` — emit one line and exit (used by smoke tests)
-
-### `loctree-drift.sh`
-
-Walks the operator's repo neighbourhood (PWD + `~/vc-workspace` + `~/Libraxis`
-by default) for `*/.loctree/snapshot.json`. Reports the **oldest** snapshot age:
-
-| age band     | output                                | color |
-| ------------ | ------------------------------------- | ----- |
-| < 5 min      | `loctree: fresh (N snapshots)`        | green |
-| < 1 hour     | `loctree: drift <repo> (12m)`         | amber |
-| ≥ 1 hour     | `loctree: stale <repo> (3h)` / `(5d)` | red   |
-| no snapshots | `loctree: no snapshots`               | dim   |
-
-Knobs:
-
-- `LOCTREE_DRIFT_ROOTS` — colon-separated roots to scan
-- `LOCTREE_DRIFT_DEPTH` — `find -maxdepth` limit (default 4)
-- `LOCTREE_DRIFT_REFRESH` — refresh interval (default 30s)
-- `LOCTREE_DRIFT_ONESHOT` — emit one line and exit
 
 ## Mesh-aware host theming
 
@@ -150,9 +96,7 @@ Runs `tests/zellij_layouts_smoke.sh`, which asserts:
 
 - every shipped layout parses via `zellij --layout <name> setup --check`
 - every mesh theme loads alongside `config.kdl` without parse errors
-- `aicx-status.sh`, `loctree-drift.sh`, `auto-theme.sh` pass `bash -n` and
-  shellcheck (when installed)
-- the two status helpers emit recognizable status lines in oneshot mode
+- `auto-theme.sh` passes `bash -n` and shellcheck (when installed)
 - `auto-theme.sh` maps `dragon|sztudio|silver|div0|mgbook16` to the right
   mesh theme and falls back to neutral for unknown hosts (case-insensitive,
   `.local` suffix tolerant)
@@ -162,14 +106,12 @@ when the host doesn't have them.
 
 ## Living Tree etiquette
 
-- Layout edits are **append-only**. Existing pane configurations were preserved
-  byte-for-byte; only the new status row was inserted into `default_tab_template`.
-- Helper scripts probe multiple roots
+- Layout edits are **append-only**. Existing pane configurations are preserved
+  byte-for-byte.
+- `auto-theme.sh` probes multiple roots
   (`$VIBECRAFTED_HOME/tools/vibecrafted-current/config/zellij`,
-  `$VIBECRAFTED_ROOT/config/zellij`, `./config/zellij`) so they work whether
+  `$VIBECRAFTED_ROOT/config/zellij`, `./config/zellij`) so it works whether
   invoked from the installed framework, a Living Tree worktree, or a CI runner.
-- A missing helper does **not** kill the layout — the pane prints a single-line
-  diagnostic and sleeps, so the workspace stays usable.
 
 ## Related
 
