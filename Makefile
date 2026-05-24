@@ -39,7 +39,7 @@ help:
 	@printf "  \033[32m✓\033[0m  make test-install  \033[2mRun install.sh / install.ps1 cross-platform smoke (Plan 03)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-race-protection \033[2mVerify Living Tree commit race detection helper\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-parity   \033[2mVerify AGENT MODEL PARITY enforcement (Plan 06)\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-zellij   \033[2mVerify zellij layouts + AICX status + mesh themes (Plan 12)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-zellij   \033[2mVerify zellij layouts + mesh themes + auto-theme (Plan 12)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-iterm2-migrate \033[2mVerify iTerm2 experimental -> GA migration (Plan 10)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-memex    \033[2mVerify memex cross-session retrieval client (Plan 09)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-aicx-sync \033[2mVerify AICX cross-machine sync v2 + authority conflict resolution (Plan 08)\033[0m\n"
@@ -381,8 +381,7 @@ skill-new:
 #   - all shipped layouts under config/zellij/layouts/*.kdl parse via
 #     `zellij --layout <name> setup --check`
 #   - all four mesh themes (vetcoders-dragon/sztudio/silver/div0) load
-#   - helper scripts (aicx-status.sh, loctree-drift.sh, auto-theme.sh)
-#     pass bash -n + shellcheck and emit status lines in oneshot mode
+#   - auto-theme.sh passes bash -n + shellcheck
 #   - auto-theme.sh maps each canonical host (dragon, sztudio, silver, div0,
 #     mgbook16 alias) to the correct mesh theme and falls back to neutral
 #     for unknown hosts

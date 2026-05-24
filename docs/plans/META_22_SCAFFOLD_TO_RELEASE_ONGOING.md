@@ -467,7 +467,7 @@
 | from_file                     | from_line | dispatch_kind     | handler_symbol        | handler_file | authority       |
 | ----------------------------- | --------- | ----------------- | --------------------- | ------------ | --------------- |
 | Makefile                      | 93        | recipe_shell_call | (cd                   |              | loctree_derived |
-| Makefile                      | 17        | recipe_shell_call | 173m⚒                 |              | loctree_derived |
+| Makefile                      | 17        | recipe_shell_call | 173m⚒                |              | loctree_derived |
 | Makefile                      | 17        | recipe_shell_call | 5                     |              | loctree_derived |
 | Makefile                      | 323       | recipe_shell_call | [                     |              | loctree_derived |
 | Makefile                      | 138       | recipe_shell_call | bash                  |              | loctree_derived |
