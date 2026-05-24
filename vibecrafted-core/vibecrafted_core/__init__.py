@@ -51,6 +51,7 @@ from .iterm2_profiles import (
     stable_guid,
     uninstall_profiles,
 )
+from . import iterm2_plugin
 from .runtime_paths import (
     read_version_file,
     resolve_env_path,
@@ -95,6 +96,7 @@ __all__ = [
     "hyperlink",
     "install_profiles",
     "invalidate_buttons",
+    "iterm2_plugin",
     "launch_workflow",
     "lookup_run",
     "normalize_launch_spec",

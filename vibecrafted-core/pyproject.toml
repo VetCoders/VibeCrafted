@@ -6,6 +6,12 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+sandbox = ["aiohttp >= 3.9"]
+# macOS-only iTerm2 / locterm AutoLaunch plugin.
+# Not in the default install — opt-in via `pip install '.[iterm2]'`.
+iterm2 = ["iterm2 >= 2.7"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
