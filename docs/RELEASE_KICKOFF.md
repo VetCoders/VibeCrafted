@@ -123,7 +123,7 @@ about what the product is.
 
 Every release run produces a report under
 `$VIBECRAFTED_ROOT/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/reports/`
-that follows the default template at
+that follows the canonical template at
 [`skills/vc-release/references/release-report-template.md`](../skills/vc-release/references/release-report-template.md).
 The four mandatory sections — security gate, exposed surface inventory,
 deployment mode decision, and post-release install smoke from the

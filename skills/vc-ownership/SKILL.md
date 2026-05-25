@@ -1,11 +1,11 @@
 ---
 name: vc-ownership
-version: 0.1.0
+version: 1.1.0
 description: >
   Full-spectrum VetCoders ownership mode for moments when the user wants Agent
   to take the wheel and drive a product from A to Z: architecture, coding,
   runtime debugging, UI polish, packaging, docs, testing, local tooling,
-  optional agent orchestration, and wow-effect finish. Use whenever the user says things
+  agent orchestration, and wow-effect finish. Use whenever the user says things
   like "take ownership", "you drive", "od a do z", "zrob to cale", "dowiez
   to", "wow effect", "superprodukcyjny", "manufakturer produktowy", or when
   the team clearly wants decisive end-to-end execution with minimal back-and-forth.
@@ -26,17 +26,27 @@ compatibility:
 
 ## Living Tree / Worktree Rule
 
-This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a substrate failure if the current tree is too poisoned to continue safely.
+This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution
+into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "
+parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a
+substrate failure if the current tree is too poisoned to continue safely.
 
 See [Living Tree Rule](../LIVING_TREE_RULE.md).
 
 ## Canonical Orientation Gate
 
-Before this workflow performs repo-specific analysis, planning, implementation, review, release, or delegation, it MUST run or consume the `vc-init` procedure for the assigned repo. If fresh `vc-init` evidence is absent, perform the init pass first and treat workflow-specific work as blocked until repo truth exists.
+Before this workflow performs repo-specific analysis, planning, implementation, review, release, or delegation, it MUST
+run or consume the `vc-init` procedure for the assigned repo. If fresh `vc-init` evidence is absent, perform the init
+pass first and treat workflow-specific work as blocked until repo truth exists.
 
-`Loctree:loctree` is the default structural perception skill for that pass. Use Loctree before grep or docs-driven claims to produce or refresh the Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant. Search for existing symbols and contracts before creating new ones; run impact before delete or major refactor; run slice before editing.
+`Loctree:loctree` is the default structural perception skill for that pass. Use Loctree before grep or docs-driven
+claims to produce or refresh the Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as
+relevant. Search for existing symbols and contracts before creating new ones; run impact before delete or major
+refactor; run slice before editing.
 
-The point is to find the hooks: load-bearing hubs, twins, dead code, drift, runtime entrypoints, and blast-radius traps. If the task is explicitly non-repo or no-code, state the no-repo exception in the report. Otherwise, missing `vc-init`/Loctree evidence is a process failure.
+The point is to find the hooks: load-bearing hubs, twins, dead code, drift, runtime entrypoints, and blast-radius traps.
+If the task is explicitly non-repo or no-code, state the no-repo exception in the report. Otherwise, missing `vc-init`
+/Loctree evidence is a process failure.
 
 ## Purpose
 
@@ -46,10 +56,10 @@ They are handing us a mandate.
 This is the mode for:
 
 - full-stack product shaping
-- end-to-end execution
-- decisive engineering choices
+- end-to-end execution via dispatched [vc-agents](../vc-agents/SKILL.md)
+- decisive engineering choices without explicit written approval
 - product polish and wow effect
-- reducing drag and follow-up questions
+- [loop](.) reducing drag and follow-up questions
 - finishing the thing, not merely editing code
 
 The contract is simple:
@@ -72,8 +82,10 @@ That includes, when justified by the task and available in the environment:
 - improving UX and visual quality
 - running local servers and smoke tests
 - steering browser or desktop interactions through available tooling
-- orchestrating agent swarms through `vc-agents` only when explicitly useful
-  and allowed by the operator
+- orchestrating external agents fleet through `vc-agents`
+  in interactive sessions as default progress engine
+- orchestrating native workers through `vc-delegate` ruleset
+  in detached non-interactive sessions highly recommended
 - converging through `vc-marbles`
 
 The goal is not just correctness.
@@ -106,11 +118,12 @@ Also use it when the request clearly spans multiple layers at once:
 
 ### Cross-reference: when ownership becomes multi-dispatch
 
-`vc-ownership` is **solo-thread** delivery: one feature, one branch,
+`vc-ownership` is **solo-thread** (non-interactive) or multi-thread
+(interactive) delivery:
 push-ready as the stop point. When the task grows into a multi-prompt
 chain across multiple agents (wave A → B → C → D, AGENT FAIRNESS
 rotation, recovery dispatch, await-via-notify), the charter shifts to
-`vc-operator`.
+`vc-operator` in interactive sessions.
 
 Signals that the work has outgrown ownership and wants operator-mode:
 
@@ -118,7 +131,7 @@ Signals that the work has outgrown ownership and wants operator-mode:
 - the work spans 4+ branches that need wave-shaped merge coordination
 - you'd be firing 3+ peer-tier agents and synthesising their reports
 - the operator says _"orchestrate the rest"_, _"prowadź fleet"_,
-  _"dirygentura"_, or hands over `vc-deliveries/` materials
+  _"dirygentura"_
 
 When the shift happens, load [`../vc-operator/SKILL.md`](../vc-operator/SKILL.md)
 **alongside** this one (ownership doesn't go away — each dispatched
@@ -132,11 +145,16 @@ explicitly before firing anything.
 In ownership mode:
 
 1. Start with a fast framing pass.
-2. Decide the target shape.
-3. Make reasonable assumptions aggressively.
-4. Use agents where parallel thinking buys speed or coverage.
-5. Keep a tight execution narrative in the main thread.
-6. Deliver a stronger product surface than the user explicitly asked for.
+2. Proactively explore recent sessions via available context
+   tools.
+3. Extend the codebase awareness with `loctree context --full`
+4. Decide the target shape autonomously.
+5. Make reasonable assumptions aggressively.
+6. Use agents where parallel thinking buys speed or coverage.
+7. Keep a tight execution narrative in the main thread.
+8. Deliver a strong release-ready features or a hardened
+   product surface.
+9. Use `cron` to keep heartbeat and schedule the next step.
 
 Do not ask permission for every small step.
 Do ask for alignment before moves with hidden blast radius.
@@ -190,20 +208,21 @@ If the request is fuzzy, tighten it by inference rather than by interrogation.
 
 Decide whether this is:
 
-- direct implementation
-- partner-mode research first
-- workflow pipeline
-- marbles convergence
-- a hybrid
+- tiny scope that allows a direct implementation path
+- research or audit first before performing any move
+- workflow 'ERi' pipeline for streamlined external delegation
+- marbles loops where there grown a need of widespread code actions
+  with strong cost-effective cache-driven multiturn execution
+- a hybrid set of any suitable workflow
 
-Preferred compositions:
+Defaults:
 
-- `vc-partner` for hard architecture truth
-- `vc-agents` for external field teams
-- `vc-marbles` for convergence loops
-- `vc-dou` when the code works but the product still feels unfinished
-- `vc-decorate` when the experience lacks curb appeal
-- `vc-hydrate` when packaging and market-facing polish are missing
+- `vc-agents` a doctrine and runbook with `why-matrix` definition
+- `vc-justdo` for code writing or refactoring (`vc-agents`
+  execution runner)
+- `vc-marbles` for closing the gaps and unfinished jobs
+- `vc-polarize` for final shape carving after marbles
+- `vc-release` for making the product shippable
 
 ### Phase 3 - Build the runtime truth
 
@@ -306,18 +325,24 @@ If the task is simple, compress this. If the task is broad, keep it structured.
 
 Do not in ownership mode:
 
+- code yourself by default
+- ask questions without setting the `cron` or similar available
+  tool while user is absent
 - ask the user to micromanage obvious decisions
 - preserve bad architecture just because it already exists
 - stop at code while leaving product shell unfinished
-- run fleets without a controlling thesis
 - create extra systems when one sharp rewrite would do
 - claim wow effect and deliver a placeholder
 
 ## Examples
 
 **Example 1:**
-Input: "Take ownership of this dashboard and make it feel like a real product."
-Output: choose the shell, integrate the runtime panel, improve UX, verify the real path, and leave a shippable surface.
+Input: "I have to go out for 5 hours. We have this `<feature>` well and thorougly discussed.
+Take the wheel and deliver it autonomously.
+Output: Set the 15-20 minutes heartbeat and confirm the understanding then
+implement the `$feature` thoroughly or ask clarification question in
+one bulk set. If not answered proceed with the chosen workflows
+autonomously until the goal is acomplished
 
 **Example 2:**
 Input: "You drive. I want this local AI stack to feel production-ready."
@@ -337,3 +362,4 @@ It is permission to remove friction.
 Take the wheel.
 Keep the user safe.
 Finish the whole slice.
+Respect the user absence and move forward.

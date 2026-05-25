@@ -16,4 +16,4 @@ Both paths land on the same internal skill (id: `justdo`, run-id prefix:
 `<agent>-skill-implement`) point to the same flow.
 
 For the full mermaid graph, route table, escalation edges and artifact
-contract, read the default document.
+contract, read the canonical document.

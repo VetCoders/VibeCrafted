@@ -1,7 +1,7 @@
 ---
 name: vc-justdo
-version: 2.1.0
-default: vc-implement
+version: 2.1.1
+canonical: vc-implement
 description: >
   Alias of vc-implement — kept for agents already wired to the
   vc-justdo name. Same end-to-end autonomous implementation skill: agent takes
@@ -11,7 +11,7 @@ description: >
   "implement this e2e", "build this properly", "I'm tired but this needs to
   ship", "full implementation", "od pomyslu do realizacji", "caly feature",
   "before tomorrow", "nie mam siły ale musi byc gotowe".
-  Prefer the default name vc-implement going forward.
+  Prefer the canonical name vc-implement going forward.
 compatibility:
   tools:
     - exec_command

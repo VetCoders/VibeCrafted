@@ -45,9 +45,7 @@ aicx-dashboard.html
 vibecrafted-io-link
 /operator-tui/target
 /artifacts
-*.log
-.loctree
-/operator/shell-agent/app/build
-/operator/shell-agent/build
-/operator/tui-agent/audits
-/operator/target
+/operator-tui/*.md
+/operator-tui/README.md
+/.loctree
+/.antigravitycli

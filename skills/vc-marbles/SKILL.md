@@ -33,7 +33,7 @@ requires:
 
 # vc-marbles — Deliberate Excess (Worker-Blind, Swarm-Wide)
 
-> The WRITE step at the centre of the pipeline. Where `vc-audit` says
+> The `WRITE` step at the centre of the pipeline. Where `vc-followup` says
 > **"falsify the spec claim, never touch the code"** and `vc-polarize`
 > says **"cut back to one truth"**, this one says **"the worker sees
 > the tree, not the factory — one round, one truth-forcing cut, one
@@ -63,16 +63,22 @@ own reality.
 Standard launcher:
 
 ```bash
-# Single round
+# Single round (3 runs by default):
 vibecrafted marbles codex --prompt 'Fix the 3 failing portable tests'
 vc-marbles codex --prompt 'Harden the installer shell surface'
 
-# Multiple rounds (convergence loop — runtime spawns fresh agent N times)
+# Multiple rounds (convergence loop — runtime spawns fresh agent 3..n times)
 vibecrafted marbles codex --count 5 --prompt 'Stabilize until P0=0'
 vc-marbles claude --count 8 --prompt 'Refactor the 1500 LOC monoliths'
 
-# From a plan file
-vc-marbles gemini --count 2 --file /path/to/plan.md
+# From a plan file:
+vibecrafted marbles codex --file ~/.vibecrafted/artifacts/VetCoders/vibecrafted/2026_0407/plans/marbles-plan.md
+vc-marbles gemini --count 5 --file /path/to/plan.md
+
+# Crawl back into the canonical store then read 'n' recently
+# implemented plans then fill the all the gaps:
+vibecrafted marbles codex --count 10 --depth n
+vc-marbles claude --depth 12 --prompt 'Focus on "vc-followup assumptions from the last 12 plans'
 ```
 
 **Not the same as `vibecrafted codex implement <plan>`.** `implement`
@@ -85,7 +91,7 @@ iterations.
 
 ## Purpose
 
-`vc-marbles` is the WRITE step that turns the naturally overgenerated
+`vc-marbles` is the COMPLETION step that turns the naturally overgenerated
 output of agentic coding into a hardened, testable foundation. Each
 individual worker is disciplined: one round, one bounded set of
 targets, one commit. But the **swarm** of workers/rounds across an
@@ -96,9 +102,61 @@ the ones that perhaps should not be filled. The excess is the point.
 Marbles does **not** attempt to solve product-level conceptual smear
 (conflicting docs, split product directions). It exposes those
 product decisions hiding behind "code issues" and leaves them for
-`vc-polarize` to resolve.
+`vc-polarize` to resolve and pick the single-truth final shape.
 
----
+## Cost Awareness: Cold Start, Hot Loop
+
+`vc-marbles` looks expensive only when every agent run is counted as a
+fresh event. That is the wrong accounting model.
+
+The expensive part is the cold start: reading the repo, reconstructing
+intent, finding the real failure surface, and learning where the system
+lies. Once that context is hot, repeated marble runs over the same
+bounded surface are not waste. They are compression.
+
+Marbles exploits cache heat.
+
+A good marble loop keeps the substrate stable:
+
+- same repository
+- same task surface
+- same failing gates
+- same architectural intent
+- same or comparable prompt
+- short time distance between runs
+
+This makes each new worker pay less for archaeology and spend more of
+its budget on deltas: missed cracks, false fixes, brittle assumptions,
+and disagreements between agents.
+
+The goal is not cheap runs. The goal is denser runs.
+
+One isolated agent call gives you one interpretation. A hot marble loop
+gives you convergence pressure. When several workers keep pressing the
+same surface, the remaining disagreements become signal: either the code
+is still lying, or the product truth is smeared.
+
+That is where `vc-polarize` takes over.
+
+Cost rule:
+
+- one cold run discovers the shape
+- repeated hot runs expose convergence
+- stale loops create noise
+- scattered loops destroy cache heat
+- `vc-polarize` decides what survives
+
+Do not scatter marble runs across unrelated initiatives. Do not keep
+rewriting the target surface unless the operator intentionally resets
+the experiment. Marbles works because the swarm keeps pressing against
+the same cracks until the false repairs, overfilled gaps, and real
+structural decisions become visible.
+
+In short: marbles spend warmed context to buy completeness. Cache heat
+makes that completeness cheaper, denser, and comparable across workers.
+
+The excess is deliberate. Marbles fills too much so `vc-polarize` can
+cut back to one truth with evidence, not taste.
 
 ## When To Use It
 
@@ -123,10 +181,10 @@ Do **not** use this skill when:
 
 ## Pipeline Position
 
-`vc-marbles` is one of the WRITE steps in the quality cycle:
+`vc-marbles` is one of the WRITE steps in the quality cycle (example):
 
 ```
-... → implement (WRITE) → followup (READ) → review (READ) → [MARBLES: WRITE] → audit (READ) → polarize (WRITE: cut) → ...
+... → implement (W) → review (R) → workflow (W) → followup (R) → marbles (W) → audit (R) → polarize (W) → ...
 ```
 
 The swarm's deliberate excess produces a surface that needs to be
@@ -145,7 +203,7 @@ quality — an agent working 90 minutes makes worse decisions in minute
 seeing the tree. Every round gets a fresh mind. Not a workaround —
 the design.
 
-The worker is blind; the **reception layer** (operator / orchestrator)
+The **reception layer** (operator / orchestrator)
 holds the open-finding ledger, candidate comparison across parallel
 rounds, and the decision to converge or fire another wave. See
 [`RECEPTION.md`](RECEPTION.md). Do not load reception into worker
@@ -192,7 +250,8 @@ One invocation = one bounded round.
    fortified path, relevant build/bundle checks. If a gate fails:
    report plainly, count regression, do not bury under narrative.
 5. **Commit.** Exactly one round commit with the convention below.
-6. **Report.** Save to `$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/marbles/reports/<ts>_marble_<run_or_round_id>_<agent>.md`.
+6. **Report.** Save to
+   `$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/marbles/reports/<ts>_marble_<run_or_round_id>_<agent>.md`.
 
 **The worker stops here.** Do not self-extend into the next round.
 Do not write instructions to your successor. The reception layer
@@ -206,7 +265,7 @@ in [`RECEPTION.md`](RECEPTION.md).
 
 ## Stabilization Lenses
 
-Pick the one matching the weakest live surface:
+If there is no exact task description pick the one matching the weakest live surface:
 
 - **Access & Isolation** — auth, tenant scoping, role checks, permission boundaries
 - **Data Health** — indexes, query plans, N+1s, schema hotspots, God tables
@@ -235,8 +294,6 @@ Tests: <what ran>
 Regressions: <count>
 Round-ID: <opaque-id-if-provided>
 ```
-
-If gate fails, still commit the actual result — do not hide failure.
 
 ---
 
@@ -288,11 +345,11 @@ in the report.
 
 ## Finish Condition
 
-Stop after the commit and report. Do not self-extend. If the
-implementation is stable but has high conceptual smear (competing
-truths, fragmented product surface), hand off to `vc-polarize`. If a
-written plan claims completion, hand off to `vc-audit` for
-falsification.
+Stop after the commit and report. After that **do not** self-extend.
+If the implementation is complete but has high conceptual smear (competing
+truths, fragmented product surface), it will be handed off to
+`vc-audit` for falsification and `vc-polarize` to get a release candidate
+grade sharpness and single-truth shape.
 
 ---
 
@@ -310,14 +367,17 @@ parallel-round routing. Then accuse the present tree.
 
 ```text
 =======================
-Remember: marbles mode is permission to write the smallest truthful
-fix, not permission to refactor what you don't understand. The worker
-sees the tree, never the factory. One round, one commit, one report.
+Remember: marbles mode is permission to write the small or braad truthful
+fix, not permission to refactor, unless it is clearly given as a task
+description. You don't need to bother about the overgrown code around the
+certain parts of the codebase, but you have the hard obligation to describe
+it in the report if encountered.
+The worker sees the tree, never the factory. One round, one commit, one report.
 Then leave. The swarm produces the excess; polarize strips it.
 (•̀⌄•́)و ̑̑
 =======================
 
-Suchar: Why does the marble worker never argue with the next worker?
+Dad's joke: Why does the marble worker never argue with the next worker?
 Because by then it's already left the locker room.  (._.)
 ```
 

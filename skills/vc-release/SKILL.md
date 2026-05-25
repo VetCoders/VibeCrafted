@@ -1,6 +1,6 @@
 ---
 name: vc-release
-version: 0.2.0
+version: 0.2.1
 description: >
   Final outward ship skill. Turns "done in the repo" into "safe, visible, deployable,
   discoverable, and launchable in the world." Covers release mechanics, deployment
@@ -96,7 +96,15 @@ Pick one intentionally:
 
 ## Reverse Proxy and Exposure
 
-Release must explicitly answer: default hostname, what's public/private, where TLS terminates, HTTP→HTTPS redirect, websocket and forwarded-header handling. Minimum: `Host` headers preserved intentionally; websocket upgrade if needed; sane timeout/body-size; `www`/apex redirect per default decision; 80→443 when public HTTPS is intended. Public exposure is a decision, not a default.
+Minimum reverse-proxy expectations:
+
+- `Host` and forwarding headers preserved intentionally
+- websocket upgrade support if the app needs it
+- sane timeout and body-size settings
+- redirect `www`/apex according to canonical decision
+- 80 -> 443 redirect when public HTTPS is intended
+
+Public internet exposure is a decision, not a default.
 
 ## Semgrep Release Gate
 
@@ -119,7 +127,10 @@ If Semgrep unavailable, say so explicitly, run `uvx semgrep` (documented fallbac
 
 ## Domain, DNS, Verification
 
-If the product has any public surface, verify: domain registered and intended, DNS to correct target, default host (`www` vs apex), redirects match default, TLS resolves cleanly, staging vs prod domains not confused. Also: no stale preview domains advertised as primary, no mismatched favicon/title/og:image leaking old identity, no broken `/.well-known/*` paths.
+If the product has any public surface, verify: domain registered and intended, DNS to correct target, canonical host (
+`www` vs apex), redirects match canonical, TLS resolves cleanly, staging vs prod domains not confused. Also: no stale
+preview domains advertised as primary, no mismatched favicon/title/og:image leaking old identity, no broken
+`/.well-known/*` paths.
 
 Ownership proofs (when public products need them): Search Console, Bing Webmaster, domain TXT/challenge files, Apple/Google ecosystem `.well-known/` endpoints, any challenge-response proofs required by infra/platforms. If domain ownership proof is required and the challenge path is missing, release is not done.
 
@@ -127,9 +138,13 @@ Ownership proofs (when public products need them): Search Console, Bing Webmaste
 
 Visibility is a hard checklist, not nice-to-have.
 
-- **Page-level**: descriptive `<title>`, meta description, one real `<h1>`, crawlable content in initial HTML or truthful fallback, default URL, Open Graph + Twitter card tags, correct status code, `noindex` only when intentional.
-- **Site-level**: `robots.txt`, `sitemap.xml`, default host strategy, consistent internal linking, no broken docs/marketing links, favicon + social preview assets.
-- **Indexability checks**: `curl` page and verify meaningful content without JS; route not blocked by `robots.txt`; meta robots not `noindex` unless intentional; default points to intended public URL.
+- **Page-level**: descriptive `<title>`, meta description, one real `<h1>`, crawlable content in initial HTML or
+  truthful fallback, canonical URL, Open Graph + Twitter card tags, correct status code, `noindex` only when
+  intentional.
+- **Site-level**: `robots.txt`, `sitemap.xml`, canonical host strategy, consistent internal linking, no broken
+  docs/marketing links, favicon + social preview assets.
+- **Indexability checks**: `curl` page and verify meaningful content without JS; route not blocked by `robots.txt`; meta
+  robots not `noindex` unless intentional; canonical points to intended public URL.
 - **Domain visibility checks**: docs/landing/CTA all resolve; install instructions point to real public artifacts; social share preview not broken.
 
 If a stranger cannot discover, understand, and try the product quickly, release is incomplete.
@@ -142,11 +157,12 @@ Verify the first-user path: install from published artifacts (not the repo), fol
 
 Verify from a **cold path**. The dev machine is not a witness.
 
-Install from the **published artifact** (npm/cargo/PyPI/GitHub Release/Docker registry — never local checkout, never side-loaded tarball, never dev branch). Then verify: public URL resolves, TLS valid + matches default host, health endpoint passes, core action works end to end, docs and CTA links resolve, published version matches running version, onboarding screenshots/demos match cold-installer output.
+Install from the **published artifact** (npm/cargo/PyPI/GitHub Release/Docker registry — never local checkout, never
+side-loaded tarball, never dev branch). Then verify: public URL resolves, TLS valid + matches canonical host, health
+endpoint passes, core action works end to end, docs and CTA links resolve, published version matches running version,
+onboarding screenshots/demos match cold-installer output.
 
 Report must name exact artifact source (registry URL, tag, digest, download URL). "It worked on my repo" does not satisfy this gate.
-
-## Release Report Contract
 
 Every `vc-release` run must produce a report with actual evidence. Cannot honestly say "done" without the four mandatory sections below. If any is missing, release is **blocked** until filled or the user accepts the gap in writing.
 
@@ -173,7 +189,7 @@ Hosting and bandwidth costs understood, registry/CDN limits known, LICENSE corre
 - Skipping hydration and assuming users will figure it out
 - No Semgrep or equivalent security gate
 - Exposing services on `0.0.0.0` without deliberate proxy/TLS design
-- Broken default domain or redirect logic
+- Broken canonical domain or redirect logic
 - Forgetting verification challenge files / TXT records
 - Shipping a JS-only empty shell that crawlers cannot understand
 - Tagging without a changelog

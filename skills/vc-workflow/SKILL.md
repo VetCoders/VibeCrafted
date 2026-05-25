@@ -250,14 +250,6 @@ State which phases apply at pipeline start.
 - If loctree MCP unavailable, see `references/phase-examine.md` for grep fallback.
 - Brave Search comes from runtime tool surface or web search fallback, not a local wrapper directory.
 
-## Anti-Patterns
-
-- Implementing without Examine (blind coding)
-- Researching without structural context (asking wrong questions)
-- Spawning agents without loctree instruction (proven 37% less complete)
-- Skipping phase gates (user must approve transitions)
-- Not writing CONTEXT.md/RESEARCH.md to default `plans/` (context lost between phases)
-
 ## Additional Resources
 
 - `references/phase-examine.md` — deep loctree examination patterns

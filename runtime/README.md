@@ -1,7 +1,5 @@
 # Runtime Layer (Canonical)
 
-`runtime/` is the new default home for shared shell runtime helpers.
-
 - `runtime/helpers/` contains helper functions used by interactive shell wrappers.
 - `runtime/scripts/` and `runtime/tools/` are reserved for shell wrappers and
   runtime CLI tools moved in later phases.

@@ -2,13 +2,13 @@
 name: vc-followup
 version: 2.2.0
 description: >
-  READ-ONLY post-implementation trajectory check. Evaluates whether
+  AUDIT-FIRST post-implementation trajectory check. Evaluates whether
   the work is heading in the right direction, what gaps remain, what
   drift was introduced, and what the next highest-leverage move should
   be. May inspect code, runtime behavior, UX, docs, or packaging
   without requiring a single artifact like a PR or commit range as its
   frame. Sibling to `vc-review` (per-implementation diff perception)
-  and `vc-audit` (per-plan spec falsification) in the READ-ONLY
+  and `vc-audit` (per-plan spec falsification) in the AUDIT-FIRST
   perception layer of the pipeline. Trigger phrases: "follow-up check",
   "followup audit", "czy sa jeszcze luki", "readiness before hands-on",
   "audit this implementation", "po implementacji", "gaps after agents",
@@ -18,9 +18,9 @@ compatibility:
   tools: []
 ---
 
-# vc-followup — READ-ONLY Trajectory Check
+# vc-followup — AUDIT-FIRST Trajectory Check
 
-> READ-ONLY perception step. Sibling to `vc-review` (per-diff) and
+> AUDIT-FIRST perception step. Sibling to `vc-review` (per-diff) and
 > `vc-audit` (per-plan). This one asks **"is the direction healthy?"**
 > across whatever surfaces the operator points at — code, UX, docs,
 > packaging, integration, install path — without a bounded artifact
@@ -31,12 +31,12 @@ compatibility:
 `vc-followup` lives in the **trajectory perception** slot:
 
 ```
-... → implement (WRITE) → [FOLLOWUP: READ-ONLY] → review (READ) → marbles (WRITE) → ...
+... → implement (WRITE) → [FOLLOWUP: AUDIT-FIRST] → review (READ) → marbles (WRITE) → ...
 ```
 
 Followup answers **"is the trajectory healthy?"**. Review answers
 **"is this diff clean?"**. Audit answers **"did the written spec
-land?"**. All three are READ-ONLY; none of them modify code. Fixes
+land?"**. All three are AUDIT-FIRST; none of them modify code. Fixes
 belong downstream in `vc-marbles`.
 
 ## Operator Entry
@@ -99,7 +99,7 @@ It is intentionally broader than `vc-review`.
 - a review artifact pack
 
 `vc-followup` evaluates the post-implementation state of the work, even when
-there is no single default artifact to review.
+there is no single canonical artifact to review.
 
 ## When To Use
 

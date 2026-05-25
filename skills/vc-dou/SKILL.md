@@ -1,25 +1,21 @@
 ---
 name: vc-dou
-version: 2.0.0
+version: 2.1.0
 description: >
-  READ-ONLY Definition of Undone audit. Systematic gap analysis across
-  the ENTIRE product surface — not just code. Crawls public URLs,
-  audits repo governance, verifies install paths, checks SEO /
-  discoverability, audits representation surfaces for non-web products,
-  and measures the gap between internal capability and external
-  visibility. Shipping-readiness perception step in the pipeline,
-  consumed by `vc-polarize` handoffs and feeding `vc-hydrate` /
-  `vc-decorate` / `vc-release`. Trigger phrases: "definition of
-  undone", "dou audit", "co jest niedokończone", "what's undone",
-  "product surface audit", "completion audit", "plague check",
-  "hydration check", "are we shippable", "czy jesteśmy gotowi",
-  "gap analysis", "co brakuje do launchu", "readiness audit",
-  "packaging gap".
+  Definition of Undone audit skill. Runs a systematic gap analysis across the
+  ENTIRE product surface — not just code. Crawls public URLs, audits repo
+  governance, verifies install paths, checks SEO/discoverability, audits
+  representation surfaces for non-web products, and measures the gap between
+  internal capability and external visibility.
+  Trigger phrases: "definition of undone", "dou audit", "co jest niedokończone",
+  "what's undone", "product surface audit", "completion audit", "plague check",
+  "hydration check", "are we shippable", "czy jesteśmy gotowi", "gap analysis",
+  "co brakuje do launchu", "readiness audit", "packaging gap".
 ---
 
-# vc-dou — READ-ONLY Definition of Undone
+# `vc-dou` — AUDIT-FIRST Definition of Undone
 
-> READ-ONLY shipping-readiness perception. Where `vc-followup` asks
+> AUDIT-FIRST tool-driven shipping-readiness analysis. Where `vc-followup` asks
 > **"is the trajectory healthy?"** and `vc-audit` asks **"did the spec
 > land?"**, DoU asks **"how far are we from someone being able to find,
 > trust, try, and buy this?"** — across code, governance, install,
@@ -31,10 +27,10 @@ description: >
 `vc-dou` sits in the **shipping-readiness perception** slot:
 
 ```
-... → polarize (WRITE: cut) → [DOU: READ-ONLY] → hydrate (WRITE) → decorate (WRITE) → release (WRITE) → ...
+... → polarize (WRITE: cut) → [DOU: AUDIT-FIRST] → hydrate (WRITE) → decorate (WRITE) → release (WRITE) → ...
 ```
 
-DoU is READ-ONLY: it produces a gap inventory and remediation list
+DoU is AUDIT-FIRST: it produces a gap inventory and remediation list
 that downstream WRITE steps (`vc-hydrate`, `vc-decorate`, `vc-release`)
 consume. Fixing the gaps belongs to those downstream skills, not to
 DoU itself.
