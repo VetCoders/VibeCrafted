@@ -330,6 +330,69 @@ FOUNDATIONS: List[Foundation] = [
     ),
 ]
 
+RUNTIME_COMMANDS = {
+    "wezterm": "wezterm",
+    "vc-apprt": "vc_",
+    "locterm": None,
+    "microsandbox": "msb",
+}
+
+
+def runtime_status_path() -> Path:
+    return vibecrafted_home() / "runtime" / "runtime.json"
+
+
+def read_runtime_status() -> Dict:
+    status_file = runtime_status_path()
+    if not status_file.is_file():
+        return {}
+    try:
+        data = json.loads(status_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "runtime": "unknown",
+            "status": "failed",
+            "message": f"cannot read runtime status: {status_file}",
+        }
+    return data if isinstance(data, dict) else {}
+
+
+def doctor_runtime_finding() -> "DoctorFinding":
+    status = read_runtime_status()
+    runtime = str(status.get("runtime") or "none")
+    if runtime == "none":
+        return DoctorFinding("ok", "runtime:none", "no runtime horse selected")
+
+    component = f"runtime:{runtime}"
+    state = str(status.get("status") or "unknown")
+    message = str(status.get("message") or "")
+    path_value = str(status.get("path") or "")
+
+    if state != "ok":
+        return DoctorFinding(
+            "fail",
+            component,
+            message or f"runtime installer reported status={state}",
+        )
+
+    if path_value and Path(path_value).exists():
+        return DoctorFinding("ok", component, f"-> {path_value}")
+
+    command = RUNTIME_COMMANDS.get(runtime)
+    if command:
+        found = shutil.which(command)
+        if found:
+            return DoctorFinding("ok", component, f"-> {found}")
+
+    if path_value:
+        return DoctorFinding(
+            "warn",
+            component,
+            f"recorded path is missing: {path_value}; {message}".strip(),
+        )
+    return DoctorFinding("warn", component, message or "runtime status lacks path")
+
+
 RUNTIME_DEPS = ["python3", "git"]
 RECOMMENDED_DEPS = ["rsync"]
 OPTIONAL_DEPS = [
@@ -2419,6 +2482,9 @@ def run_doctor(store_path: Path, state: InstallState) -> List[DoctorFinding]:
             findings.append(
                 DoctorFinding("warn", f"foundation:{f.name}", "optional, not installed")
             )
+
+    # 5b. Runtime horse selected by install.sh --runtime / make install RUNTIME=...
+    findings.append(doctor_runtime_finding())
 
     # 6. Shell helpers
     helper_file = _helper_target_path()

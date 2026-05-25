@@ -3,21 +3,24 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF_USAGE'
-Usage: install.sh [--gui] [--yes] [--ref <branch>] [--archive-url <url> | --archive-file <path>] [--tools-dir <dir>] [make-target]
+Usage: install.sh [--gui] [--yes] [--runtime <horse>] [--ref <branch>] [--archive-url <url> | --archive-file <path>] [--tools-dir <dir>] [make-target]
 
 Bootstrap a local 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. source snapshot into $VIBECRAFTED_ROOT/.vibecrafted/tools and then
 run a local staged install path from that copy.
 
 Use `--gui` when you want the browser-based guided installer.
 Use `--yes` to skip the attended bootstrap confirmation prompt.
+Use `--runtime <horse>` to install and activate a lab runtime: wezterm, vc-apprt, locterm, microsandbox, or none.
 Non-interactive runs without `--gui` bypass the browser and call the compact installer directly.
 
 Examples:
   curl -fsSL https://vibecrafted.io/install.sh | bash
   curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --gui
   curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --yes
+  curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --runtime wezterm
   curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --ref develop
   bash install.sh doctor
+  bash install.sh --runtime locterm
   bash install.sh --archive-file /tmp/vibecrafted.tar.gz vibecrafted
 EOF_USAGE
 }
@@ -269,6 +272,7 @@ tools_dir="$default_tools_dir"
 target="vibecrafted"
 use_gui=0
 auto_yes=0
+runtime="none"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -277,6 +281,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --yes|-y)
       auto_yes=1
+      ;;
+    --runtime)
+      shift
+      [[ $# -gt 0 ]] || die "Missing value for --runtime"
+      runtime="$1"
       ;;
     --ref)
       shift
@@ -323,6 +332,17 @@ if [[ "$use_gui" == "1" && "$target" != "vibecrafted" ]]; then
   die "--gui can only be used with the default vibecrafted install target"
 fi
 
+case "$runtime" in
+  none|wezterm|vc-apprt|locterm|microsandbox)
+    ;;
+  vc_apprt|vc-)
+    runtime="vc-apprt"
+    ;;
+  *)
+    die "Unknown runtime horse: $runtime (expected wezterm, vc-apprt, locterm, microsandbox, none)"
+    ;;
+esac
+
 if [[ -z "$archive_url" && -z "$archive_file" ]]; then
   # Resolve latest version from the channel manifest instead of hard-pinning.
   channel_url="https://vibecrafted.io/channel/${ref}.json"
@@ -354,6 +374,23 @@ if [[ "$PLATFORM_OS" == "unsupported" ]]; then
   info "native Windows support."
   die "Unsupported platform: $(uname -s). Re-run inside WSL2."
 fi
+
+case "$runtime:$PLATFORM_OS" in
+  none:*|wezterm:macos|wezterm:linux|wezterm:wsl|vc-apprt:macos|vc-apprt:linux|locterm:macos|microsandbox:macos|microsandbox:linux)
+    ;;
+  locterm:*)
+    die "locterm is macOS-only, try --runtime wezterm or --runtime microsandbox"
+    ;;
+  vc-apprt:*)
+    die "vc-apprt supports macOS and Linux only, try --runtime wezterm"
+    ;;
+  microsandbox:*)
+    die "microsandbox requires macOS HVF or Linux KVM, try --runtime wezterm"
+    ;;
+  *)
+    die "Unsupported platform '$PLATFORM_OS' for runtime '$runtime'"
+    ;;
+esac
 
 # Pre-flight tool check — on missing tools, emit a copy-pasteable install
 # hint for the detected platform (Plan 03). Cross-platform tar/make/python3
@@ -498,6 +535,7 @@ if [[ "$target" == "vibecrafted" && "$use_gui" == "1" ]]; then
   info "Launching guided installer UI:"
   info "  python3 $gui_installer --source $current_link"
   printf '\n'
+  export VIBECRAFTED_RUNTIME="$runtime"
   exec python3 "$gui_installer" --source "$current_link"
 fi
 
@@ -514,6 +552,13 @@ if [[ "$target" == "vibecrafted" ]] && ! is_interactive_session; then
     bash "$foundations_script" || info "  [warn] Foundation install had issues (non-fatal)"
   fi
 
+  runtime_script="$current_link/scripts/install-runtime.sh"
+  if [[ "$runtime" != "none" ]]; then
+    [[ -f "$runtime_script" ]] || die "Runtime installer not found: $runtime_script"
+    info "Installing runtime horse: $runtime"
+    bash "$runtime_script" --runtime "$runtime" --yes
+  fi
+
   # Ensure foundations and tools installed by install-foundations.sh are visible.
   for _p in "${vibecrafted_home}/bin" "${vibecrafted_home}/tools/node/bin" "$HOME/.cargo/bin"; do
     case ":${PATH}:" in
@@ -526,6 +571,7 @@ if [[ "$target" == "vibecrafted" ]] && ! is_interactive_session; then
   info "Launching installer:"
   info "  python3 $installer install --source $current_link --with-shell --compact --non-interactive"
   printf '\n'
+  export VIBECRAFTED_RUNTIME="$runtime"
   exec python3 "$installer" install --source "$current_link" --with-shell --compact --non-interactive
 fi
 
@@ -554,6 +600,7 @@ if [[ "$target" == "vibecrafted" ]]; then
     curl -LsSf https://astral.sh/uv/install.sh | sh \
       || die "Failed to bootstrap uv"
     # shellcheck disable=SC1090
+    # shellcheck disable=SC1091
     [[ -f "$HOME/.local/bin/env" ]] && source "$HOME/.local/bin/env"
     export PATH="$HOME/.local/bin:$PATH"
   fi
@@ -562,6 +609,7 @@ if [[ "$target" == "vibecrafted" ]]; then
   info "Running built-in installer:"
   info "  uv run --project $installer_dir vetcoders-installer $manifest"
   printf '\n'
+  export VIBECRAFTED_RUNTIME="$runtime"
   exec uv run --project "$installer_dir" --quiet vetcoders-installer "$manifest"
 fi
 

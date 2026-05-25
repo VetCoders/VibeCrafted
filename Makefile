@@ -9,6 +9,7 @@ SHELL_INSTALLER := skills/vc-agents/scripts/install-shell.sh
 SOURCE   := $(CURDIR)
 BRANCH   ?= main
 VERSION_FILE := VERSION
+RUNTIME ?= none
 
 .PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij test-iterm2-migrate test-memex test-aicx-sync test-hammerspoon install install-hammerspoon skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall iterm-plugin-migrate demo demo-full commit-safe test-race-protection skill-new
 
@@ -22,6 +23,7 @@ help:
 	@printf "  \033[36m▸\033[0m  make gui-install   \033[2mAlias for the browser-based guided installer\033[0m\n"
 	@printf "\n"
 	@printf "  \033[33m◆\033[0m  make install       \033[2mNon-interactive install routed through the same runner with --yes\033[0m\n"
+	@printf "  \033[33m◆\033[0m  make install RUNTIME=wezterm \033[2mInstall and activate a lab runtime horse\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make skills        \033[2mSkills only\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make helpers       \033[2mShell helpers only\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make foundations   \033[2mInstall loctree + aicx binaries\033[0m\n"
@@ -75,7 +77,7 @@ vibecrafted: init-hooks
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi; \
 	export PATH="$$HOME/.local/bin:$$PATH"; \
-	uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
+	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
 
 # BUNDLE_DIR accepts an external prebuilt Svelte site/dist tree
 # (e.g. from the sibling vibecrafted-io repo). When empty, `make wizard`
@@ -124,7 +126,7 @@ install: init-hooks
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi; \
 	export PATH="$$HOME/.local/bin:$$PATH"; \
-	uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes
+	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes
 
 skills:
 	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --non-interactive

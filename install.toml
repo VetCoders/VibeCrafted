@@ -73,6 +73,24 @@ python3 scripts/vetcoders_install.py install --source "." --with-shell --compact
 
 
 [[phase]]
+key = "runtime"
+label = "Runtime horse"
+reason = """
+We will install and activate the selected runtime horse when requested:
+  - none: keep current behavior, no runtime install
+  - wezterm: cross-platform terminal + vibecrafted Lua config
+  - vc-apprt: native vc_ apprt runtime for macOS/Linux
+  - locterm: macOS locterm.app + Python AutoLaunch plugin
+  - microsandbox: libkrun-backed execution substrate
+"""
+cmd = [
+    "bash",
+    "-c",
+    "bash scripts/install-runtime.sh --runtime \"${VIBECRAFTED_RUNTIME:-none}\" --yes",
+]
+
+
+[[phase]]
 key = "verification"
 label = "Verification and quick tour"
 reason = """
@@ -128,3 +146,37 @@ store_dir = "$VIBECRAFTED_ROOT/.vibecrafted/skills"
 helpers = "$XDG_CONFIG_HOME/vetcoders/vc-skills.sh"
 binaries = ["vibecraft", "vibecrafted"]
 symlinks = ["$HOME/.agents", "$HOME/.claude", "$HOME/.codex", "$HOME/.gemini"]
+
+[runtime]
+default = "none"
+available = ["wezterm", "vc-apprt", "locterm", "microsandbox"]
+
+[runtime.horses.wezterm]
+label = "WezTerm"
+source = "$HOME/Libraxis/vc-runtime/wezterm"
+lab = "$HOME/Libraxis/vc-runtime/labs/wezterm-spine"
+platforms = ["macos", "linux", "wsl"]
+artifacts = ["wezterm", "$XDG_CONFIG_HOME/wezterm/vibecrafted"]
+
+[runtime.horses.vc-apprt]
+label = "vc-apprt"
+source = "$HOME/Libraxis/vc-runtime/vc_"
+lab = "$HOME/Libraxis/vc-runtime/labs/vc-apprt-spine"
+platforms = ["macos", "linux"]
+artifacts = ["vc_"]
+requires = ["zig 0.16"]
+
+[runtime.horses.locterm]
+label = "locterm"
+source = "$HOME/Libraxis/vc-runtime/locterm"
+lab = "$HOME/Libraxis/vc-runtime/labs/locterm-spine"
+platforms = ["macos"]
+artifacts = ["locterm.app", "iTerm2 AutoLaunch vc_launcher.py"]
+
+[runtime.horses.microsandbox]
+label = "microsandbox"
+source = "$HOME/Libraxis/vc-runtime/experimental/microsandbox"
+lab = "$HOME/Libraxis/vc-runtime/labs/microsandbox-execution"
+platforms = ["macos", "linux"]
+artifacts = ["msb", "msbserver"]
+requires = ["krunvm", "libkrun"]

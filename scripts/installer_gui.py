@@ -94,6 +94,10 @@ def foundations_script_path(source_dir: str) -> Path:
     return Path(source_dir).resolve() / "scripts" / "install-foundations.sh"
 
 
+def runtime_script_path(source_dir: str) -> Path:
+    return Path(source_dir).resolve() / "scripts" / "install-runtime.sh"
+
+
 def build_install_command(source_dir: str, *, with_shell: bool) -> list[str]:
     installer_path = installer_script_path(source_dir)
     if not installer_path.exists():
@@ -147,6 +151,15 @@ def build_install_steps(source_dir: str, *, with_shell: bool) -> list[InstallSte
             command=build_install_command(source_dir, with_shell=with_shell),
         )
     )
+    runtime = os.environ.get("VIBECRAFTED_RUNTIME", "none").strip() or "none"
+    runtime_path = runtime_script_path(source_dir)
+    if runtime != "none" and runtime_path.exists():
+        steps.append(
+            InstallStep(
+                label=f"Install runtime: {runtime}",
+                command=["bash", str(runtime_path), "--runtime", runtime, "--yes"],
+            )
+        )
     return steps
 
 
