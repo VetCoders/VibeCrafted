@@ -73,12 +73,99 @@ Do NOT invoke vibecraftsmanship for: a bounded code task (use vc-ownership),
 a multi-wave dispatch (use vc-operator), or shared triage (use vc-partner).
 This charter is for the moment **before** those calls.
 
+## Operational default — external dispatch surface
+
+**HARD RULE (Power axis enforcement):** When the agent intends to dispatch
+external fleet (Codex / Claude / Gemini as parallel workers producing
+deliverable artifacts — reports, code, plans), the default execution surface
+is **`vibecrafted <workflow> <agent>` via Bash**, NEVER the native `Agent`
+tool. Native `Agent` is reserved for in-process scouting (Explore,
+general-purpose lookup, quick read-only research), not for deliverable
+workers.
+
+**Reason:** external dispatch through `vibecrafted` produces canonical
+store (`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/`), durable
+transcripts, `meta.json` status, reproducible `launch.sh` — operator-grade
+observability. Native `Agent` hides work in transient task output that
+vanishes from parent context after the call returns, leaving no
+recoverable artifact for operator, post-mortem, or other agents.
+
+**Detection signal (STOP and reroute):** if you catch yourself calling
+`Agent(run_in_background: true)` with a brief longer than ~200 words that
+produces artifacts on disk — that is a deliverable worker dressed as a
+scout. Reroute through `vibecrafted`. Same applies to any multi-agent
+parallel dispatch with persistence requirements.
+
+**Reflex check before dispatch:**
+
+1. Are these agents deliverable-producing (reports, code, plans)? → `vibecrafted`
+2. Are these agents scouting / lookup / read-only? → native `Agent` ok
+3. If `vibecrafted` chosen: see [vc-agents](../vc-agents/SKILL.md) for
+   agent routing (codex/claude/gemini per `vc-why-matrix`) and
+   [vc-operator](../vc-operator/SKILL.md) for wave-shape conduct.
+
+This rule exists because **discipline loses to ergonomics**. Native `Agent`
+is on the agent's first reach because it's in the top-level tool list.
+`vibecrafted` is one Bash hop away — slightly more friction. Without an
+explicit operational default, the reflex always wins. Charter without
+operational teeth = drift permitted.
+
+## Operational default — autonomous self-pacing (Claude Code native)
+
+**HARD RULE (Power axis enforcement, second canonical surface):** When the
+agent enters autonomous behavior — operator absent, deferred decisions,
+recurring monitoring, multi-turn execution without manual re-prompts —
+the default mechanism is the Claude Code native **`/loop`** skill
+(equivalent: `ScheduleWakeup` with `<<autonomous-loop-dynamic>>` sentinel
+for dynamic-pacing mode). NOT silent waiting. NOT polling in tight Bash
+sleeps. NOT "I'll just answer next turn whenever the operator returns."
+
+**Reason:** `/loop` is the canonical Claude Code power feature for
+autonomous self-pacing — it bridges the gap between "operator drives every
+turn" and "agent fires and forgets". Without entering `/loop`, the agent
+falls back to single-turn passivity: operator must re-prompt to continue
+work, even when next steps are obvious. `/loop` makes the agent's
+autonomous tail observable and bounded (heartbeat interval, fallback
+schedule, explicit stop condition).
+
+**When to enter `/loop`:**
+
+- Operator declared "bez odbioru" / "decide autonomously" / "I'm leaving"
+- Awaiting external work (CI, dispatched fleet, long-running build)
+- Multi-wave dispatch where waves complete asynchronously
+- Substrate operation with known wait window (rebase, install, sync)
+- Recurring observation (PR babysitting, deploy monitoring)
+
+**When NOT to enter `/loop`:**
+
+- Single-turn answer with no follow-up
+- Operator actively engaged in conversation
+- Work explicitly scoped to "do this one thing and stop"
+
+**Composition with external dispatch:**
+
+- External dispatch (`vibecrafted <workflow> <agent>`) produces async work
+  that needs `await`. Enter `/loop` to keep heartbeat alive between
+  `task-notification` events from the harness.
+- `/loop` + `vibecrafted` = canonical autonomous-operator pattern. One
+  declares "I'm staying engaged"; the other declares "I'm using
+  observable external surface". Both together = vibecraftsmanship power
+  axis fully realized.
+
+**Detection signal (STOP and enter loop):** if you catch yourself ending
+a turn with "operator's next move" or "waiting for response" while there
+IS work the agent could continue autonomously — that is missed `/loop`
+entry. Re-think: schedule a self-paced check, declare what you'll do on
+each tick, stop when stop condition met.
+
 ## Dependencies
 
 - [vc-ownership](../vc-ownership/SKILL.md) — solo end-to-end delivery posture
 - [vc-operator](../vc-operator/SKILL.md) — multi-wave fleet conduct posture
 - [vc-partner](../vc-partner/SKILL.md) — shared executive steering posture
 - [vc-init](../vc-init/SKILL.md) — foundation pre-charter perception gate
+- [vc-agents](../vc-agents/SKILL.md) — required for Operational default
+  (external fleet dispatch via `vibecrafted`, NEVER native `Agent`)
 
 Vibecraftsmanship references but does not replace. It composes the three
 postures into one coherent partnership shape. See [COMPOSITION.md](./COMPOSITION.md).

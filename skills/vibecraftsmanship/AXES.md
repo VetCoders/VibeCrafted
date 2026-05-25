@@ -85,6 +85,42 @@ If you can't say WHY this is good in operator's terms (not abstract
   dispersed ones. Triple-research is for triangulation, not for
   triplicate output.
 
+### Operational default — external dispatch surface (HARD RULE)
+
+For deliverable-producing fleet (reports, code, plans, persistent
+artifacts), Power axis is **only honestly satisfied** when dispatch goes
+through `vibecrafted <workflow> <agent>` via Bash — NOT through native
+`Agent` tool. Native `Agent` is for in-process scouting only (Explore,
+quick lookup, read-only research).
+
+**Why this matters for the Power axis:** native `Agent` returns transient
+output that vanishes from parent context after the call. No canonical
+store, no transcript, no `meta.json`, no reproducible launcher. That
+breaks the **"wider menu for operator"** promise — operator can't review
+the run, can't compare across runs, can't hand transcript to another
+agent. The search-space expansion happened in-process but left no
+artifact to choose among. Power without observability = theatre.
+
+`vibecrafted` produces full lineage under
+`~/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/`:
+`<run_id>.meta.json` (status) + `<run_id>.md` (report) +
+`<run_id>.transcript.log` (live stream) + `tmp/<run_id>_launch.sh`
+(reproducer). That is the artifact substrate Power axis requires.
+
+**Reflex check** (run BEFORE each external dispatch):
+
+1. Deliverable-producing (artifact on disk)? → `vibecrafted` mandatory
+2. In-process scouting (read-only lookup)? → native `Agent` ok
+3. Multi-agent parallel with persistence? → `vibecrafted` mandatory
+4. > 200-word brief producing artifacts? → that's deliverable, reroute
+
+This is enforced because **discipline loses to ergonomics**. Native
+`Agent` is one-call-away in the top tool list. `vibecrafted` is one Bash
+hop away. Without an explicit hard rule, reflex always picks the easier
+path. Empirical proof: 2026-05-25 operator-side agent self-critique
+documented this exact drift mid-dispatch (see [EVIDENCE.md](./EVIDENCE.md)
+case study #2).
+
 ### Concrete patterns from this session
 
 - **Triple-research swarms** (rsch-005022 + 3 spine swarms × 3 agents =

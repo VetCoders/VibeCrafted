@@ -28,13 +28,13 @@ Total wall-clock: **2h 59m** session start → close-out.
 
 ## What was delivered in those ~3 hours
 
-| Artifact                | Commit                                  | LOC              | Surface                                                                               | Survived?                                                                             |
-| ----------------------- | --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| vibecrafted supervisor  | `0fc9206`                               | 999 / 25 files   | Python supervisor + bin/vc-\* wrappers + session_id capture + last-finisher synthesis | ✅ ruff+mypy+pytest 148+ green                                                        |
-| vc-console spawn events | `4a9c5e5`                               | 1089 / 17 files  | IpcEvent::SpawnUpdate + jsonl bridge + tray rendering                                 | ✅ core IPC smoke green; 2 orthog cleanups flagged                                    |
-| wezterm Lua hooks       | `02645e75c`                             | (multiple)       | Tab title + status bar + toast + events.jsonl tail                                    | ✅ 8/8 busted + 17823-line integration smoke                                          |
+| Artifact                | Commit                                  | LOC              | Surface                                                                               | Survived?                                                                            |
+| ----------------------- | --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| vibecrafted supervisor  | `0fc9206`                               | 999 / 25 files   | Python supervisor + bin/vc-\* wrappers + session_id capture + last-finisher synthesis | ✅ ruff+mypy+pytest 148+ green                                                       |
+| vc-console spawn events | `4a9c5e5`                               | 1089 / 17 files  | IpcEvent::SpawnUpdate + jsonl bridge + tray rendering                                 | ✅ core IPC smoke green; 2 orthog cleanups flagged                                   |
+| wezterm Lua hooks       | `02645e75c`                             | (multiple)       | Tab title + status bar + toast + events.jsonl tail                                    | ✅ 8/8 busted + 17823-line integration smoke                                         |
 | vc\_ apprt runtime      | `acd99c746` + `83e9acb80` + `4d0e72e4b` | (multiple)       | Zig 0.16 fix + session_id DiskPayload + terminal lifecycle emitter                    | ✅ apprt 74/74 + smoke; ⚠ repo-wide test fails on inherited substrate (not B-2 lane) |
-| iTerm2 Python plugin    | `eb6beb8`                               | 1382 / 11 files  | AutoLaunch + StatusBar + Triggers + GPL-separate-install                              | ✅ pytest 173/173, GPL boundary smoke clean                                           |
+| iTerm2 Python plugin    | `eb6beb8`                               | 1382 / 11 files  | AutoLaunch + StatusBar + Triggers + GPL-separate-install                              | ✅ pytest 173/173, GPL boundary smoke clean                                          |
 | Sandbox adapter         | (uncommitted, dirty worktree)           | (multiple files) | SandboxAdapter + msbserver lifecycle + policy + tests + docs                          | ⚠ SUBSTRATE-FAILURE: krunvm missing on host                                          |
 
 **5 of 6 work units survived contact with reality.** 1 hit honest
@@ -159,6 +159,148 @@ respond to operator corrections produces wrong work at high speed.
    iterations on irrelevant ground.
 10. **Reality decides.** Demos don't count. Mocks don't count.
     Customer-installable, commit-landed, gate-green code counts.
+
+---
+
+## Case study #2 — Operator-side agent self-critique (2026-05-25)
+
+Less than 24 hours after the skill landed, operator dogfooded it on a
+parallel session dispatching GPU benchmark agents. Operator-side agent
+caught itself reaching for native `Agent` tool with `run_in_background:
+true` instead of `vibecrafted justdo codex --prompt '...'`. The agent
+self-corrected mid-session and produced a structured critique with
+70/30 split:
+
+- **70% agent discipline failure** — the agent had the `vibecrafted`
+  command available via Bash, knew the routing per `vc-why-matrix`,
+  chose easier reflex path. "Sięgnąłem po native Agent bo łatwiej."
+- **30% framework gap** — original `SKILL.md` was declarative ("trinity
+  over tactics") without an explicit operational default forcing
+  `vibecrafted <workflow> <agent>` as THE external dispatch surface.
+  Charter without operational teeth = drift permitted.
+
+The self-critique itself is empirical proof the skill works:
+**operator-side agent invoked vibecraftsmanship, ran Trinity check
+in real-time, and identified its own Power-axis drift** (Power without
+observability = native `Agent` transient output). Charter feedback loop
+functional within 24 hours of skill landing.
+
+### Patches applied in response
+
+1. **SKILL.md gained** "Operational default — external dispatch surface"
+   section with hard rule + detection signal + reflex check + reason
+   for the rule. Placed between "When to use" and "Dependencies" so it
+   reads BEFORE the agent gets to Three Axes detail.
+2. **AXES.md gained** "Operational default — external dispatch surface
+   (HARD RULE)" subsection within Axis 2 (Power), explaining that
+   native `Agent` output breaks the "wider menu for operator" promise
+   because it vanishes from context with no artifact substrate.
+3. **Dependencies** updated to mark `vc-agents` as **required** for the
+   Operational default (was previously not in the dependency list).
+4. **EVIDENCE.md** (this file) gained this case study.
+
+### Open follow-ups (operator decisions pending)
+
+- **vc-agents SKILL.md** — proposed addition: agent-side 5-point
+  pre-dispatch checklist (operator-owned skill, change requires
+  operator approval; draft not committed)
+- **MCP server `vibecrafted` dispatch+await** — engineering investment
+  to give parent agent push notification on external worker
+  completion (closes observability hand-off gap; outside skill scope,
+  parked as feature-dev item)
+
+### Lesson distilled (added to main list as #11)
+
+11. **Charter without operational teeth = drift permitted.** Declarative
+    posture ("trinity over tactics") does not survive contact with
+    ergonomic reflexes. Every Power-axis claim needs a hard operational
+    rule that says **what to type** at the moment of decision, not just
+    **what to think about** before deciding.
+
+---
+
+## Case study #3 — Real-time Trinity self-correction + `/loop` doctrine extension (2026-05-25)
+
+Operator dogfooded the skill on its own infrastructure stack — the
+`vibecrafted` installer pipeline. Through escalating peer-pressure
+questions ("what about curl|bash?", "how about as potential consumer?"),
+operator forced the operator-agent through three diagnosis cycles:
+
+### Cycle 1 — original diagnosis (partially wrong)
+
+Operator-agent claimed: bootstrap stages to `/tmp/vibecrafted-XXXX/`
+ephemeral, so installer-generated resolver shim has dead-first-candidate
+by design for NEW users. Anti-pattern across 3 layers.
+
+### Cycle 2 — operator zooms further out
+
+Question: "no a jak ktoś robi curl | bash?" forced operator-agent to
+verify by fetching the live `https://vibecrafted.io/install.sh` content
+and reading actual bootstrap usage:
+
+> "Bootstrap a local 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. source snapshot into
+> `$VIBECRAFTED_ROOT/.vibecrafted/tools` and then run a local staged
+> install path from that copy."
+
+Reality call output: bootstrap stages to **persistent**
+`~/.vibecrafted/tools/vibecrafted-main/`, NOT to `/tmp/`. NEW user case
+works as intended — install copy IS canonical, resolver hits first
+candidate. Operator-agent's Cycle 1 hypothesis was empirically falsified
+within one Reality check.
+
+The bug actually exists only in **operator dev mode** (`git clone` +
+`bash install.sh` from local checkout) — `$repo_root` expands to live
+repo path, gets baked into shim, mid-rebase breaks other shells.
+
+### Cycle 3 — dispatch without hesitation
+
+Operator's instruction: _"dispatchuj to ziom a się nie zastanawiasz.
+confidence high? Maciej nie odpowiada? -> dispatch"_ — explicit
+"bez odbioru" rule applied to skill-update work, plus pointed out
+operator-agent had forgotten to enter `/loop`:
+
+> "Ty zapomniałeś wejść w /loop który musi stać się canonical inside
+> power feature of claude utilized by our framework!"
+
+Operator-agent landed three coordinated changes without further
+clarification:
+
+1. **`install-shell.sh` patch** — removed hardcoded `$repo_root`
+   expansion that baked operator-install-time path into every generated
+   shim. Resolver chain now: `VIBECRAFTED_ROOT` env opt-in (dev mode) →
+   canonical install paths (`~/.vibecrafted/tools/vibecrafted-current/...`)
+   only. Mid-rebase intermediate states stop breaking other shells.
+2. **`SKILL.md` Operational default extended** with second canonical
+   surface — Claude Code native `/loop` for autonomous self-pacing.
+   Operator-agent now has explicit doctrine for **WHEN to enter `/loop`
+   vs WHEN to stay single-turn**, complementing the existing dispatch
+   rule (`vibecrafted` vs native `Agent`).
+3. **This case study** in EVIDENCE.md.
+
+### Lessons distilled (added to main list as #12-13)
+
+12. **Diagnosis without Reality verification = drift permitted.** Two
+    turns of architectural claims about `/tmp/` staging fell apart after
+    one `curl` to the live install.sh URL. Reality call should be the
+    FIRST move when claiming infrastructure behavior, not the last.
+13. **Operator-agent must enter `/loop` when autonomous tail exists.**
+    Single-turn passivity ("waiting for operator response") when there
+    IS autonomous work to continue = missed canonical pattern. `/loop`
+    is the bridge between "operator drives" and "agent freelances" —
+    use it.
+
+### Composition surface clarified
+
+The two canonical Power-axis surfaces now both documented in SKILL.md:
+
+| Surface                                                                                                | When                                           | What it solves                                                                                                      |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `vibecrafted <workflow> <agent>` (Bash)                                                                | Deliverable-producing external worker dispatch | Observability (canonical store, transcripts, meta.json, reproducible launch.sh) — operator-grade artifact substrate |
+| `/loop` (Claude Code native, equivalent: `ScheduleWakeup` with `<<autonomous-loop-dynamic>>` sentinel) | Autonomous self-pacing across turns            | Continuity between operator engagements without losing momentum or polling tight loops                              |
+
+Together: external dispatch creates async work; `/loop` keeps the agent
+present for that async work's completion. Both are canonical, both
+declared as HARD RULES in the Operational default section.
 
 ---
 

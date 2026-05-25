@@ -79,13 +79,19 @@ write_helper_shim() {
 
 _vibecrafted_helper_candidates() {
   local crafted_home="\${VIBECRAFTED_HOME:-\$HOME/.vibecrafted}"
+  # DEV MODE OPT-IN: live repo override via VIBECRAFTED_ROOT env.
+  # Operator who edits source in-place sets VIBECRAFTED_ROOT=/path/to/repo.
+  # Without env set, resolver uses canonical install paths only —
+  # so mid-rebase intermediate states do NOT break other shells.
   if [[ -n "\${VIBECRAFTED_ROOT:-}" ]]; then
     printf '%s\n' "\$VIBECRAFTED_ROOT/skills/vc-agents/shell/vetcoders.sh"
     printf '%s\n' "\$VIBECRAFTED_ROOT/skills/vc-agents/shell/vetcoders.zsh"
   fi
+  # CANONICAL INSTALL PATHS (always emitted, operator-agnostic):
+  # vibecrafted-current symlinks to the active vibecrafted-<channel> install,
+  # so this path stays stable across versions and points at the staged source
+  # tree the installer copied into ~/.vibecrafted/tools/.
   printf '%s\n' \
-    "$repo_root/skills/vc-agents/shell/vetcoders.sh" \
-    "$repo_root/skills/vc-agents/shell/vetcoders.zsh" \
     "\$crafted_home/tools/vibecrafted-current/skills/vc-agents/shell/vetcoders.sh" \
     "\$crafted_home/tools/vibecrafted-current/skills/vc-agents/shell/vetcoders.zsh" \
     "\$crafted_home/skills/vc-agents/shell/vetcoders.sh" \
