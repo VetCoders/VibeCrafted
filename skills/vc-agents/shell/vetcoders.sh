@@ -1617,6 +1617,19 @@ _vetcoders_await() {
   fi
 }
 
+_vetcoders_loop() {
+  local script
+  script="$(_vetcoders_frontier_file "runtime/scripts/vibecrafted-loop.sh" 2>/dev/null || true)"
+  if [[ -z "$script" && -n "${VIBECRAFTED_ROOT:-}" ]]; then
+    script="${VIBECRAFTED_ROOT}/runtime/scripts/vibecrafted-loop.sh"
+  fi
+  [[ -n "$script" && -f "$script" ]] || {
+    echo "vibecrafted loop runtime script not found." >&2
+    return 1
+  }
+  bash "$script" "$@"
+}
+
 codex-review() {
   _vetcoders_spawn_plan codex review "$1" --runtime "$(_vetcoders_default_runtime)"
 }
@@ -2521,6 +2534,7 @@ vc-init() { _vetcoders_skill_wrapper init "$@"; }
 vc-intents() { _vetcoders_skill_wrapper intents "$@"; }
 vc-justdo() { _vetcoders_skill_wrapper justdo "$@"; }
 vc-implement() { _vetcoders_skill_wrapper justdo "$@"; }
+vc-loop() { _vetcoders_loop "$@"; }
 vc-marbles() { _vetcoders_skill_wrapper marbles "$@"; }
 vc-operator() { _vetcoders_skill_wrapper operator "$@"; }
 vc-ownership() { _vetcoders_skill_wrapper ownership "$@"; }
@@ -2571,6 +2585,7 @@ Command deck:
   vibecrafted help               Main command surface
   vibecrafted <skill> <agent>    Run a repo skill via the launcher
   vibecrafted resume <agent>     Resume a previous session
+  vibecrafted loop start --file plan.md --completion-promise READY
   vibecrafted workflow claude -p "Plan and implement auth"
   vibecrafted marbles codex --count 3 --depth 3
   vibecrafted init claude        First-context entrypoint

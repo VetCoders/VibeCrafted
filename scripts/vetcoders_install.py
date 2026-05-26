@@ -1608,6 +1608,7 @@ LAUNCHER_WRAPPERS = [
     "vc-init",
     "vc-start",
     "vc-dashboard",
+    "vc-loop",
     "vc-resume",
     "vc-agents",
     "telemetry",
@@ -2529,7 +2530,7 @@ def run_doctor(store_path: Path, state: InstallState) -> List[DoctorFinding]:
             [
                 "bash",
                 "-c",
-                'source "$1"; command -v vc-help >/dev/null && command -v vc-agents >/dev/null && command -v vc-init >/dev/null && command -v vc-intents >/dev/null && command -v vc-ownership >/dev/null && command -v vc-marbles >/dev/null && command -v codex-implement >/dev/null && command -v codex-marbles >/dev/null && command -v skills-sync >/dev/null && printf "helper-ok\\n"',
+                'source "$1"; command -v vc-help >/dev/null && command -v vc-agents >/dev/null && command -v vc-init >/dev/null && command -v vc-intents >/dev/null && command -v vc-ownership >/dev/null && command -v vc-loop >/dev/null && command -v vc-marbles >/dev/null && command -v codex-implement >/dev/null && command -v codex-marbles >/dev/null && command -v skills-sync >/dev/null && printf "helper-ok\\n"',
                 "_",
                 str(helper_file),
             ],
