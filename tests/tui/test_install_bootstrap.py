@@ -92,6 +92,19 @@ def test_install_sh_fallback_prefers_github_source_snapshot_when_channel_missing
     assert "frozen v1.2.1 URL" not in text
 
 
+def test_install_sh_help_documents_runtime_flag() -> None:
+    result = subprocess.run(
+        ["bash", str(INSTALL_SH), "--help"],
+        check=True,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "--runtime <horse>" in result.stdout
+    assert "wezterm, vc-apprt, locterm, microsandbox, or none" in result.stdout
+
+
 def test_install_sh_quiets_tar_xattr_noise_and_hides_make_directory_trace() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
 
@@ -202,6 +215,80 @@ def test_install_sh_yes_skips_attended_prompt_for_pipe_bootstrap(
         "--compact",
         "--non-interactive",
     ]
+
+
+def test_install_sh_runtime_flag_dispatches_staged_runtime_helper(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    scripts_dir = source_dir / "scripts"
+    archive_path = tmp_path / "vibecrafted-bootstrap.tar.gz"
+    fake_bin = tmp_path / "bin"
+    home = tmp_path / "home"
+    python_capture = tmp_path / "python-args.txt"
+    runtime_capture = tmp_path / "runtime-args.txt"
+
+    scripts_dir.mkdir(parents=True)
+    fake_bin.mkdir()
+    home.mkdir()
+
+    (source_dir / "Makefile").write_text("install:\n\t@echo ok\n", encoding="utf-8")
+    (scripts_dir / "vetcoders_install.py").write_text("# compact\n", encoding="utf-8")
+    (scripts_dir / "install-runtime.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'printf "%s\\n" "$@" > "$RUNTIME_CAPTURE"\n',
+        encoding="utf-8",
+    )
+
+    with tarfile.open(archive_path, "w:gz") as archive:
+        archive.add(source_dir, arcname="vibecrafted-main")
+
+    _write_executable(
+        fake_bin / "python3",
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'printf "%s\\n" "$@" > "$PYTHON_CAPTURE"',
+            ]
+        )
+        + "\n",
+    )
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["XDG_CONFIG_HOME"] = str(home / ".config")
+    env["VIBECRAFTED_HOME"] = str(home / ".vibecrafted")
+    env["PATH"] = f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin"
+    env["PYTHON_CAPTURE"] = str(python_capture)
+    env["RUNTIME_CAPTURE"] = str(runtime_capture)
+
+    subprocess.run(
+        [
+            "bash",
+            str(INSTALL_SH),
+            "--archive-file",
+            str(archive_path),
+            "--runtime",
+            "wezterm",
+            "--yes",
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+    staged_root = home / ".vibecrafted" / "tools" / "vibecrafted-current"
+    assert staged_root.is_symlink()
+    assert runtime_capture.read_text(encoding="utf-8").splitlines() == [
+        "--runtime",
+        "wezterm",
+        "--yes",
+    ]
+    assert python_capture.read_text(encoding="utf-8").splitlines()[0] == str(
+        staged_root / "scripts" / "vetcoders_install.py"
+    )
 
 
 def test_install_sh_archive_install_runs_local_make_target(tmp_path: Path) -> None:

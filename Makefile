@@ -9,8 +9,9 @@ SHELL_INSTALLER := skills/vc-agents/scripts/install-shell.sh
 SOURCE   := $(CURDIR)
 BRANCH   ?= main
 VERSION_FILE := VERSION
+RUNTIME ?= none
 
-.PHONY: help vibecrafted gui-install wizard wizard-dev check test install skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij test-iterm2-migrate test-memex test-aicx-sync test-hammerspoon install install-hammerspoon skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall iterm-plugin-migrate demo demo-full commit-safe test-race-protection skill-new
 
 help:
 	@printf "\n"
@@ -22,6 +23,7 @@ help:
 	@printf "  \033[36m▸\033[0m  make gui-install   \033[2mAlias for the browser-based guided installer\033[0m\n"
 	@printf "\n"
 	@printf "  \033[33m◆\033[0m  make install       \033[2mNon-interactive install routed through the same runner with --yes\033[0m\n"
+	@printf "  \033[33m◆\033[0m  make install RUNTIME=wezterm \033[2mInstall and activate a lab runtime horse\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make skills        \033[2mSkills only\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make helpers       \033[2mShell helpers only\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make foundations   \033[2mInstall loctree + aicx binaries\033[0m\n"
@@ -35,9 +37,16 @@ help:
 	@printf "  \033[32m◇\033[0m  make bundle        \033[2mRefresh marketplace plugin bundle\033[0m\n"
 	@printf "  \033[32m◇\033[0m  make bundle-check  \033[2mFail if the committed marketplace bundle drifted from repo truth\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test          \033[2mRun installer + marketplace pytest gates\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-skills   \033[2mRun skill-loader integration smoke (frontmatter + helpers + doctor)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-install  \033[2mRun install.sh / install.ps1 cross-platform smoke (Plan 03)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-race-protection \033[2mVerify Living Tree commit race detection helper\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-parity   \033[2mVerify AGENT MODEL PARITY enforcement (Plan 06)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-zellij   \033[2mVerify zellij layouts + mesh themes + auto-theme (Plan 12)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-iterm2-migrate \033[2mVerify iTerm2 experimental -> GA migration (Plan 10)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-memex    \033[2mVerify memex cross-session retrieval client (Plan 09)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-aicx-sync \033[2mVerify AICX cross-machine sync v2 + authority conflict resolution (Plan 08)\033[0m\n"
+	@printf "  \033[32m✓\033[0m  make test-hammerspoon \033[2mVerify Hammerspoon URL handler stack + injection sanitization (Plan 11)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
-	@printf "  \033[32m◇\033[0m  make version-show  \033[2mShow VERSION and release tag state\033[0m\n"
-	@printf "  \033[32m↟\033[0m  make version-bump VERSION=X \033[2mBump VERSION; X={patch|minor|major|x.y.z}\033[0m\n"
 	@printf "\n"
 	@printf "  \033[33m◆\033[0m  make migrate       \033[2mMigrate .ai-agents/ to $$VIBECRAFTED_ROOT/.vibecrafted/artifacts/\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make migrate-dry   \033[2mPreview migration (dry run)\033[0m\n"
@@ -45,11 +54,17 @@ help:
 	@printf "  \033[31m✕\033[0m  make uninstall     \033[2mRemove skills + helpers\033[0m\n"
 	@printf "  \033[31m↺\033[0m  make restore       \033[2mUndo last install/uninstall\033[0m\n"
 	@printf "\n"
-	@printf "  \033[2m── experimental ────────────────────────\033[0m\n"
+	@printf "  \033[2m── iTerm2 (GA since v1.8.0) ────────────\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make iterm-plugin           \033[2mInstall iTerm2 Dynamic Profiles (alongside, idempotent)\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make iterm-plugin-refresh   \033[2mOverwrite installed file (creates .bak)\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make iterm-plugin-show      \033[2mPrint generated JSON to stdout\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make iterm-plugin-uninstall \033[2mRemove the installed file\033[0m\n"
+	@printf "  \033[33m◇\033[0m  make iterm-plugin-migrate   \033[2mMigrate v1.7 vibecrafted-experimental.json → vibecrafted.json (Plan 10)\033[0m\n"
+	@printf "  \033[2m── Hammerspoon URL handlers (Plan 11) ──\033[0m\n"
+	@printf "  \033[33m◇\033[0m  make install-hammerspoon    \033[2mCopy config/hammerspoon/init.lua to ~/.hammerspoon/init.lua + reload (Plan 11)\033[0m\n"
+	@printf "  \033[2m── operator dashboards ─────────────────\033[0m\n"
+	@printf "  \033[33m✦\033[0m  make demo                   \033[2mLive terminal dashboard z klikalnymi akcjami (vc-* URL handlers)\033[0m\n"
+	@printf "  \033[33m✦\033[0m  make demo-full              \033[2mDashboard + aicx HTML serve w tle (browser)\033[0m\n"
 	@printf "\n"
 	@printf "  ╭─────────────────────────────────────────╮\n"
 	@printf "  │ Vibecrafted with AI Agents by VetCoders │\n"
@@ -62,7 +77,7 @@ vibecrafted: init-hooks
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi; \
 	export PATH="$$HOME/.local/bin:$$PATH"; \
-	uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
+	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
 
 # BUNDLE_DIR accepts an external prebuilt Svelte site/dist tree
 # (e.g. from the sibling vibecrafted-io repo). When empty, `make wizard`
@@ -111,7 +126,7 @@ install: init-hooks
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi; \
 	export PATH="$$HOME/.local/bin:$$PATH"; \
-	uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes
+	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes
 
 skills:
 	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --non-interactive
@@ -193,6 +208,15 @@ test:
 		PYTHONPATH="$(SOURCE)" $(PYTHON) -m pytest tests/tui -q; \
 	fi
 
+test-skills:
+	@bash tests/skill_loader_smoke.sh
+
+# Plan 03 (META_22) — install.sh / install.ps1 cross-platform smoke.
+# Host-only assertions: pre-flight, detection helpers, hint matrix, .ps1
+# entry shape. Full install matrix runs in .github/workflows/install-linux.yml.
+test-install:
+	@bash tests/install_smoke.sh
+
 update:
 	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
 		printf "Git repo detected — pulling origin/$(BRANCH)...\n"; \
@@ -233,6 +257,19 @@ iterm-plugin-show:
 iterm-plugin-uninstall:
 	@uv run --project vibecrafted-core --quiet python -m vibecrafted_core.iterm2_profiles uninstall
 
+# Plan 10 (META_22) — operators with v1.7 [experimental] dynamic profiles run
+# this once on v1.8.0 upgrade. Reads vibecrafted-experimental.json, writes
+# vibecrafted.json with cleaned names + preserved GUIDs, .bak backup,
+# removes the legacy file. Idempotent: re-running is safe (no-op).
+iterm-plugin-migrate:
+	@uv run --project vibecrafted-core --quiet python -m vibecrafted_core.iterm2_profiles migrate-from-experimental
+
+demo:
+	@bash scripts/vc-dashboard
+
+demo-full:
+	@bash scripts/vc-dashboard --html
+
 init-hooks:
 	@if git rev-parse --git-dir >/dev/null 2>&1; then \
 		echo "Installing custom git hooks..."; \
@@ -247,3 +284,208 @@ init-hooks:
 	else \
 		echo "Not a git repo — skipping hooks."; \
 	fi
+
+# -----------------------------------------------------------------------------
+# Living Tree race protection (Plan 07 — kronika 2026-04-16/17 incident learning)
+#
+# Two invocation modes:
+#
+#   Single-line:
+#     make commit-safe MSG="<subject>" FILES="path1 path2"
+#
+#   Multi-line (Plan 07-b — closes Limitation #2):
+#     make commit-safe MSG_FILE=/tmp/msg.txt FILES="path1 path2"
+#
+# MSG_FILE reads the commit message from a file (subject + blank line + body).
+# Use this for any multi-line message — avoids Makefile $$ escaping vs. shell
+# expansion interaction that historically broke MSG="..." with embedded
+# newlines/quotes/dollars.
+#
+# Helper handles three race detectors: HEAD shift, foreign-file inclusion,
+# and (informationally) tree-hash mismatch. Plan 07-b relaxed tree-hash
+# alone from race-signal to informational notice (pre-commit hooks like
+# prettier --write legitimately mutate staged content; that is not a race).
+# -----------------------------------------------------------------------------
+
+commit-safe:
+	@if [ -z "$(FILES)" ]; then \
+		echo "usage:" >&2; \
+		echo "  make commit-safe MSG=\"<subject>\" FILES=\"path1 path2 ...\"" >&2; \
+		echo "  make commit-safe MSG_FILE=<path>  FILES=\"path1 path2 ...\"" >&2; \
+		echo "" >&2; \
+		echo "Race-protected commit helper for Living Tree workflow." >&2; \
+		echo "MSG_FILE supports multi-line commit bodies (Plan 07-b)." >&2; \
+		exit 1; \
+	fi
+	@if [ -n "$(MSG_FILE)" ] && [ -n "$(MSG)" ]; then \
+		echo "make commit-safe: pass MSG OR MSG_FILE, not both" >&2; \
+		exit 1; \
+	fi
+	@if [ -z "$(MSG)" ] && [ -z "$(MSG_FILE)" ]; then \
+		echo "make commit-safe: MSG=\"...\" or MSG_FILE=<path> is required" >&2; \
+		exit 1; \
+	fi
+	@if [ -n "$(MSG_FILE)" ]; then \
+		bash scripts/lib/living-tree-commit.sh --message-file "$(MSG_FILE)" -- $(FILES); \
+	else \
+		bash scripts/lib/living-tree-commit.sh "$(MSG)" -- $(FILES); \
+	fi
+
+test-race-protection:
+	@bash tests/race_protection_test.sh
+
+# -----------------------------------------------------------------------------
+# Plan 06 (META_22) — AGENT MODEL PARITY automated enforcement.
+#
+# Verifies the bash + Python parity layers (scripts/lib/spawn.sh and
+# vibecrafted-core/vibecrafted_core/agent_dispatch.py) reject same-family
+# downgrades, allow cross-family delegation, and honor the
+# VIBECRAFTED_SPAWN_ALLOW_DOWNGRADE=1 operator override with an audit
+# warning. Captures kronika 2026-04-10 doctrine.
+# -----------------------------------------------------------------------------
+
+test-parity:
+	@bash tests/spawn_parity_test.sh
+	@if command -v uv >/dev/null 2>&1; then \
+		uv run --with pytest pytest tests/agent_dispatch_test.py -q; \
+	else \
+		PYTHONPATH="$(SOURCE)/vibecrafted-core" $(PYTHON) -m pytest tests/agent_dispatch_test.py -q; \
+	fi
+
+# -----------------------------------------------------------------------------
+# Plan 04 — skill-authoring scaffolder.
+#
+# `make skill-new NAME=vc-my-skill` wraps tools/vc-skill-new.sh. The script
+# enforces name validation (vc- prefix, lowercase, no collisions) and copies
+# skills/_template/ with placeholder substitution. See
+# docs/CONTRIBUTING-SKILLS.md for the full operator authoring guide.
+# -----------------------------------------------------------------------------
+
+skill-new:
+	@if [ -z "$(NAME)" ]; then \
+		echo "usage: make skill-new NAME=vc-<skill-name>" >&2; \
+		echo "" >&2; \
+		echo "Scaffold a new vc-* skill from skills/_template/." >&2; \
+		echo "See docs/CONTRIBUTING-SKILLS.md for the authoring guide." >&2; \
+		exit 2; \
+	fi
+	@bash tools/vc-skill-new.sh "$(NAME)"
+
+# -----------------------------------------------------------------------------
+# Plan 12 (META_22) — zellij multi-agent layouts smoke gate.
+#
+# Verifies:
+#   - all shipped layouts under config/zellij/layouts/*.kdl parse via
+#     `zellij --layout <name> setup --check`
+#   - all four mesh themes (vetcoders-dragon/sztudio/silver/div0) load
+#   - auto-theme.sh passes bash -n + shellcheck
+#   - auto-theme.sh maps each canonical host (dragon, sztudio, silver, div0,
+#     mgbook16 alias) to the correct mesh theme and falls back to neutral
+#     for unknown hosts
+#
+# Tolerant of missing zellij — falls back to script-level checks only.
+# -----------------------------------------------------------------------------
+
+test-zellij:
+	@bash tests/zellij_layouts_smoke.sh
+
+# -----------------------------------------------------------------------------
+# Plan 10 (META_22) — iTerm2 stack GA promotion smoke gate.
+#
+# Verifies the migrate-from-experimental subcommand:
+#   - sets up a fixture vibecrafted-experimental.json
+#   - runs `python -m vibecrafted_core.iterm2_profiles migrate-from-experimental`
+#     against a sandboxed install dir
+#   - asserts the new vibecrafted.json exists with cleaned profile names
+#     and preserved GUIDs
+#   - asserts the .bak backup was created and the legacy file removed
+#   - asserts the migration is idempotent (second invocation is no-op)
+#
+# This is a bash smoke wrapper around the same logic that
+# test_iterm2_profiles.py pytest suite covers in-process; both run on CI.
+# -----------------------------------------------------------------------------
+
+test-iterm2-migrate:
+	@bash tests/iterm2_migration_test.sh
+
+# -----------------------------------------------------------------------------
+# Plan 09 (META_22) — memex cross-session retrieval client smoke gate.
+#
+# Two tiers run together:
+#   1. bash integration smoke (tests/memex_integration_test.sh) — asserts
+#      SKILL.md Sense 1 documentation, public surface, populated-memex
+#      fallthrough via injected MCP stub, graceful degradation on
+#      unreachable endpoint, config precedence (TOML > env), pure
+#      defaults disable cleanly, empty-query short-circuit.
+#   2. pytest unit tier (vibecrafted-core/tests/test_memex_client.py) —
+#      covers HTTP success/failure parsing, MCP bridge transport,
+#      config layer precedence, malformed responses, limit clamping.
+#
+# The bash tier owns the OPERATOR-VISIBLE contract (markdown + sandbox
+# shell). The pytest tier owns the implementation correctness contract.
+# Both must pass for `make test-memex` to be green.
+# -----------------------------------------------------------------------------
+
+test-memex:
+	@bash tests/memex_integration_test.sh
+	@if command -v uv >/dev/null 2>&1; then \
+		uv run --project vibecrafted-core --with pytest python -m pytest vibecrafted-core/tests/test_memex_client.py -q; \
+	else \
+		PYTHONPATH="$(SOURCE)/vibecrafted-core" $(PYTHON) -m pytest vibecrafted-core/tests/test_memex_client.py -q; \
+	fi
+
+# -----------------------------------------------------------------------------
+# Plan 08 (META_22) — AICX cross-machine sync v2 smoke gate.
+#
+# Two tiers run together:
+#   1. bash end-to-end smoke (tests/aicx_sync_smoke.sh) — asserts the
+#      two-machine fixture: dual-add discovery, dry-run is read-only,
+#      authority-tier conflict resolution (repo_verified > aicx_agent),
+#      same-tier tie surfacing, prior conflict-log decision honoured on
+#      subsequent runs, corrupted chunk reported + skipped without crash,
+#      CLI wrapper (scripts/aicx-sync.sh) help + unknown-command rejection
+#      + TOML config-file fallback.
+#   2. pytest unit tier (vibecrafted-core/tests/test_aicx_sync.py) —
+#      covers Authority enum + aliases, AicxChunk normalization,
+#      discover_chunks adds/conflicts/corrupted, resolve_conflict full
+#      tier ladder + log honouring + last-write-wins on decisions,
+#      apply_plan dry-run read-only invariant, record_decision validation,
+#      CLI surface.
+#
+# The bash tier owns the OPERATOR-VISIBLE contract (CLI wrapper + cross-
+# machine fixture). The pytest tier owns the implementation correctness
+# contract. Both must pass for `make test-aicx-sync` to be green.
+# -----------------------------------------------------------------------------
+
+test-aicx-sync:
+	@bash tests/aicx_sync_smoke.sh
+	@if command -v uv >/dev/null 2>&1; then \
+		uv run --project vibecrafted-core --with pytest python -m pytest vibecrafted-core/tests/test_aicx_sync.py -q; \
+	else \
+		PYTHONPATH="$(SOURCE)/vibecrafted-core" $(PYTHON) -m pytest vibecrafted-core/tests/test_aicx_sync.py -q; \
+	fi
+
+# -----------------------------------------------------------------------------
+# Plan 11 (META_22) — Hammerspoon URL handler stack install + smoke gate.
+#
+# install-hammerspoon: copies config/hammerspoon/init.lua to
+#   ~/.hammerspoon/init.lua, offering a .bak overwrite when an existing
+#   config is present, and reloads Hammerspoon. macOS-only — exits 0 with
+#   a notice on Linux/CI.
+#
+# test-hammerspoon: structural lints + sanitization unit tests (8 positive
+#   + 4 negative cases) against the Lua param validator. Includes static
+#   analysis (bash -n, shellcheck, optional luac -p) + handler-registration
+#   grep checks. Live macOS integration is operator-driven (the test
+#   surfaces the manual command rather than spawning iTerm2 tabs during CI).
+#
+# Stack agent-native runtime context (kronika 2026-05-08): OSC 8 hyperlink
+# → iTerm2 Cmd+Click → macOS open URL → Hammerspoon URL handler →
+# AppleScript spawn iTerm2 tab → CLI dispatch. See docs/HAMMERSPOON.md.
+# -----------------------------------------------------------------------------
+
+install-hammerspoon:
+	@bash scripts/install-hammerspoon.sh
+
+test-hammerspoon:
+	@bash tests/hammerspoon_smoke.sh

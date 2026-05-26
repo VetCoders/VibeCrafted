@@ -1,6 +1,6 @@
 ---
 name: vc-dou
-version: 1.0.0
+version: 2.1.0
 description: >
   Definition of Undone audit skill. Runs a systematic gap analysis across the
   ENTIRE product surface — not just code. Crawls public URLs, audits repo
@@ -13,7 +13,27 @@ description: >
   "co brakuje do launchu", "readiness audit", "packaging gap".
 ---
 
-# vc-dou — Definition of Undone (Action Engine)
+# `vc-dou` — AUDIT-FIRST Definition of Undone
+
+> AUDIT-FIRST tool-driven shipping-readiness analysis. Where `vc-followup` asks
+> **"is the trajectory healthy?"** and `vc-audit` asks **"did the spec
+> land?"**, DoU asks **"how far are we from someone being able to find,
+> trust, try, and buy this?"** — across code, governance, install,
+> SEO, distribution, and representation surfaces. Produces a gap
+> report and a remediation list. Never modifies code or surfaces.
+
+## Pipeline Position
+
+`vc-dou` sits in the **shipping-readiness perception** slot:
+
+```
+... → polarize (WRITE: cut) → [DOU: AUDIT-FIRST] → hydrate (WRITE) → decorate (WRITE) → release (WRITE) → ...
+```
+
+DoU is AUDIT-FIRST: it produces a gap inventory and remediation list
+that downstream WRITE steps (`vc-hydrate`, `vc-decorate`, `vc-release`)
+consume. Fixing the gaps belongs to those downstream skills, not to
+DoU itself.
 
 ## Operator Entry
 
@@ -22,6 +42,14 @@ description: >
 This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a substrate failure if the current tree is too poisoned to continue safely.
 
 See [Living Tree Rule](../LIVING_TREE_RULE.md).
+
+## Canonical Orientation Gate
+
+Before this workflow performs repo-specific analysis, planning, implementation, review, release, or delegation, it MUST run or consume the `vc-init` procedure for the assigned repo. If fresh `vc-init` evidence is absent, perform the init pass first and treat workflow-specific work as blocked until repo truth exists.
+
+`Loctree:loctree` is the default structural perception skill for that pass. Use Loctree before grep or docs-driven claims to produce or refresh the Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant. Search for existing symbols and contracts before creating new ones; run impact before delete or major refactor; run slice before editing.
+
+The point is to find the hooks: load-bearing hubs, twins, dead code, drift, runtime entrypoints, and blast-radius traps. If the task is explicitly non-repo or no-code, state the no-repo exception in the report. Otherwise, missing `vc-init`/Loctree evidence is a process failure.
 
 Standard launcher (`vibecrafted start` / `vc-start`, then `vc-<workflow> <agent> --file|--prompt ...`).
 Outside Zellij the framework attaches/creates the operator session.

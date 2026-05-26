@@ -1,23 +1,43 @@
 ---
 name: vc-followup
-version: 2.1.0
+version: 2.2.0
 description: >
-  Post-implementation follow-up audit skill. Use this when implementation
-  exists and the team needs to evaluate whether the work is heading in the
-  right direction, what gaps remain, what drift was introduced, and what the
-  next highest-leverage move should be. This is not the same as bounded
-  `vc-review`: followup is trajectory-aware, post-implementation, and may
-  inspect code, runtime behavior, UX, docs, or packaging without requiring a
-  single artifact like a PR or commit range as its frame. Trigger phrases:
-  "follow-up check", "followup audit", "czy sa jeszcze luki",
-  "readiness before hands-on", "audit this implementation", "po implementacji",
-  "gaps after agents", "co zostało do zrobienia", "post-implementation review",
+  AUDIT-FIRST post-implementation trajectory check. Evaluates whether
+  the work is heading in the right direction, what gaps remain, what
+  drift was introduced, and what the next highest-leverage move should
+  be. May inspect code, runtime behavior, UX, docs, or packaging
+  without requiring a single artifact like a PR or commit range as its
+  frame. Sibling to `vc-review` (per-implementation diff perception)
+  and `vc-audit` (per-plan spec falsification) in the AUDIT-FIRST
+  perception layer of the pipeline. Trigger phrases: "follow-up check",
+  "followup audit", "czy sa jeszcze luki", "readiness before hands-on",
+  "audit this implementation", "po implementacji", "gaps after agents",
+  "co zostało do zrobienia", "post-implementation review",
   "czy to idzie dobrze", "czy ten kierunek ma sens", "what still feels off".
 compatibility:
   tools: []
 ---
 
-# vc-followup
+# vc-followup — AUDIT-FIRST Trajectory Check
+
+> AUDIT-FIRST perception step. Sibling to `vc-review` (per-diff) and
+> `vc-audit` (per-plan). This one asks **"is the direction healthy?"**
+> across whatever surfaces the operator points at — code, UX, docs,
+> packaging, integration, install path — without a bounded artifact
+> requirement. Produces a report, never modifies code.
+
+## Pipeline Position
+
+`vc-followup` lives in the **trajectory perception** slot:
+
+```
+... → implement (WRITE) → [FOLLOWUP: AUDIT-FIRST] → review (READ) → marbles (WRITE) → ...
+```
+
+Followup answers **"is the trajectory healthy?"**. Review answers
+**"is this diff clean?"**. Audit answers **"did the written spec
+land?"**. All three are AUDIT-FIRST; none of them modify code. Fixes
+belong downstream in `vc-marbles`.
 
 ## Operator Entry
 
@@ -26,6 +46,14 @@ compatibility:
 This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a substrate failure if the current tree is too poisoned to continue safely.
 
 See [Living Tree Rule](../LIVING_TREE_RULE.md).
+
+## Canonical Orientation Gate
+
+Before this workflow performs repo-specific analysis, planning, implementation, review, release, or delegation, it MUST run or consume the `vc-init` procedure for the assigned repo. If fresh `vc-init` evidence is absent, perform the init pass first and treat workflow-specific work as blocked until repo truth exists.
+
+`Loctree:loctree` is the default structural perception skill for that pass. Use Loctree before grep or docs-driven claims to produce or refresh the Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant. Search for existing symbols and contracts before creating new ones; run impact before delete or major refactor; run slice before editing.
+
+The point is to find the hooks: load-bearing hubs, twins, dead code, drift, runtime entrypoints, and blast-radius traps. If the task is explicitly non-repo or no-code, state the no-repo exception in the report. Otherwise, missing `vc-init`/Loctree evidence is a process failure.
 
 Operator enters the framework session through:
 

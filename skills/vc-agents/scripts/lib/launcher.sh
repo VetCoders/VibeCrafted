@@ -18,7 +18,7 @@ spawn_generate_launcher() {
 
   local q_meta q_report q_transcript q_common q_cmd
   local q_root q_agent q_prompt_id q_run_id q_run_lock q_loop_nr q_skill_code
-  local q_skill_name q_operator_session q_spawn_direction q_marbles_tab
+  local q_skill_name q_operator_session q_spawn_direction q_marbles_tab q_marbles_watcher
   q_meta="$(spawn_shell_quote "$meta_path")"
   q_report="$(spawn_shell_quote "$report_path")"
   q_transcript="$(spawn_shell_quote "$transcript_path")"
@@ -29,12 +29,13 @@ spawn_generate_launcher() {
   q_prompt_id="$(spawn_shell_quote "${SPAWN_PROMPT_ID:-}")"
   q_run_id="$(spawn_shell_quote "${SPAWN_RUN_ID:-}")"
   q_run_lock="$(spawn_shell_quote "${SPAWN_RUN_LOCK:-}")"
-  q_loop_nr="$(spawn_shell_quote "${SPAWN_LOOP_NR:-0}")"
+  q_loop_nr="$(spawn_shell_quote "${SPAWN_LOOP_NR:-${VIBECRAFTED_LOOP_NR:-0}}")"
   q_skill_code="$(spawn_shell_quote "${SPAWN_SKILL_CODE:-}")"
   q_skill_name="$(spawn_shell_quote "${SPAWN_SKILL_NAME:-${VIBECRAFTED_SKILL_NAME:-}}")"
   q_operator_session="$(spawn_shell_quote "${VIBECRAFTED_OPERATOR_SESSION:-}")"
   q_spawn_direction="$(spawn_shell_quote "${VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION:-}")"
   q_marbles_tab="$(spawn_shell_quote "${VIBECRAFTED_MARBLES_TAB_NAME:-}")"
+  q_marbles_watcher="$(spawn_shell_quote "${VIBECRAFTED_MARBLES_WATCHER:-}")"
 
   cat > "$launcher" <<EOF_LAUNCH
 #!/usr/bin/env bash
@@ -60,6 +61,7 @@ export VIBECRAFTED_SKILL_NAME=\${VIBECRAFTED_SKILL_NAME:-$q_skill_name}
 export VIBECRAFTED_OPERATOR_SESSION=\${VIBECRAFTED_OPERATOR_SESSION:-$q_operator_session}
 export VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=\${VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION:-$q_spawn_direction}
 export VIBECRAFTED_MARBLES_TAB_NAME=\${VIBECRAFTED_MARBLES_TAB_NAME:-$q_marbles_tab}
+export VIBECRAFTED_MARBLES_WATCHER=\${VIBECRAFTED_MARBLES_WATCHER:-$q_marbles_watcher}
 startup_watch_pid=""
 
 # Write this launcher's PID into meta.json so the watcher heartbeat and the

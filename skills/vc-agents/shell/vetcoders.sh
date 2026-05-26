@@ -1473,6 +1473,63 @@ _vetcoders_init_command_text() {
   esac
 }
 
+# Operator-mode launcher helpers — parallel to init helpers above.
+# vc-operator is NOT a dispatchable Iter-3 worker mode; it is an
+# interactive session entry point per the vc-init pattern. Invocation
+# opens the operator's primary tab in zellij with the agent of choice
+# preloaded with the /vc-operator skill prompt.
+
+_vetcoders_operator_runtime() {
+  local runtime="${1:-terminal}"
+  case "$runtime" in
+    terminal|visible)
+      printf '%s\n' "$runtime"
+      ;;
+    *)
+      echo "vc-operator is interactive-only: use --runtime terminal or visible." >&2
+      return 1
+      ;;
+  esac
+}
+
+_vetcoders_compose_operator_prompt() {
+  local prompt_text="${1:-}"
+  local file_path="${2:-}"
+  local operator_prompt="/vc-operator"
+  local extra
+
+  extra="$(_vetcoders_compose_input_context "$prompt_text" "$file_path")" || return 1
+  if [[ -n "$extra" ]]; then
+    operator_prompt+=$'\n\n'
+    operator_prompt+="$extra"
+  fi
+
+  printf '%s' "$operator_prompt"
+}
+
+_vetcoders_operator_command_text() {
+  local tool="$1"
+  local operator_prompt="$2"
+  local quoted_prompt
+  quoted_prompt="$(_vetcoders_shell_quote "$operator_prompt")"
+
+  case "$tool" in
+    claude)
+      printf 'claude --verbose --dangerously-skip-permissions %s' "$quoted_prompt"
+      ;;
+    codex)
+      printf 'codex --dangerously-bypass-approvals-and-sandbox %s' "$quoted_prompt"
+      ;;
+    gemini)
+      printf 'gemini -y -i %s' "$quoted_prompt"
+      ;;
+    *)
+      echo "Unsupported operator agent: $tool" >&2
+      return 1
+      ;;
+  esac
+}
+
 _vetcoders_spawn_plan() {
   local tool="$1"
   local mode="$2"
@@ -1558,6 +1615,19 @@ _vetcoders_await() {
   else
     bash "$script" "$@"
   fi
+}
+
+_vetcoders_loop() {
+  local script
+  script="$(_vetcoders_frontier_file "runtime/scripts/vibecrafted-loop.sh" 2>/dev/null || true)"
+  if [[ -z "$script" && -n "${VIBECRAFTED_ROOT:-}" ]]; then
+    script="${VIBECRAFTED_ROOT}/runtime/scripts/vibecrafted-loop.sh"
+  fi
+  [[ -n "$script" && -f "$script" ]] || {
+    echo "vibecrafted loop runtime script not found." >&2
+    return 1
+  }
+  bash "$script" "$@"
 }
 
 codex-review() {
@@ -1735,6 +1805,44 @@ _vetcoders_skill() {
   fi
 
   _vetcoders_dispatch_skill_prompt "$tool" "$skill" "$skill_code" "$loop_nr" "$run_id" "$run_lock" "$prompt" "${spawn_args[@]}"
+  local _dispatch_rc=$?
+  _vetcoders_maybe_spawn_await_pane "$tool" "$skill" "$run_id" "$root"
+  return "$_dispatch_rc"
+}
+
+# Spawn a zellij side-pane running vibecrafted-await-watch for the just-fired
+# worker, so the operator gets live transcript tail + automatic exit when the
+# worker is done (status=completed/failed, or wrapper dies + transcript idle).
+#
+# Silent no-op unless:
+#   - the operator is inside an active zellij session
+#   - the await-watch helper is installed and executable
+#   - jq is available (helper needs it to parse meta.json)
+#
+# Resolves meta.json by greping the artifacts dir for a meta whose .run_id
+# matches the freshly-launched dispatch's run_id. Worker filename is
+# prompt_id-based, not run_id-based, so content grep is the only reliable
+# resolver.
+_vetcoders_maybe_spawn_await_pane() {
+  local tool="$1" skill="$2" run_id="$3" root="$4"
+  command -v zellij >/dev/null 2>&1 || return 0
+  _vetcoders_in_zellij || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local helper
+  helper="$(_vetcoders_frontier_file "skills/vc-agents/scripts/vibecrafted-await-watch.sh" 2>/dev/null || true)"
+  [[ -n "$helper" && -x "$helper" ]] || return 0
+
+  # Best effort: short delay so the wrapper has a moment to drop meta.json.
+  ( sleep 1
+    local pane_name="await:${tool}:${run_id##*-}"
+    local cwd="${root:-$PWD}"
+    zellij action new-pane \
+      --name "$pane_name" \
+      --close-on-exit \
+      --cwd "$cwd" \
+      -- "$helper" --run-id "$run_id" >/dev/null 2>&1 || true
+  ) &
 }
 
 _vetcoders_skill_entry() {
@@ -2001,6 +2109,39 @@ _vetcoders_skill_init() {
   _vetcoders_spawn_into_operator_session "${tool}-init" "$command_text"
 }
 
+# vc-operator launcher — interactive operator session entry point.
+# Behaves like _vetcoders_skill_init: spawns a zellij session with the
+# selected agent preloaded with the /vc-operator skill prompt. NOT a
+# background Iter-3 dispatchable mode.
+_vetcoders_skill_operator() {
+  local tool="$1"
+  shift
+  local runtime operator_prompt command_text
+
+  _vetcoders_parse_contract "$@" || return 1
+  [[ -z "$_vetcoders_contract_count" ]] || {
+    echo "--count is not supported by vibecrafted operator." >&2
+    return 1
+  }
+  [[ -z "$_vetcoders_contract_depth" ]] || {
+    echo "--depth is not supported by vibecrafted operator." >&2
+    return 1
+  }
+  [[ -z "$_vetcoders_contract_session" ]] || {
+    echo "--session is not supported by vibecrafted operator." >&2
+    return 1
+  }
+
+  _vetcoders_require_zellij || return 1
+
+  runtime="$(_vetcoders_operator_runtime "${_vetcoders_contract_runtime:-terminal}")" || return 1
+  operator_prompt="$(_vetcoders_compose_operator_prompt "$_vetcoders_contract_prompt" "$_vetcoders_contract_file")" || return 1
+  command_text="$(_vetcoders_operator_command_text "$tool" "$operator_prompt")" || return 1
+
+  _vetcoders_prepare_operator_runtime "$runtime" || return 1
+  _vetcoders_spawn_into_operator_session "${tool}-operator" "$command_text"
+}
+
 codex-dou() { _vetcoders_skill codex dou "$@"; }
 claude-dou() { _vetcoders_skill claude dou "$@"; }
 gemini-dou() { _vetcoders_skill gemini dou "$@"; }
@@ -2236,6 +2377,10 @@ codex-skill-agents() { _vetcoders_skill_entry codex agents "$@"; }
 claude-skill-agents() { _vetcoders_skill_entry claude agents "$@"; }
 gemini-skill-agents() { _vetcoders_skill_entry gemini agents "$@"; }
 
+codex-skill-audit() { _vetcoders_skill_entry codex audit "$@"; }
+claude-skill-audit() { _vetcoders_skill_entry claude audit "$@"; }
+gemini-skill-audit() { _vetcoders_skill_entry gemini audit "$@"; }
+
 codex-skill-decorate() { _vetcoders_skill_entry codex decorate "$@"; }
 claude-skill-decorate() { _vetcoders_skill_entry claude decorate "$@"; }
 gemini-skill-decorate() { _vetcoders_skill_entry gemini decorate "$@"; }
@@ -2372,12 +2517,14 @@ _vetcoders_skill_wrapper() {
 
   case "$skill" in
     init) _vetcoders_skill_init "$tool" "$@" ;;
+    operator) _vetcoders_skill_operator "$tool" "$@" ;;
     marbles) _vetcoders_marbles "$tool" "$@" ;;
     *) _vetcoders_skill_entry "$tool" "$skill" "$@" ;;
   esac
 }
 
 vc-agents() { _vetcoders_skill_wrapper agents "$@"; }
+vc-audit() { _vetcoders_skill_wrapper audit "$@"; }
 vc-decorate() { _vetcoders_skill_wrapper decorate "$@"; }
 vc-delegate() { _vetcoders_skill_wrapper delegate "$@"; }
 vc-dou() { _vetcoders_skill_wrapper dou "$@"; }
@@ -2387,7 +2534,9 @@ vc-init() { _vetcoders_skill_wrapper init "$@"; }
 vc-intents() { _vetcoders_skill_wrapper intents "$@"; }
 vc-justdo() { _vetcoders_skill_wrapper justdo "$@"; }
 vc-implement() { _vetcoders_skill_wrapper justdo "$@"; }
+vc-loop() { _vetcoders_loop "$@"; }
 vc-marbles() { _vetcoders_skill_wrapper marbles "$@"; }
+vc-operator() { _vetcoders_skill_wrapper operator "$@"; }
 vc-ownership() { _vetcoders_skill_wrapper ownership "$@"; }
 vc-partner() { _vetcoders_skill_wrapper partner "$@"; }
 vc-polarize() { _vetcoders_skill_wrapper polarize "$@"; }
@@ -2402,10 +2551,10 @@ vc-help() {
   cat <<'HELP'
 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. Framework — Skills & Helpers
 
-Pipeline:  scaffold → init → workflow → implement → followup → marbles → dou → decorate → hydrate → release
+Pipeline:  scaffold → init → workflow → implement → followup → marbles → audit → dou → decorate → hydrate → release
 Modes:     partner (shared steering) | ownership (take the wheel)
 Research:  research (triple-agent) | delegate (in-session)
-Quality:   review (bounded diff/PR/commit) | followup (post-implementation direction) | prune
+Quality:   audit (plan falsification) | review (bounded diff/PR/commit) | followup (post-implementation direction) | prune
 Video:     screenscribe (foundation)
 
 Spawn helpers (per agent):
@@ -2415,6 +2564,7 @@ Spawn helpers (per agent):
   <agent>-prompt "text"          Quick one-shot prompt
   <agent>-scaffold                Architecture planning
   <agent>-followup               Post-implementation direction audit
+  <agent>-skill-audit            Plan-vs-code falsification
   <agent>-dou                    Definition of Undone audit
   <agent>-hydrate                Market packaging
   <agent>-marbles                Convergence loop
@@ -2435,6 +2585,7 @@ Command deck:
   vibecrafted help               Main command surface
   vibecrafted <skill> <agent>    Run a repo skill via the launcher
   vibecrafted resume <agent>     Resume a previous session
+  vibecrafted loop start --file plan.md --completion-promise READY
   vibecrafted workflow claude -p "Plan and implement auth"
   vibecrafted marbles codex --count 3 --depth 3
   vibecrafted init claude        First-context entrypoint

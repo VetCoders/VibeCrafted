@@ -398,9 +398,47 @@ spawn_in_zellij_pane() {
     fi
     spawn_release_zellij_launch_slot "$launch_lock"
     [[ "$launch_status" == "0" ]] || return "$launch_status"
+
+    # Auto-tail-await side pane in the same run tab. Silent no-op if the
+    # helper is missing, jq is unavailable, or we are not in new-tab mode
+    # (same-tab grid spawn is operator-explicit and should not be polluted).
+    if [[ "$direction" == "new-tab" ]]; then
+      spawn_await_watch_pane "${run_tab_id:-}" "${run_tab_name:-}" "$pane_name"
+    fi
     return 0
   fi
   return 1
+}
+
+# Spawn the vibecrafted-await-watch helper as a stacked side-pane in the
+# worker's run tab so the operator gets live transcript tail + automatic
+# self-exit when the worker is done. Hard requirement: SPAWN_RUN_ID env,
+# jq available, the helper script executable, and the run tab actually
+# exists (we re-query if the post-tab-creation race left run_tab_id empty).
+spawn_await_watch_pane() {
+  local run_tab_id="$1" run_tab_name="$2" worker_pane_name="$3"
+  command -v jq >/dev/null 2>&1 || return 0
+  [[ -n "${SPAWN_RUN_ID:-}" ]] || return 0
+
+  local helper="${_SPAWN_LIB_DIR}/../vibecrafted-await-watch.sh"
+  [[ -x "$helper" ]] || return 0
+
+  # Re-query tab id when missing: the parent path may have created a fresh
+  # tab via `zellij action new-tab` which does not return the id.
+  if [[ -z "$run_tab_id" && -n "$run_tab_name" ]]; then
+    # Tiny grace for the just-created tab to be enumerable.
+    sleep 1
+    run_tab_id="$(spawn_tab_id_by_name "$run_tab_name" 2>/dev/null || true)"
+  fi
+  [[ -n "$run_tab_id" ]] || return 0
+
+  local pane_name="await:${SPAWN_AGENT:-?}:${SPAWN_RUN_ID##*-}"
+  zellij action new-pane --tab-id "$run_tab_id" \
+    --stacked \
+    --close-on-exit \
+    --name "$pane_name" \
+    --cwd "${SPAWN_ROOT:-$(pwd)}" \
+    -- "$helper" --run-id "$SPAWN_RUN_ID" >/dev/null 2>&1 || true
 }
 
 spawn_in_operator_session() {
@@ -465,9 +503,11 @@ spawn_in_operator_session() {
 
 spawn_probe() {
   local transcript_path="$1"
-  local probe_seconds="${VIBECRAFTED_SPAWN_PROBE_SECONDS:-15}"
+  local probe_seconds="${VIBECRAFTED_SPAWN_PROBE_SECONDS:-10}"
   local probe_delay="${VIBECRAFTED_SPAWN_PROBE_DELAY_SECONDS:-2}"
   local agent_name="${SPAWN_AGENT:-agent}"
+  local run_id="${SPAWN_RUN_ID:-${VIBECRAFTED_RUN_ID:-?}}"
+  local notify_enabled="${VIBECRAFTED_SPAWN_PROBE_NOTIFY:-1}"
 
   # Skip if disabled or not in zellij
   [[ "${VIBECRAFTED_SPAWN_PROBE:-1}" == "1" ]] || return 0
@@ -475,8 +515,17 @@ spawn_probe() {
   command -v zellij >/dev/null 2>&1 || return 0
   [[ -n "$transcript_path" ]] || return 0
 
-  # Brief delay for transcript file to appear; a short floating probe surfaces
-  # startup logs on the currently occupied tab and then closes.
+  # Floating probe pane (10s ephemeral) + content heuristic + system notification.
+  # Exit triggers (whichever fires first within probe_seconds):
+  #   GOOD: transcript has [HH:MM:SS] timestamp OR `session: <uuid>` line
+  #     → silent close, no notification
+  #   WARN: ERROR in transcript before a good signal
+  #   BAD:  FATAL|panic:|Traceback|BrokenPipe in transcript
+  #         OR exit_code != 0 in meta
+  #         OR worker pid dies within probe window
+  #     → close + system notification with reason
+  #   SILENT: nothing in probe_seconds
+  #     → close + notification "silent on startup"
   (
     local focused_pane_id=""
     local focused_tab_id=""
@@ -492,7 +541,7 @@ spawn_probe() {
       --x 80%
       --y 10%
       --height 40%
-      --name "probe-${agent_name}"
+      --name "probe-${agent_name}:${run_id##*-}"
     )
     if [[ -n "$focused_tab_id" ]]; then
       probe_cmd+=(--tab-id "$focused_tab_id")
@@ -503,4 +552,108 @@ spawn_probe() {
       zellij action focus-pane-id "$focused_pane_id" >/dev/null 2>&1 || true
     fi
   ) &
+
+  # Parallel content watcher — same probe window, emits notification on
+  # bad/silent signals. Good signals close silently.
+  if [[ "$notify_enabled" == "1" ]]; then
+    spawn_probe_watch "$transcript_path" "$probe_seconds" "$agent_name" "$run_id" &
+  fi
+}
+
+# Watch transcript content during probe window. Emits one system notification
+# describing the startup verdict (good = silent close, bad/silent = notify).
+spawn_probe_watch() {
+  local transcript="$1"
+  local window="$2"
+  local agent="$3"
+  local rid="$4"
+  local meta="${VIBECRAFTED_SPAWN_META:-}"
+
+  # Derive meta path from transcript if not explicitly set.
+  # Convention: <stem>.transcript.log <-> <stem>.meta.json
+  if [[ -z "$meta" && -n "$transcript" ]]; then
+    case "$transcript" in
+      *.transcript.log) meta="${transcript%.transcript.log}.meta.json" ;;
+    esac
+  fi
+
+  local deadline=$(( $(date +%s) + window ))
+  local good=0 bad="" warning="" reason=""
+
+  while [[ $(date +%s) -lt $deadline ]]; do
+    if [[ -f "$transcript" ]]; then
+      # GOOD: timestamp line or session UUID present
+      if [[ "$good" == "0" ]] && grep -qE '\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]|session: [a-f0-9-]{8,}' "$transcript" 2>/dev/null; then
+        good=1
+      fi
+      # WARN: transient transport/runtime noise. Do not call the worker failed
+      # unless the authoritative meta/launcher state or a fatal pattern agrees.
+      if [[ -z "$warning" ]]; then
+        if reason=$(grep -oE 'ERROR' "$transcript" 2>/dev/null | head -1); then
+          if [[ -n "$reason" ]]; then
+            warning="$reason"
+          fi
+        fi
+      fi
+      # BAD: fatal patterns
+      if [[ -z "$bad" ]]; then
+        if reason=$(grep -oE 'FATAL|panic:|Traceback|BrokenPipeError' "$transcript" 2>/dev/null | head -1); then
+          if [[ -n "$reason" ]]; then
+            bad="$reason"
+          fi
+        fi
+      fi
+    fi
+    # BAD: meta exit code != 0
+    if [[ -n "$meta" && -f "$meta" && -z "$bad" ]] && command -v jq >/dev/null 2>&1; then
+      local ec
+      ec=$(jq -r '.exit_code // "null"' "$meta" 2>/dev/null)
+      if [[ "$ec" != "null" && "$ec" != "0" ]]; then
+        bad="exit_code=$ec"
+      fi
+    fi
+    # BAD: launcher pid dead
+    if [[ -n "$meta" && -f "$meta" && -z "$bad" ]] && command -v jq >/dev/null 2>&1; then
+      local pid
+      pid=$(jq -r '.launcher_pid // 0' "$meta" 2>/dev/null)
+      if [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$pid" -gt 0 ]] && ! kill -0 "$pid" 2>/dev/null; then
+        bad="worker pid $pid dead"
+      fi
+    fi
+    [[ -n "$bad" ]] && break
+    sleep 1
+  done
+
+  # Emit notification iff bad OR silent/warn-without-good. A good signal after
+  # a transient ERROR means the worker is alive; do not create a fake failure.
+  if [[ -n "$bad" ]]; then
+    spawn_probe_notify "Worker FAILED" "${agent}:${rid##*-} — $bad"
+  elif [[ "$good" == "0" && -n "$warning" ]]; then
+    spawn_probe_notify "Worker startup warning" "${agent}:${rid##*-} — $warning; check await pane"
+  elif [[ "$good" == "0" ]]; then
+    spawn_probe_notify "Worker silent on startup" "${agent}:${rid##*-} — check logs"
+  fi
+}
+
+# Cross-platform system notification helper. iTerm2 OSC 9 is preferred so the
+# Notification Center owner is iTerm2, not Script Editor via osascript.
+# Silent no-op when no notifier is available.
+spawn_probe_notify() {
+  local title="$1"
+  local body="$2"
+  local message="𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. — ${title}: ${body}"
+  message="${message//$'\033'/ }"
+  message="${message//$'\a'/ }"
+
+  if [[ -n "${ITERM_SESSION_ID:-}" || "${TERM_PROGRAM:-}" == "iTerm.app" ]]; then
+    if printf '\033]9;%s\a' "$message" >/dev/tty 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  if [[ "$(uname -s 2>/dev/null)" == "Darwin" ]] && command -v osascript >/dev/null 2>&1; then
+    osascript -e "display notification \"${body//\"/\\\"}\" with title \"𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. — ${title//\"/\\\"}\"" >/dev/null 2>&1 || true
+  elif command -v notify-send >/dev/null 2>&1; then
+    notify-send "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. — $title" "$body" >/dev/null 2>&1 || true
+  fi
 }

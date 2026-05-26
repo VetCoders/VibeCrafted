@@ -5,6 +5,7 @@ import contextlib
 import datetime as dt
 import fcntl
 import json
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -21,7 +22,15 @@ ACTIVE_STATES = {
     "paused",
     "stalled",
 }
-FINAL_STATES = {"completed", "converged", "stopped", "failed", "timed_out", "gc"}
+FINAL_STATES = {
+    "completed",
+    "converged",
+    "stopped",
+    "failed",
+    "timed_out",
+    "gc",
+    "ghost",
+}
 SKILL_CODE_MAP = {
     "agnt": "agents",
     "deco": "decorate",
@@ -64,8 +73,23 @@ class RunStatus:
     health: str
     source: str
     lock_present: bool
+    exit_code: int | None = None
+    liveness: str = ""
+    launcher_pid: int | None = None
+    completed_at: str = ""
+    session_id: str = ""
     current_loop: int | None = None
     total_loops: int | None = None
+
+
+@dataclass(frozen=True)
+class Event:
+    ts: str
+    run_id: str
+    kind: str
+    message: str
+    payload: dict[str, Any]
+    cursor: int
 
 
 def control_plane_home() -> Path:
@@ -140,6 +164,18 @@ def _parse_iso(raw: str | None) -> dt.datetime | None:
         return None
 
 
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        if value and value.lstrip("-").isdigit():
+            return int(value)
+    return None
+
+
 def _now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
@@ -207,6 +243,13 @@ def _normalize_agent_meta(path: Path) -> RunStatus | None:
     skill = _skill_from_code(str(payload.get("skill_code") or ""))
     state = str(payload.get("status") or "unknown")
     updated_at = _safe_iso(str(payload.get("updated_at") or ""))
+    exit_code = _coerce_int(payload.get("exit_code"))
+    liveness = str(payload.get("liveness") or "")
+    health = (
+        "final"
+        if exit_code is not None or liveness == "terminal"
+        else _state_health(state, updated_at)
+    )
     return RunStatus(
         run_id=run_id,
         state=state,
@@ -222,9 +265,14 @@ def _normalize_agent_meta(path: Path) -> RunStatus | None:
         started_at=_safe_iso(
             str(payload.get("started_at") or payload.get("updated_at") or "")
         ),
-        health=_state_health(state, updated_at),
+        health=health,
         source="agent-meta",
         lock_present=False,
+        exit_code=exit_code,
+        liveness=liveness,
+        launcher_pid=_coerce_int(payload.get("launcher_pid")),
+        completed_at=_safe_iso(str(payload.get("completed_at") or "")),
+        session_id=str(payload.get("session_id") or ""),
     )
 
 
@@ -252,6 +300,7 @@ def _normalize_lock(path: Path) -> RunStatus | None:
         health=_state_health(state, started_at),
         source="lock",
         lock_present=True,
+        liveness="lock_present",
     )
 
 
@@ -318,6 +367,15 @@ def _merge_status(existing: RunStatus | None, incoming: RunStatus) -> RunStatus:
         health=preferred.health,
         source=preferred.source,
         lock_present=existing.lock_present or incoming.lock_present,
+        exit_code=preferred.exit_code
+        if preferred.exit_code is not None
+        else existing.exit_code,
+        liveness=preferred.liveness or existing.liveness,
+        launcher_pid=preferred.launcher_pid
+        if preferred.launcher_pid is not None
+        else existing.launcher_pid,
+        completed_at=preferred.completed_at or existing.completed_at,
+        session_id=preferred.session_id or existing.session_id,
         current_loop=preferred.current_loop
         if preferred.current_loop is not None
         else existing.current_loop,
@@ -343,6 +401,28 @@ def _load_existing_snapshots() -> dict[str, dict[str, Any]]:
 
 def _status_to_payload(status: RunStatus) -> dict[str, Any]:
     return asdict(status)
+
+
+def _run_is_terminal(run: dict[str, Any]) -> bool:
+    if str(run.get("state") or "") in FINAL_STATES:
+        return True
+    if str(run.get("liveness") or "") == "terminal":
+        return True
+    return _coerce_int(run.get("exit_code")) is not None
+
+
+def _select_run(snapshot: dict[str, Any], run_id: str) -> dict[str, Any] | None:
+    target = str(run_id or "").strip()
+    if not target:
+        return None
+    for key in ("active_runs", "recent_runs"):
+        for run in snapshot.get(key) or []:
+            if str(run.get("run_id") or "") == target:
+                return dict(run)
+    payload = _read_json(_snapshot_path(target))
+    if str(payload.get("run_id") or "") == target:
+        return payload
+    return None
 
 
 def _record_transition(
@@ -404,6 +484,50 @@ def read_event_tail(limit: int = EVENT_TAIL_LIMIT) -> list[dict[str, Any]]:
     return list(reversed(events))
 
 
+def subscribe_events(
+    since_cursor: int | None = None,
+    kinds: set[str] | list[str] | tuple[str, ...] | None = None,
+    callback=None,
+) -> Iterator[Event]:
+    """Yield control-plane events from events.jsonl, polling when needed."""
+    stream = event_stream_path()
+    cursor = max(int(since_cursor or 0), 0)
+    kinds_filter = set(kinds or [])
+
+    while True:
+        emitted = False
+        if stream.exists():
+            with stream.open("r", encoding="utf-8") as handle:
+                handle.seek(cursor)
+                while True:
+                    line = handle.readline()
+                    if not line:
+                        break
+                    cursor = handle.tell()
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    kind = str(payload.get("kind") or "")
+                    if kinds_filter and kind not in kinds_filter:
+                        continue
+                    event = Event(
+                        ts=str(payload.get("ts") or ""),
+                        run_id=str(payload.get("run_id") or ""),
+                        kind=kind,
+                        message=str(payload.get("message") or ""),
+                        payload=dict(payload.get("payload") or {}),
+                        cursor=cursor,
+                    )
+                    if callback is not None:
+                        callback(event)
+                    emitted = True
+                    yield event
+        if callback is None and not emitted:
+            return
+        time.sleep(1.0)
+
+
 def sync_state() -> dict[str, Any]:
     with _sync_lock():
         previous_snapshots = _load_existing_snapshots()
@@ -457,6 +581,55 @@ def sync_state() -> dict[str, Any]:
         "warnings": _warnings_for_runs(payload_runs),
         "events": read_event_tail(),
     }
+
+
+def lookup_run(run_id: str) -> dict[str, Any] | None:
+    """Return the current control-plane projection for one run id."""
+    snapshot = sync_state()
+    return _select_run(snapshot, run_id)
+
+
+def await_run(
+    run_id: str,
+    *,
+    timeout_seconds: float = 300,
+    interval_seconds: float = 5,
+) -> dict[str, Any]:
+    """Bounded wait for a run using metadata/control-plane state only."""
+    target = str(run_id or "").strip()
+    if not target:
+        raise ValueError("run_id is required")
+
+    timeout_seconds = max(float(timeout_seconds), 0.0)
+    interval_seconds = max(float(interval_seconds), 0.1)
+    deadline = time.monotonic() + timeout_seconds
+    attempts = 0
+    last_run: dict[str, Any] | None = None
+
+    while True:
+        attempts += 1
+        snapshot = sync_state()
+        last_run = _select_run(snapshot, target)
+        if last_run is not None and _run_is_terminal(last_run):
+            return {
+                "run_id": target,
+                "found": True,
+                "completed": True,
+                "timed_out": False,
+                "attempts": attempts,
+                "run": last_run,
+            }
+        now = time.monotonic()
+        if now >= deadline:
+            return {
+                "run_id": target,
+                "found": last_run is not None,
+                "completed": False,
+                "timed_out": True,
+                "attempts": attempts,
+                "run": last_run,
+            }
+        time.sleep(min(interval_seconds, max(deadline - now, 0.0)))
 
 
 def cli(argv: list[str] | None = None) -> int:

@@ -1,6 +1,6 @@
 ---
 name: vc-release
-version: 0.2.0
+version: 0.2.1
 description: >
   Final outward ship skill. Turns "done in the repo" into "safe, visible, deployable,
   discoverable, and launchable in the world." Covers release mechanics, deployment
@@ -22,6 +22,14 @@ description: >
 This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a substrate failure if the current tree is too poisoned to continue safely.
 
 See [Living Tree Rule](../LIVING_TREE_RULE.md).
+
+## Canonical Orientation Gate
+
+Before this workflow performs repo-specific analysis, planning, implementation, review, release, or delegation, it MUST run or consume the `vc-init` procedure for the assigned repo. If fresh `vc-init` evidence is absent, perform the init pass first and treat workflow-specific work as blocked until repo truth exists.
+
+`Loctree:loctree` is the default structural perception skill for that pass. Use Loctree before grep or docs-driven claims to produce or refresh the Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant. Search for existing symbols and contracts before creating new ones; run impact before delete or major refactor; run slice before editing.
+
+The point is to find the hooks: load-bearing hubs, twins, dead code, drift, runtime entrypoints, and blast-radius traps. If the task is explicitly non-repo or no-code, state the no-repo exception in the report. Otherwise, missing `vc-init`/Loctree evidence is a process failure.
 
 Enter via `vibecrafted start` (or `vc-start`). Then launch through the command deck:
 
@@ -52,7 +60,7 @@ Release runs after `vc-dou` verifies the product surface, `vc-decorate` ensures 
 1. **Artifact truth** — versions, tags, changelog, published outputs
 2. **Deployment truth** — topology, proxying, healthchecks, restart behavior
 3. **Security truth** — Semgrep, exposed surfaces, headers, auth, secret handling
-4. **Domain truth** — DNS, canonical host, TLS, redirects, verification challenges
+4. **Domain truth** — DNS, default host, TLS, redirects, verification challenges
 5. **Visibility truth** — SEO, indexability, social cards, sitemap, robots, public metadata
 6. **Onboarding truth** — install path, first run, docs, screenshots, quickstart, buyer path
 
@@ -88,7 +96,15 @@ Pick one intentionally:
 
 ## Reverse Proxy and Exposure
 
-Release must explicitly answer: canonical hostname, what's public/private, where TLS terminates, HTTP→HTTPS redirect, websocket and forwarded-header handling. Minimum: `Host` headers preserved intentionally; websocket upgrade if needed; sane timeout/body-size; `www`/apex redirect per canonical decision; 80→443 when public HTTPS is intended. Public exposure is a decision, not a default.
+Minimum reverse-proxy expectations:
+
+- `Host` and forwarding headers preserved intentionally
+- websocket upgrade support if the app needs it
+- sane timeout and body-size settings
+- redirect `www`/apex according to canonical decision
+- 80 -> 443 redirect when public HTTPS is intended
+
+Public internet exposure is a decision, not a default.
 
 ## Semgrep Release Gate
 
@@ -111,7 +127,10 @@ If Semgrep unavailable, say so explicitly, run `uvx semgrep` (documented fallbac
 
 ## Domain, DNS, Verification
 
-If the product has any public surface, verify: domain registered and intended, DNS to correct target, canonical host (`www` vs apex), redirects match canonical, TLS resolves cleanly, staging vs prod domains not confused. Also: no stale preview domains advertised as primary, no mismatched favicon/title/og:image leaking old identity, no broken `/.well-known/*` paths.
+If the product has any public surface, verify: domain registered and intended, DNS to correct target, canonical host (
+`www` vs apex), redirects match canonical, TLS resolves cleanly, staging vs prod domains not confused. Also: no stale
+preview domains advertised as primary, no mismatched favicon/title/og:image leaking old identity, no broken
+`/.well-known/*` paths.
 
 Ownership proofs (when public products need them): Search Console, Bing Webmaster, domain TXT/challenge files, Apple/Google ecosystem `.well-known/` endpoints, any challenge-response proofs required by infra/platforms. If domain ownership proof is required and the challenge path is missing, release is not done.
 
@@ -119,9 +138,13 @@ Ownership proofs (when public products need them): Search Console, Bing Webmaste
 
 Visibility is a hard checklist, not nice-to-have.
 
-- **Page-level**: descriptive `<title>`, meta description, one real `<h1>`, crawlable content in initial HTML or truthful fallback, canonical URL, Open Graph + Twitter card tags, correct status code, `noindex` only when intentional.
-- **Site-level**: `robots.txt`, `sitemap.xml`, canonical host strategy, consistent internal linking, no broken docs/marketing links, favicon + social preview assets.
-- **Indexability checks**: `curl` page and verify meaningful content without JS; route not blocked by `robots.txt`; meta robots not `noindex` unless intentional; canonical points to intended public URL.
+- **Page-level**: descriptive `<title>`, meta description, one real `<h1>`, crawlable content in initial HTML or
+  truthful fallback, canonical URL, Open Graph + Twitter card tags, correct status code, `noindex` only when
+  intentional.
+- **Site-level**: `robots.txt`, `sitemap.xml`, canonical host strategy, consistent internal linking, no broken
+  docs/marketing links, favicon + social preview assets.
+- **Indexability checks**: `curl` page and verify meaningful content without JS; route not blocked by `robots.txt`; meta
+  robots not `noindex` unless intentional; canonical points to intended public URL.
 - **Domain visibility checks**: docs/landing/CTA all resolve; install instructions point to real public artifacts; social share preview not broken.
 
 If a stranger cannot discover, understand, and try the product quickly, release is incomplete.
@@ -134,11 +157,12 @@ Verify the first-user path: install from published artifacts (not the repo), fol
 
 Verify from a **cold path**. The dev machine is not a witness.
 
-Install from the **published artifact** (npm/cargo/PyPI/GitHub Release/Docker registry — never local checkout, never side-loaded tarball, never dev branch). Then verify: public URL resolves, TLS valid + matches canonical host, health endpoint passes, core action works end to end, docs and CTA links resolve, published version matches running version, onboarding screenshots/demos match cold-installer output.
+Install from the **published artifact** (npm/cargo/PyPI/GitHub Release/Docker registry — never local checkout, never
+side-loaded tarball, never dev branch). Then verify: public URL resolves, TLS valid + matches canonical host, health
+endpoint passes, core action works end to end, docs and CTA links resolve, published version matches running version,
+onboarding screenshots/demos match cold-installer output.
 
 Report must name exact artifact source (registry URL, tag, digest, download URL). "It worked on my repo" does not satisfy this gate.
-
-## Release Report Contract
 
 Every `vc-release` run must produce a report with actual evidence. Cannot honestly say "done" without the four mandatory sections below. If any is missing, release is **blocked** until filled or the user accepts the gap in writing.
 

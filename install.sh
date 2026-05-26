@@ -3,21 +3,24 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF_USAGE'
-Usage: install.sh [--gui] [--yes] [--ref <branch>] [--archive-url <url> | --archive-file <path>] [--tools-dir <dir>] [make-target]
+Usage: install.sh [--gui] [--yes] [--runtime <horse>] [--ref <branch>] [--archive-url <url> | --archive-file <path>] [--tools-dir <dir>] [make-target]
 
 Bootstrap a local 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. source snapshot into $VIBECRAFTED_ROOT/.vibecrafted/tools and then
 run a local staged install path from that copy.
 
 Use `--gui` when you want the browser-based guided installer.
 Use `--yes` to skip the attended bootstrap confirmation prompt.
+Use `--runtime <horse>` to install and activate a lab runtime: wezterm, vc-apprt, locterm, microsandbox, or none.
 Non-interactive runs without `--gui` bypass the browser and call the compact installer directly.
 
 Examples:
   curl -fsSL https://vibecrafted.io/install.sh | bash
   curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --gui
   curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --yes
+  curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --runtime wezterm
   curl -fsSL https://vibecrafted.io/install.sh | bash -s -- --ref develop
   bash install.sh doctor
+  bash install.sh --runtime locterm
   bash install.sh --archive-file /tmp/vibecrafted.tar.gz vibecrafted
 EOF_USAGE
 }
@@ -29,6 +32,129 @@ die() {
 
 info() {
   printf '%s\n' "$*"
+}
+
+# -----------------------------------------------------------------------------
+# Platform detection (Plan 03 — cross-platform install)
+#
+# detect_platform sets PLATFORM_OS to one of: macos, linux, wsl, unsupported.
+# detect_linux_distro sets LINUX_DISTRO_ID (e.g. debian, ubuntu, arch, fedora)
+# and LINUX_PKG_MGR (apt, dnf, pacman, "") based on /etc/os-release. Both are
+# safe to call multiple times. On macOS, the linux helpers are no-ops.
+#
+# The detection layer is informational only — it does NOT change the staged
+# install layout. macOS path (`$HOME/.vibecrafted`) and Linux/WSL path are
+# the same; only the pre-flight hints (which package manager to suggest)
+# differ. WSL is treated as Linux for runtime; the WSL banner only changes
+# the user-facing message.
+# -----------------------------------------------------------------------------
+
+PLATFORM_OS=""
+LINUX_DISTRO_ID=""
+LINUX_PKG_MGR=""
+
+detect_platform() {
+  case "$(uname -s)" in
+    Darwin*)
+      PLATFORM_OS="macos"
+      ;;
+    Linux*)
+      # WSL: kernel release contains 'microsoft' or '/proc/version' mentions it.
+      if grep -qiE 'microsoft|wsl' /proc/sys/kernel/osrelease 2>/dev/null \
+         || grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+        PLATFORM_OS="wsl"
+      else
+        PLATFORM_OS="linux"
+      fi
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      PLATFORM_OS="unsupported"
+      ;;
+    *)
+      PLATFORM_OS="unsupported"
+      ;;
+  esac
+}
+
+detect_linux_distro() {
+  LINUX_DISTRO_ID=""
+  LINUX_PKG_MGR=""
+  [[ "$PLATFORM_OS" == "linux" || "$PLATFORM_OS" == "wsl" ]] || return 0
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    LINUX_DISTRO_ID="$(. /etc/os-release && printf '%s' "${ID:-}")"
+  fi
+  case "$LINUX_DISTRO_ID" in
+    debian|ubuntu|linuxmint|pop|raspbian)
+      LINUX_PKG_MGR="apt"
+      ;;
+    fedora|rhel|centos|rocky|almalinux)
+      LINUX_PKG_MGR="dnf"
+      ;;
+    arch|manjaro|endeavouros)
+      LINUX_PKG_MGR="pacman"
+      ;;
+    *)
+      LINUX_PKG_MGR=""
+      ;;
+  esac
+}
+
+# preflight_pkg_hint emits a copy-pasteable install command for the named
+# missing tool, scoped to the detected Linux package manager. macOS path
+# uses brew. On unknown distros, emit a generic message. Idempotent and
+# silent under non-Linux/macOS hosts.
+preflight_pkg_hint() {
+  local missing="$1"
+  case "$PLATFORM_OS" in
+    macos)
+      printf '  hint: brew install %s\n' "$missing" >&2
+      ;;
+    linux|wsl)
+      case "$LINUX_PKG_MGR" in
+        apt)
+          printf '  hint: sudo apt-get update && sudo apt-get install -y %s\n' "$missing" >&2
+          ;;
+        dnf)
+          printf '  hint: sudo dnf install -y %s\n' "$missing" >&2
+          ;;
+        pacman)
+          printf '  hint: sudo pacman -S --noconfirm %s\n' "$missing" >&2
+          ;;
+        *)
+          printf '  hint: install %s via your distro package manager\n' "$missing" >&2
+          ;;
+      esac
+      ;;
+    *)
+      printf '  hint: install %s for your platform\n' "$missing" >&2
+      ;;
+  esac
+}
+
+platform_banner() {
+  case "$PLATFORM_OS" in
+    macos)
+      info "Platform: macOS ($(uname -m))"
+      ;;
+    linux)
+      if [[ -n "$LINUX_DISTRO_ID" ]]; then
+        info "Platform: Linux / $LINUX_DISTRO_ID ($(uname -m))"
+      else
+        info "Platform: Linux / generic ($(uname -m))"
+      fi
+      ;;
+    wsl)
+      if [[ -n "$LINUX_DISTRO_ID" ]]; then
+        info "Platform: WSL / $LINUX_DISTRO_ID ($(uname -m))"
+      else
+        info "Platform: WSL / generic ($(uname -m))"
+      fi
+      ;;
+    *)
+      info "Platform: $(uname -s) (unsupported — best-effort only)"
+      ;;
+  esac
 }
 
 extract_tarball() {
@@ -146,6 +272,7 @@ tools_dir="$default_tools_dir"
 target="vibecrafted"
 use_gui=0
 auto_yes=0
+runtime="none"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -154,6 +281,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --yes|-y)
       auto_yes=1
+      ;;
+    --runtime)
+      shift
+      [[ $# -gt 0 ]] || die "Missing value for --runtime"
+      runtime="$1"
       ;;
     --ref)
       shift
@@ -200,6 +332,17 @@ if [[ "$use_gui" == "1" && "$target" != "vibecrafted" ]]; then
   die "--gui can only be used with the default vibecrafted install target"
 fi
 
+case "$runtime" in
+  none|wezterm|vc-apprt|locterm|microsandbox)
+    ;;
+  vc_apprt|vc-)
+    runtime="vc-apprt"
+    ;;
+  *)
+    die "Unknown runtime horse: $runtime (expected wezterm, vc-apprt, locterm, microsandbox, none)"
+    ;;
+esac
+
 if [[ -z "$archive_url" && -z "$archive_file" ]]; then
   # Resolve latest version from the channel manifest instead of hard-pinning.
   channel_url="https://vibecrafted.io/channel/${ref}.json"
@@ -218,11 +361,54 @@ if [[ -z "$archive_url" && -z "$archive_file" ]]; then
   fi
 fi
 
-command -v tar >/dev/null 2>&1 || die "tar is required"
-command -v make >/dev/null 2>&1 || die "make is required"
-command -v python3 >/dev/null 2>&1 || die "python3 is required"
+detect_platform
+detect_linux_distro
+platform_banner
+
+if [[ "$PLATFORM_OS" == "unsupported" ]]; then
+  info ""
+  info "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. v1.x ships native Linux + macOS + WSL paths."
+  info "On native Windows the installer must run inside WSL2:"
+  info "    wsl bash -c 'curl -fsSL https://vibecrafted.io/install.sh | bash'"
+  info "Or open: https://github.com/VetCoders/vibecrafted/issues to track v2.x"
+  info "native Windows support."
+  die "Unsupported platform: $(uname -s). Re-run inside WSL2."
+fi
+
+case "$runtime:$PLATFORM_OS" in
+  none:*|wezterm:macos|wezterm:linux|wezterm:wsl|vc-apprt:macos|vc-apprt:linux|locterm:macos|microsandbox:macos|microsandbox:linux)
+    ;;
+  locterm:*)
+    die "locterm is macOS-only, try --runtime wezterm or --runtime microsandbox"
+    ;;
+  vc-apprt:*)
+    die "vc-apprt supports macOS and Linux only, try --runtime wezterm"
+    ;;
+  microsandbox:*)
+    die "microsandbox requires macOS HVF or Linux KVM, try --runtime wezterm"
+    ;;
+  *)
+    die "Unsupported platform '$PLATFORM_OS' for runtime '$runtime'"
+    ;;
+esac
+
+# Pre-flight tool check — on missing tools, emit a copy-pasteable install
+# hint for the detected platform (Plan 03). Cross-platform tar/make/python3
+# are widely available; the hint only fires when they really are missing
+# (slim container, fresh VM, etc.). macOS path preserved exactly.
+preflight_require() {
+  local tool="$1"
+  command -v "$tool" >/dev/null 2>&1 && return 0
+  printf 'Error: %s is required\n' "$tool" >&2
+  preflight_pkg_hint "$tool"
+  exit 1
+}
+
+preflight_require tar
+preflight_require make
+preflight_require python3
 if [[ -z "$archive_file" ]]; then
-  command -v curl >/dev/null 2>&1 || die "curl is required"
+  preflight_require curl
 else
   [[ -f "$archive_file" ]] || die "Archive file not found: $archive_file"
 fi
@@ -349,6 +535,7 @@ if [[ "$target" == "vibecrafted" && "$use_gui" == "1" ]]; then
   info "Launching guided installer UI:"
   info "  python3 $gui_installer --source $current_link"
   printf '\n'
+  export VIBECRAFTED_RUNTIME="$runtime"
   exec python3 "$gui_installer" --source "$current_link"
 fi
 
@@ -365,6 +552,13 @@ if [[ "$target" == "vibecrafted" ]] && ! is_interactive_session; then
     bash "$foundations_script" || info "  [warn] Foundation install had issues (non-fatal)"
   fi
 
+  runtime_script="$current_link/scripts/install-runtime.sh"
+  if [[ "$runtime" != "none" ]]; then
+    [[ -f "$runtime_script" ]] || die "Runtime installer not found: $runtime_script"
+    info "Installing runtime horse: $runtime"
+    bash "$runtime_script" --runtime "$runtime" --yes
+  fi
+
   # Ensure foundations and tools installed by install-foundations.sh are visible.
   for _p in "${vibecrafted_home}/bin" "${vibecrafted_home}/tools/node/bin" "$HOME/.cargo/bin"; do
     case ":${PATH}:" in
@@ -377,6 +571,7 @@ if [[ "$target" == "vibecrafted" ]] && ! is_interactive_session; then
   info "Launching installer:"
   info "  python3 $installer install --source $current_link --with-shell --compact --non-interactive"
   printf '\n'
+  export VIBECRAFTED_RUNTIME="$runtime"
   exec python3 "$installer" install --source "$current_link" --with-shell --compact --non-interactive
 fi
 
@@ -405,6 +600,7 @@ if [[ "$target" == "vibecrafted" ]]; then
     curl -LsSf https://astral.sh/uv/install.sh | sh \
       || die "Failed to bootstrap uv"
     # shellcheck disable=SC1090
+    # shellcheck disable=SC1091
     [[ -f "$HOME/.local/bin/env" ]] && source "$HOME/.local/bin/env"
     export PATH="$HOME/.local/bin:$PATH"
   fi
@@ -413,6 +609,7 @@ if [[ "$target" == "vibecrafted" ]]; then
   info "Running built-in installer:"
   info "  uv run --project $installer_dir vetcoders-installer $manifest"
   printf '\n'
+  export VIBECRAFTED_RUNTIME="$runtime"
   exec uv run --project "$installer_dir" --quiet vetcoders-installer "$manifest"
 fi
 

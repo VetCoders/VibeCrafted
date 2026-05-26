@@ -281,6 +281,24 @@ ensure_prefix() {
   esac
 }
 
+install_vc_wrappers() {
+  local source_bin="$SOURCE_DIR/bin"
+  local name src
+  [[ -d "$source_bin" ]] || return 0
+  ensure_prefix
+  for src in "$source_bin"/vc-* "$source_bin"/vibecrafted-resume; do
+    [[ -f "$src" ]] || continue
+    name="$(basename "$src")"
+    if (( CHECK_ONLY )); then
+      info "Would install $name -> $PREFIX/$name"
+      continue
+    fi
+    cp "$src" "$PREFIX/$name"
+    chmod +x "$PREFIX/$name"
+    ok "Installed $name -> $PREFIX/$name"
+  done
+}
+
 github_release_json() {
   local repo="$1" endpoint="$2"
   curl -fsSL -H 'Accept: application/vnd.github+json' \
@@ -811,7 +829,122 @@ install_prview() {
   # --- Attempt 0: bundled tarball (notarized drop-in) ---
   install_from_bundled "prview" && return 0
 
+  info "Installing prview from crate metadata; release repo is $PRVIEW_REPO"
   install_from_cargo "$PRVIEW_CRATE" "prview"
+}
+
+# ---------------------------------------------------------------------------
+# Microsandbox installer hint
+# ---------------------------------------------------------------------------
+
+install_sandbox() {
+  if binary_runs msbserver; then
+    ok "msbserver already installed: $(command -v msbserver)"
+    return 0
+  fi
+
+  local os arch source_root microsandbox_dir answer
+  os="$(detect_os)"
+  arch="$(detect_arch)"
+  source_root="$(_realpath_quiet "$SOURCE_DIR/../experimental/microsandbox" 2>/dev/null || true)"
+  microsandbox_dir="${MICROSANDBOX_SOURCE:-$source_root}"
+
+  case "$os" in
+    linux|macos) ;;
+    *)
+      warn "microsandbox is not supported on $os"
+      return 1
+      ;;
+  esac
+
+  if [[ "$os" == "linux" && ! -e /dev/kvm ]]; then
+    warn "libkrun requires KVM on Linux; /dev/kvm is missing."
+    return 1
+  fi
+
+  if (( CHECK_ONLY )); then
+    info "Would install microsandbox runtime for ${os}/${arch}"
+    info "  Source: ${microsandbox_dir:-<set MICROSANDBOX_SOURCE>}"
+    return 0
+  fi
+
+  if is_interactive; then
+    printf '\n'
+    info "Detected libkrun-capable platform candidate (${os}/${arch})."
+    printf '  Install microsandbox runtime from %s? (y/N): ' "${microsandbox_dir:-MICROSANDBOX_SOURCE}"
+    read -r answer
+    [[ "$answer" == "y" || "$answer" == "Y" ]] || {
+      warn "Skipping optional microsandbox runtime."
+      return 0
+    }
+  else
+    warn "Skipping optional microsandbox runtime in non-interactive mode."
+    warn "Run: cd ${microsandbox_dir:-/path/to/microsandbox} && make build"
+    return 0
+  fi
+
+  [[ -n "$microsandbox_dir" && -f "$microsandbox_dir/Makefile" ]] || {
+    warn "microsandbox source not found. Set MICROSANDBOX_SOURCE and rerun."
+    return 1
+  }
+  make -C "$microsandbox_dir" build
+}
+
+# ---------------------------------------------------------------------------
+# iTerm2 / locterm AutoLaunch plugin (macOS, opt-in)
+# ---------------------------------------------------------------------------
+
+iterm2_app_present() {
+  [[ "$(detect_os)" == "macos" ]] || return 1
+  local candidate
+  for candidate in \
+    "/Applications/iTerm.app" \
+    "/Applications/locterm.app" \
+    "$HOME/Applications/iTerm.app" \
+    "$HOME/Applications/locterm.app"; do
+    [[ -d "$candidate" ]] && return 0
+  done
+  return 1
+}
+
+install_iterm2_plugin() {
+  if ! iterm2_app_present; then
+    info "iTerm2 / locterm not detected — skipping vibecrafted plugin install"
+    return 0
+  fi
+
+  if (( CHECK_ONLY )); then
+    info "Would install vibecrafted iTerm2 / locterm AutoLaunch plugin"
+    return 0
+  fi
+
+  local answer
+  if is_interactive; then
+    printf '\n'
+    info "Detected iTerm2 (or locterm) — install vibecrafted plugin? (y/N): "
+    read -r answer
+    case "${answer:-}" in
+      [yY]|[yY][eE][sS]) ;;
+      *)
+        warn "Skipping vibecrafted iTerm2 plugin (run later: python -m vibecrafted_core.iterm2_plugin.install_autolaunch)"
+        return 0
+        ;;
+    esac
+  else
+    warn "Skipping iTerm2 plugin install in non-interactive mode."
+    warn "Run later: python -m vibecrafted_core.iterm2_plugin.install_autolaunch"
+    return 0
+  fi
+
+  local python_bin
+  python_bin="$(command -v python3 || command -v python || true)"
+  if [[ -z "$python_bin" ]]; then
+    warn "no python3 on PATH — cannot install vibecrafted iTerm2 plugin"
+    return 1
+  fi
+
+  "$python_bin" -m vibecrafted_core.iterm2_plugin.install_autolaunch --force \
+    || { warn "vibecrafted iTerm2 plugin install failed"; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -823,10 +956,12 @@ usage() {
 Usage: install-foundations.sh [options] [targets...]
 
 Targets:
-  loctree      Install loctree + loctree-mcp (binary from GH releases)
-  aicx         Install aicx / aicx-mcp (binary or cargo)
-  prview       Install prview (cargo)
-  (no target)  Install required foundations (loctree + aicx)
+  loctree         Install loctree + loctree-mcp (binary from GH releases)
+  aicx            Install aicx / aicx-mcp (binary or cargo)
+  prview          Install prview (cargo)
+  sandbox         Optional microsandbox/libkrun runtime
+  iterm2-plugin   vibecrafted iTerm2 / locterm AutoLaunch plugin (macOS, opt-in)
+  (no target)     Install required foundations (loctree + aicx); macOS gets iTerm2 plugin prompt
 
 Options:
   --all        Install all foundations (including optional)
@@ -847,6 +982,8 @@ while [[ $# -gt 0 ]]; do
     zellij)      TARGETS+=("zellij") ;;
     agents)      TARGETS+=("agents") ;;
     prview)      TARGETS+=("prview") ;;
+    sandbox)     TARGETS+=("sandbox") ;;
+    iterm2-plugin) TARGETS+=("iterm2-plugin") ;;
     *)           die "Unknown argument: $1" ;;
   esac
   shift
@@ -856,7 +993,13 @@ done
 if (( ${#TARGETS[@]} == 0 )); then
   TARGETS=("loctree" "aicx" "zellij" "agents")
   if (( INSTALL_ALL )); then
-    TARGETS+=("prview")
+    TARGETS+=("prview" "sandbox")
+  fi
+  # macOS users always get the optional iTerm2 plugin prompt; the
+  # install function itself is a no-op on Linux/Windows and in
+  # non-interactive shells.
+  if [[ "$(detect_os)" == "macos" ]]; then
+    TARGETS+=("iterm2-plugin")
   fi
 fi
 
@@ -872,9 +1015,15 @@ for target in "${TARGETS[@]}"; do
     zellij)  install_zellij  || exit_code=1 ;;
     agents)  install_agents  || exit_code=1 ;;
     prview)  install_prview  || exit_code=1 ;;
+    sandbox) install_sandbox || exit_code=1 ;;
+    iterm2-plugin) install_iterm2_plugin || exit_code=1 ;;
   esac
   echo
 done
+
+if (( exit_code == 0 )) && (( !CHECK_ONLY )); then
+  install_vc_wrappers || exit_code=1
+fi
 
 if (( exit_code == 0 )) && (( !CHECK_ONLY )); then
   printf '\033[1mFoundation install complete.\033[0m\n'

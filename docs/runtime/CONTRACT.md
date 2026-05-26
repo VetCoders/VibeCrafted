@@ -13,7 +13,7 @@ For the framework overview and pillar descriptions, see
 ## Under the Hood
 
 **𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍.** is a framework designed by VetCoders and **`vc-agents`**
-is a part of it. It provides telemetry, canonical store with durable artifacts,
+is a part of it. It provides telemetry, default store with durable artifacts,
 portable spawn helpers, telemetry driven context and intentions retrieval
 for straightforward, robust and measurable work in the AI-human teams.
 
@@ -64,7 +64,7 @@ provides all the necessary tools to follow this pattern.
 - There's a fallback strategy if no usable repo session routing exists,
   and is described in further section.
 - `.vibecrafted/plans` and `.vibecrafted/reports` inside the repo are
-  convenience links only. The canonical store remains
+  convenience links only. The default store remains
   `$VIBECRAFTED_ROOT/.vibecrafted/artifacts/<org>/<repo>/<YYYY_MMDD>/`.
 
 ---
@@ -192,7 +192,7 @@ Living tree note:
 
 ## Spawn Commands
 
-The canonical launch path for agent-to-agent delegation is through the portable spawn scripts.
+The default launch path for agent-to-agent delegation is through the portable spawn scripts.
 
 If the environment has optional shell aliases (like `codex-implement`), those are just convenience wrappers around these
 exact same scripts. Always use the portable scripts to ensure maximum compatibility.
@@ -251,7 +251,7 @@ Use the equivalent agent observer when needed.
 Keep the standard 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. quality bar:
 
 - loctree-mcp as first-choice exploration and search tool with fail-fast if inaccessible
-- semgrep as first-choice security guard when available; the canonical
+- semgrep as first-choice security guard when available; the default
   invocation in this repo is `make semgrep`, mirrored by the hooks under
   `scripts/hooks/pre-commit` and `scripts/hooks/pre-push`
 - Rust repos: `cargo clippy -- -D warnings`
@@ -265,7 +265,7 @@ Keep the standard 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. quality bar:
 report must contain four mandatory sections — security gate evidence,
 exposed surface inventory, deployment mode decision, and post-release
 install smoke from the published artefact (not the working tree). The
-canonical template lives at
+default template lives at
 [`skills/vc-release/references/release-report-template.md`](../../skills/vc-release/references/release-report-template.md)
 and the doctrine sits in [`skills/vc-release/SKILL.md`](../../skills/vc-release/SKILL.md).
 
@@ -289,5 +289,5 @@ and the doctrine sits in [`skills/vc-release/SKILL.md`](../../skills/vc-release/
 - 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. builders ship real products through vibeguiding. Agents should be trusted to do the same.
 
 Fleet is not for outsourcing thought.
-Fleet is for deploying equally capable front-line agents through a strict, canonical launch path.
+Fleet is for deploying equally capable front-line agents through a strict, default launch path.
 Use them to implement, not merely to comment on implementation.

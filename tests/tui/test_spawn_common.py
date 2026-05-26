@@ -149,6 +149,69 @@ def test_runtime_prompt_guards_report_path_from_bare_slash(tmp_path: Path) -> No
     assert f"\n{report_path}\n" not in payload
 
 
+def test_spawn_prepare_paths_preserves_loop_nr_before_ambient_cleanup(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    crafted_home = home / ".vibecrafted"
+    plan = tmp_path / "plan.md"
+    bogus_lock = tmp_path / "bogus.lock"
+    home.mkdir()
+    crafted_home.mkdir(parents=True)
+    plan.write_text("# Loop\n", encoding="utf-8")
+    bogus_lock.write_text("", encoding="utf-8")
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export HOME="{home}"
+        export VIBECRAFTED_HOME="{crafted_home}"
+        export SPAWN_LOOP_NR=2
+        export VIBECRAFTED_LOOP_NR=2
+        export VIBECRAFTED_RUN_ID=marb-test-002
+        export VIBECRAFTED_RUN_LOCK="{bogus_lock}"
+        spawn_prepare_paths codex "{plan}" "{REPO_ROOT}" implement
+        printf '%s\n' "$SPAWN_LOOP_NR"
+        '''
+    )
+
+    assert result.stdout.strip() == "2"
+
+
+def test_generated_launcher_preserves_marbles_watcher_mode(tmp_path: Path) -> None:
+    launcher = tmp_path / "launch.sh"
+    meta = tmp_path / "run.meta.json"
+    report = tmp_path / "report.md"
+    transcript = tmp_path / "transcript.log"
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_ROOT="{REPO_ROOT}"
+        export SPAWN_AGENT=codex
+        export SPAWN_PROMPT_ID=prompt
+        export SPAWN_RUN_ID=marb-test-002
+        export SPAWN_RUN_LOCK="{tmp_path / "marb-test.lock"}"
+        export SPAWN_LOOP_NR=2
+        export SPAWN_SKILL_CODE=marb
+        export SPAWN_SKILL_NAME=marbles
+        export VIBECRAFTED_MARBLES_WATCHER=1
+        export VIBECRAFTED_MARBLES_TAB_NAME=marbles-marb-test
+        export VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right
+        spawn_generate_launcher "{launcher}" "{meta}" "{report}" "{transcript}" "{COMMON_SH}" "true"
+        grep -E 'SPAWN_LOOP_NR|VIBECRAFTED_MARBLES_WATCHER' "{launcher}"
+        '''
+    )
+
+    assert "export SPAWN_LOOP_NR=2" in result.stdout
+    assert (
+        "export VIBECRAFTED_MARBLES_WATCHER=${VIBECRAFTED_MARBLES_WATCHER:-1}"
+        in result.stdout
+    )
+
+
 def test_runtime_prompt_includes_vc_agents_worker_charter(tmp_path: Path) -> None:
     source_file = tmp_path / "source.md"
     runtime_file = tmp_path / "runtime.md"
@@ -170,6 +233,15 @@ def test_runtime_prompt_includes_vc_agents_worker_charter(tmp_path: Path) -> Non
     assert "Do NOT invoke vc-agents" in payload
     assert "do not reinterpret it" in payload
     assert "record the boundary clearly in your report" in payload
+    # Native in-process delegation (Task tool / vc-delegate) must be explicitly
+    # permitted so worker agents do not over-compress the charter into a
+    # blanket "no delegation" rule.
+    assert "Native in-process delegation is allowed" in payload
+    assert "vc-delegate" in payload
+    assert "External fleet escalation is forbidden" in payload
+    # Scope is bounded by the dispatched plan, not by the charter — workers on
+    # vc-justdo / vc-ownership / vc-workflow must not self-narrow scope.
+    assert "Read the plan, not the charter, for scope" in payload
     assert "**REPORT**: mandatory" in payload
     assert "**COMMIT**:" in payload
     assert "NO empty commits" in payload
@@ -1687,8 +1759,89 @@ def test_spawn_probe_uses_active_tab_and_restores_focus(tmp_path: Path) -> None:
     assert "--tab-id" in probe_call
     assert "9" in probe_call
     assert "--name" in probe_call
-    assert "probe-gemini" in probe_call
+    assert any("probe-gemini" in part for part in probe_call)
     assert any(call[:3] == ["action", "focus-pane-id", "terminal_42"] for call in calls)
+
+
+def test_spawn_probe_watch_does_not_fail_live_worker_on_transient_error(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "trace.log"
+    transcript.write_text(
+        "\n".join(
+            [
+                "2026-05-26T04:44:37Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed",
+                "[22:44:37] session: 019e6299-554a-76b2-900d-6dde67314658",
+                "I will use the VC Workflow skill and continue.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    notify_capture = tmp_path / "notifications.txt"
+    (fake_bin / "uname").write_text(
+        "#!/usr/bin/env bash\nprintf 'Darwin\\n'\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "osascript").write_text(
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$NOTIFY_CAPTURE"\n',
+        encoding="utf-8",
+    )
+    (fake_bin / "uname").chmod(0o755)
+    (fake_bin / "osascript").chmod(0o755)
+
+    _bash(
+        f'''
+        set -euo pipefail
+        export PATH="{fake_bin}:$PATH"
+        export NOTIFY_CAPTURE="{notify_capture}"
+        source "{COMMON_SH}"
+        spawn_probe_watch "{transcript}" 1 codex wflw-224433-38831
+        '''
+    )
+
+    assert not notify_capture.exists()
+
+
+def test_spawn_probe_watch_reports_transient_error_as_warning_not_failure(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "trace.log"
+    transcript.write_text(
+        "2026-05-26T04:44:37Z ERROR rmcp::transport::worker: request failed\n",
+        encoding="utf-8",
+    )
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    notify_capture = tmp_path / "notifications.txt"
+    (fake_bin / "uname").write_text(
+        "#!/usr/bin/env bash\nprintf 'Darwin\\n'\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "osascript").write_text(
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$NOTIFY_CAPTURE"\n',
+        encoding="utf-8",
+    )
+    (fake_bin / "uname").chmod(0o755)
+    (fake_bin / "osascript").chmod(0o755)
+
+    _bash(
+        f'''
+        set -euo pipefail
+        export PATH="{fake_bin}:$PATH"
+        export NOTIFY_CAPTURE="{notify_capture}"
+        source "{COMMON_SH}"
+        spawn_probe_watch "{transcript}" 1 codex wflw-224433-38831
+        '''
+    )
+
+    notification = notify_capture.read_text(encoding="utf-8")
+    assert "Worker startup warning" in notification
+    assert "Worker FAILED" not in notification
 
 
 def test_spawn_in_operator_session_new_tab_uses_run_tab_without_startup_monitor(

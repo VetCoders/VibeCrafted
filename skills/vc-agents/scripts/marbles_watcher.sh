@@ -242,7 +242,8 @@ _record_loop_done() {
   local p1="${5:-}"
   local p2="${6:-}"
   local score="${7:-}"
-  local meta_path="${8:-}"
+  local commit_count="${8:-}"
+  local meta_path="${9:-}"
   if command -v python3 >/dev/null 2>&1; then
     _state_json_edit "$(cat <<'PY'
 loop_nr = int(args[0])
@@ -252,7 +253,8 @@ p0 = int(args[3]) if args[3] else None
 p1 = int(args[4]) if args[4] else None
 p2 = int(args[5]) if args[5] else None
 score = int(args[6]) if args[6] else None
-meta_path = args[7] if len(args) > 7 else ""
+commit_count = int(args[7]) if args[7] else None
+meta_path = args[8] if len(args) > 8 else ""
 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 telemetry = {}
@@ -274,12 +276,14 @@ for loop in payload.get("loops", []):
         loop["duration_s"] = duration
         loop["completed_at"] = now
         loop["metrics"] = {"p0": p0, "p1": p1, "p2": p2, "score": score}
+        if commit_count is not None:
+            loop["metrics"]["commits"] = commit_count
         if telemetry:
             loop["telemetry"] = telemetry
 
 payload.setdefault("trajectory", []).append(score)
 PY
-)" "$loop_nr" "$report" "$duration" "$p0" "$p1" "$p2" "$score" "$meta_path" >/dev/null || true
+)" "$loop_nr" "$report" "$duration" "$p0" "$p1" "$p2" "$score" "$commit_count" "$meta_path" >/dev/null || true
   fi
 }
 
@@ -456,19 +460,54 @@ _capture_session_id() {
 
 _extract_metrics() {
   local report="$1"
-  local p0=""
-  local p1=""
-  local p2=""
-  local score=""
 
   if [[ -f "$report" ]]; then
-    p0=$(grep -iE '^\s*-?\s*P0:?\s*' "$report" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)
-    p1=$(grep -iE '^\s*-?\s*P1:?\s*' "$report" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)
-    p2=$(grep -iE '^\s*-?\s*P2:?\s*' "$report" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)
-    score=$(grep -iE '(score|convergence).*[0-9]+\s*/\s*100' "$report" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)
+    python3 - "$report" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+p = {"p0": "", "p1": "", "p2": "", "score": "", "commits": ""}
+commit_lines = []
+no_commit = False
+
+try:
+    lines = open(path, encoding="utf-8").read().splitlines()
+except OSError:
+    print("||||", end="")
+    raise SystemExit(0)
+
+for line in lines:
+    stripped = line.strip()
+    m = re.match(r"^-?\s*(P[012])\s*:?\s*([0-9]+)\b", stripped, re.I)
+    if m:
+        p[m.group(1).lower()] = m.group(2)
+        continue
+
+    if not p["score"]:
+        m = re.search(r"\b(score|convergence)\b.*?\b([0-9]+)\s*/\s*100\b", stripped, re.I)
+        if m:
+            p["score"] = m.group(2)
+
+    if re.search(r"\bno commit (was )?(created|made)\b", stripped, re.I):
+        no_commit = True
+    if re.match(r"^-?\s*(commit|commits|commit sha|commit shas)\s*:", stripped, re.I):
+        commit_lines.append(stripped)
+
+if no_commit or any(re.search(r":\s*(none|no|n/a|0)\b", line, re.I) for line in commit_lines):
+    p["commits"] = "0"
+elif commit_lines:
+    shas = []
+    for line in commit_lines:
+        shas.extend(re.findall(r"\b[0-9a-f]{7,40}\b", line, re.I))
+    p["commits"] = str(len(set(sha.lower() for sha in shas)) or 1)
+
+print("|".join([p["p0"], p["p1"], p["p2"], p["score"], p["commits"]]), end="")
+PY
+    return 0
   fi
 
-  printf '%s %s %s %s' "${p0:-}" "${p1:-}" "${p2:-}" "${score:-}"
+  printf '||||'
 }
 
 _report_frontmatter_status() {
@@ -598,6 +637,99 @@ _marbles_truncate_hint() {
   else
     printf '%s' "$hint"
   fi
+}
+
+_find_convergence_report() {
+  local convergence=""
+  while IFS= read -r -d '' convergence; do
+    if [[ "$(spawn_frontmatter_field "$convergence" "run_id")" == "$run_id" ]]; then
+      printf '%s\n' "$convergence"
+      return 0
+    fi
+  done < <(find "$store/reports" -maxdepth 1 -type f -name '*_CONVERGENCE.md' -print0 2>/dev/null)
+  return 1
+}
+
+_wait_for_convergence_report() {
+  local attempts="$1"
+  local backoff_s="$2"
+  local backoff_max_s="$3"
+  local attempt=1
+  local delay="$backoff_s"
+
+  if _find_convergence_report >/dev/null; then
+    return 0
+  fi
+
+  while (( attempt <= attempts )); do
+    (( delay > 0 )) && sleep "$delay"
+    if _find_convergence_report >/dev/null; then
+      return 0
+    fi
+    (( delay > 0 )) || delay=1
+    delay=$((delay * 2))
+    if (( backoff_max_s > 0 && delay > backoff_max_s )); then
+      delay="$backoff_max_s"
+    fi
+    ((attempt++))
+  done
+
+  return 1
+}
+
+_write_reception_convergence_guard() {
+  local observed_status="$1"
+  local reason="$2"
+  local fallback_attempts="${3:-0}"
+  local backoff_initial_s="${4:-0}"
+  local backoff_max_s="${5:-0}"
+  local convergence="$store/reports/$(spawn_timestamp)_marbles-$(spawn_slug_from_path "$ancestor_plan")_CONVERGENCE.md"
+  local agent_name=""
+
+  agent_name="$(spawn_frontmatter_field "$ancestor_plan" "agent")"
+  [[ -n "$agent_name" ]] || agent_name="${actual_meta_agent:-unknown}"
+
+  cat > "$convergence" <<CONV
+---
+run_id: $run_id
+agent: $agent_name
+status: FAILED
+observed_status: $observed_status
+reason: $reason
+guard: pani_krysia
+guard_kind: reception_guard
+failure_kind: missing_convergence_handoff
+effect: guard_failure
+guard_policy: convergence_handoff_backoff_v1
+fallback_attempts: $fallback_attempts
+backoff_initial_s: $backoff_initial_s
+backoff_max_s: $backoff_max_s
+failover: reception_guard_failure_report
+total_loops: $total_count
+god_plan: $god_plan
+ancestor_plan: $ancestor_plan
+---
+
+# Marbles Convergence — FAILED
+
+Reception guard observed terminal watcher status without a convergence report.
+
+- Observed watcher status: $observed_status
+- Reason: $reason
+- Guard: Pani Krysia
+- Failure kind: missing_convergence_handoff
+- Policy: convergence_handoff_backoff_v1
+- Fallback attempts: $fallback_attempts
+- Backoff: ${backoff_initial_s}s initial, ${backoff_max_s}s max
+- Failover: reception_guard_failure_report
+- Effect: the run is treated as failed until the missing convergence handoff is explained
+- GOD: $god_plan
+- ANCESTOR: $ancestor_plan
+CONV
+
+  _update_status "failed"
+  printf '\n  %bPani Krysia:%b missing convergence report — wrote guard failure\n' "$_yellow" "$_reset"
+  printf '  guard convergence: %s\n' "$convergence"
 }
 
 _wait_for_loop_meta() {
@@ -985,13 +1117,14 @@ PY
     break
   fi
 
-  read -r p0 p1 p2 score <<< "$(_extract_metrics "$actual_report")"
-  _record_loop_done "$loop_nr" "$actual_report" "$duration" "$p0" "$p1" "$p2" "$score" "$meta_path"
+  IFS='|' read -r p0 p1 p2 score commit_count <<< "$(_extract_metrics "$actual_report")"
+  _record_loop_done "$loop_nr" "$actual_report" "$duration" "$p0" "$p1" "$p2" "$score" "$commit_count" "$meta_path"
 
   detail="$duration_fmt"
   if [[ -n "$p0" || -n "$p1" || -n "$p2" ]]; then
     detail="$duration_fmt  P0:${p0:-?} P1:${p1:-?} P2:${p2:-?}"
     [[ -n "$score" ]] && detail="$detail  score:${score}/100"
+    [[ -n "$commit_count" ]] && detail="$detail  commits:${commit_count}"
   fi
   _render_loop_phase "$loop_nr" "done" "$detail"
 
@@ -1069,6 +1202,46 @@ else
   [[ -n "$trajectory" ]] && printf '  %s\n' "$trajectory"
 fi
 
+if [[ -n "$terminal_status" ]]; then
+  convergence_grace_s="${VIBECRAFTED_MARBLES_CONVERGENCE_GRACE_S:-}"
+  convergence_attempts="${VIBECRAFTED_MARBLES_CONVERGENCE_ATTEMPTS:-4}"
+  convergence_backoff_s="${VIBECRAFTED_MARBLES_CONVERGENCE_BACKOFF_S:-1}"
+  convergence_backoff_max_s="${VIBECRAFTED_MARBLES_CONVERGENCE_BACKOFF_MAX_S:-8}"
+
+  # Backward compatibility: the old single-grace knob remains a deterministic
+  # one-shot policy when explicitly set by tests/operators.
+  if [[ -n "$convergence_grace_s" ]]; then
+    convergence_attempts=1
+    convergence_backoff_s="$convergence_grace_s"
+  fi
+
+  case "$convergence_attempts" in
+    ''|*[!0-9]*)
+      convergence_attempts=4
+      ;;
+  esac
+  case "$convergence_backoff_s" in
+    ''|*[!0-9]*)
+      convergence_backoff_s=1
+      ;;
+  esac
+  case "$convergence_backoff_max_s" in
+    ''|*[!0-9]*)
+      convergence_backoff_max_s=8
+      ;;
+  esac
+  if ! _wait_for_convergence_report "$convergence_attempts" "$convergence_backoff_s" "$convergence_backoff_max_s"; then
+    guard_reason="missing_convergence_after_${terminal_status}"
+    _write_reception_convergence_guard \
+      "$terminal_status" \
+      "$guard_reason" \
+      "$convergence_attempts" \
+      "$convergence_backoff_s" \
+      "$convergence_backoff_max_s"
+    terminal_status="failed"
+  fi
+fi
+
 verification_grace_s="${VIBECRAFTED_MARBLES_VERIFICATION_GRACE_S:-30}"
 case "$verification_grace_s" in
   ''|*[!0-9]*)
@@ -1081,7 +1254,8 @@ if command -v python3 >/dev/null 2>&1 && [[ -f "$state_file" ]]; then
   if (( verification_grace_s > 0 )); then
     sleep "$verification_grace_s"
   fi
-  python3 - "$state_file" <<'PY'
+  if [[ -f "$state_file" ]]; then
+    python3 - "$state_file" <<'PY'
 import json
 import sys
 
@@ -1107,6 +1281,9 @@ if timed:
     parts.append(f"{timed} timed out")
 print(", ".join(parts) if parts else "none tracked")
 PY
+  else
+    printf 'state archived before verification summary'
+  fi
 fi
 
 printf '\n  lock released: %s\n' "$run_id"

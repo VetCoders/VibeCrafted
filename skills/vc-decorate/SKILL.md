@@ -16,13 +16,31 @@ description: >
 
 # vc-decorate — Coherence First. Premium Second.
 
-## Operator Entry
+## Human Operator Entry
 
 ### Living Tree / Worktree Rule
 
-This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a substrate failure if the current tree is too poisoned to continue safely.
+This workflow runs in the operator's current checkout and current branch. Do not create, switch to, or move execution
+into a git worktree unless the operator explicitly asks for a worktree in this prompt. Generic words like "isolate", "
+parallel", or "clean branch" are not enough. Re-read files before editing, adapt to concurrent changes, and report a
+substrate failure if the current tree is too poisoned to continue safely.
 
 See [Living Tree Rule](../LIVING_TREE_RULE.md).
+
+## Canonical Orientation Gate
+
+Before this workflow performs repo-specific analysis, planning, implementation, review, release, or delegation, it MUST
+run or consume the `vc-init` procedure for the assigned repo. If fresh `vc-init` evidence is absent, perform the init
+pass first and treat workflow-specific work as blocked until repo truth exists.
+
+`Loctree:loctree` is the default structural perception skill for that pass. Use Loctree before grep or docs-driven
+claims to produce or refresh the Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as
+relevant. Search for existing symbols and contracts before creating new ones; run impact before delete or major
+refactor; run slice before editing.
+
+The point is to find the hooks: load-bearing hubs, twins, dead code, drift, runtime entrypoints, and blast-radius traps.
+If the task is explicitly non-repo or no-code, state the no-repo exception in the report. Otherwise, missing `vc-init`
+/Loctree evidence is a process failure.
 
 Standard launcher (`vibecrafted start` / `vc-start`, then `vc-<workflow> <agent> [--prompt|--file ...]`).
 
@@ -67,13 +85,15 @@ Before decorating anything, run style detection and system audit:
 4. SEPARATE identity from drift:
    - preserve what is distinctive
    - improve what is weak, stale, or incoherent
+   - remove the style diffusion, competing truths
+   - eliminate the conflicting areas by hard prune duplicates or races
 5. PROPOSE improvements using THEIR tokens, THEIR language, THEIR stack
 6. ASK which changes should be applied
 7. IMPLEMENT only approved changes
 8. VERIFY the experience end-to-end
 ```
 
-If no existing style detected, offer to scaffold a minimal design system —
+If no existing style detected, offer to scaffold a suitable design system —
 present options, don't assume taste, don't force a visual identity.
 
 ---
@@ -84,14 +104,15 @@ A terminal is not a dumping ground. CLI output is a UI. It deserves the same
 coherence, rhythm, and intentionality as a web page. Nasty, raw, unformatted
 terminal output is not "developer-friendly" — it is offensive to the operator.
 
-Decorate applies to CLI surfaces too: installer output (alignment, color,
-progress signals) · agent spawn banners (branded, compact, informative) ·
-doctor/health checks (clear pass/fail, not wall of text) · `make help`
-(structured, branded, scannable) · error messages (human-readable, not
-stacktrace-first).
+Decorate applies to CLI surfaces too. If the product has a terminal interface, that interface is part of the product
+surface. Decorate it. The obvious areas include:
 
-If the product has a terminal interface, that interface is part of the product
-surface. Decorate it.
+- installer output (alignment, colors, progress signals)
+- main runtime (branded, compact, informative)
+- post-execution (spinners, progress bars, per step summaries)
+- help/--help outputs (structured sections, colors, columns)
+- doctor/health checks (clear pass/fail summaries, readable minimal logs)
+- error messages (machine/human-readable separation)
 
 If `screenscribe` is available, vc-decorate can consume a narrated UI
 screencast to detect drift, awkward transitions, and coherence breaks across a

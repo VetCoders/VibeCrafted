@@ -22,8 +22,9 @@ def test_build_install_command_respects_shell_toggle(tmp_path: Path) -> None:
 
 
 def test_build_install_steps_include_foundations_before_installer(
-    tmp_path: Path,
+    monkeypatch, tmp_path: Path
 ) -> None:
+    monkeypatch.delenv("VIBECRAFTED_RUNTIME", raising=False)
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir(parents=True)
     (scripts_dir / "vetcoders_install.py").write_text(
@@ -42,6 +43,34 @@ def test_build_install_steps_include_foundations_before_installer(
     assert steps[0].command == ["bash", str(scripts_dir / "install-foundations.sh")]
     assert steps[1].command[-1] == "--with-shell"
     assert "--mirror" in steps[1].command
+
+
+def test_build_install_steps_include_selected_runtime(
+    monkeypatch, tmp_path: Path
+) -> None:
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "vetcoders_install.py").write_text(
+        "#!/usr/bin/env python3\n", encoding="utf-8"
+    )
+    (scripts_dir / "install-runtime.sh").write_text(
+        "#!/usr/bin/env bash\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("VIBECRAFTED_RUNTIME", "wezterm")
+
+    steps = installer_gui.build_install_steps(str(tmp_path), with_shell=True)
+
+    assert [step.label for step in steps] == [
+        "Install Vibecrafted",
+        "Install runtime: wezterm",
+    ]
+    assert steps[1].command == [
+        "bash",
+        str(scripts_dir / "install-runtime.sh"),
+        "--runtime",
+        "wezterm",
+        "--yes",
+    ]
 
 
 def test_preflight_payload_summarizes_diagnostics(monkeypatch, tmp_path: Path) -> None:

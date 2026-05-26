@@ -6,7 +6,7 @@
 ## TL;DR
 
 ```bash
-vibecrafted implement codex --prompt 'Ship the feature'   # canonical
+vibecrafted implement codex --prompt 'Ship the feature'   # default
 vibecrafted justdo    codex --prompt 'Ship the feature'   # same dispatch
 ```
 

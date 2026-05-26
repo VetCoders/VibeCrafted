@@ -210,9 +210,73 @@ def test_build_server_registers_tools_and_resources() -> None:
         return tool_names, resource_uris
 
     tool_names, resource_uris = _run(_inspect())
-    assert {"vc_repo_full", "vc_doctor", "vc_board_status", "vc_init"} <= tool_names
+    assert {
+        "vc_repo_full",
+        "vc_doctor",
+        "vc_board_status",
+        "vc_launch",
+        "vc_run_status",
+        "vc_await_run",
+        "vc_init",
+    } <= tool_names
     assert any("vibecrafted://board/runs" in uri for uri in resource_uris)
     assert any("vibecrafted://control-plane/events" in uri for uri in resource_uris)
+
+
+def test_vc_launch_delegates_to_core_workflow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: dict[str, Any] = {}
+
+    def _normalize(payload: dict[str, Any], source_dir: str) -> Any:
+        calls["payload"] = payload
+        calls["source_dir"] = source_dir
+        return server._workflow.WorkflowLaunchSpec(
+            agent=payload["agent"],
+            mode=payload.get("mode") or payload["skill"],
+            skill=payload["skill"],
+            prompt=payload["prompt"],
+            file=payload["file"],
+            runtime=payload["runtime"],
+            root=payload["root"],
+        )
+
+    def _launch(
+        spec: Any, source_dir: str, *, env: dict[str, str] | None = None
+    ) -> Any:
+        calls["launch_spec"] = spec
+        calls["launch_source_dir"] = source_dir
+        calls["env_home"] = (env or {}).get("VIBECRAFTED_HOME")
+        return {"accepted": True, "spec": spec.to_payload()}
+
+    monkeypatch.setattr(server._workflow, "normalize_launch_spec", _normalize)
+    monkeypatch.setattr(server._workflow, "launch_workflow", _launch)
+
+    from fastmcp import Client
+
+    mcp = server.build_server()
+
+    async def _call() -> Any:
+        async with Client(mcp) as client:
+            return await client.call_tool(
+                "vc_launch",
+                {
+                    "skill": "workflow",
+                    "agent": "codex",
+                    "prompt": "go",
+                    "root": str(tmp_path),
+                    "source_dir": str(tmp_path / "source"),
+                    "home": str(tmp_path / "home"),
+                },
+            )
+
+    result = _run(_call())
+    assert result.data["accepted"] is True
+    assert calls["payload"]["skill"] == "workflow"
+    assert calls["payload"]["agent"] == "codex"
+    assert calls["source_dir"] == str(tmp_path / "source")
+    assert calls["launch_source_dir"] == str(tmp_path / "source")
+    assert calls["env_home"] == str(tmp_path / "home")
 
 
 def test_vc_repo_full_returns_ground_truth(tmp_path: Path) -> None:
@@ -300,3 +364,63 @@ def test_board_runs_resource_returns_snapshot(
     payload = json.loads(result[0].text)
     assert "active_runs" in payload
     assert "recent_runs" in payload
+
+
+def test_vc_run_status_and_await_use_control_plane_meta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / ".vibecrafted"
+    monkeypatch.setenv("VIBECRAFTED_HOME", str(home))
+    reports = home / "artifacts" / "VetCoders" / "vibecrafted" / "2026_0519" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "impl.meta.json").write_text(
+        json.dumps(
+            {
+                "run_id": "impl-050505-42",
+                "status": "completed",
+                "agent": "codex",
+                "mode": "implement",
+                "root": str(tmp_path),
+                "updated_at": "2026-05-19T00:00:00+00:00",
+                "skill_code": "impl",
+                "exit_code": 0,
+                "liveness": "terminal",
+                "launcher_pid": 4242,
+                "completed_at": "2026-05-19T00:00:01+00:00",
+                "session_id": "session-xyz",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from fastmcp import Client
+
+    mcp = server.build_server()
+
+    async def _call_status() -> Any:
+        async with Client(mcp) as client:
+            return await client.call_tool(
+                "vc_run_status",
+                {"run_id": "impl-050505-42", "home": str(home)},
+            )
+
+    async def _call_await() -> Any:
+        async with Client(mcp) as client:
+            return await client.call_tool(
+                "vc_await_run",
+                {
+                    "run_id": "impl-050505-42",
+                    "home": str(home),
+                    "timeout_seconds": 0,
+                    "interval_seconds": 0.1,
+                },
+            )
+
+    status_payload = _run(_call_status()).data
+    await_payload = _run(_call_await()).data
+
+    assert status_payload["found"] is True
+    assert status_payload["run"]["session_id"] == "session-xyz"
+    assert status_payload["run"]["launcher_pid"] == 4242
+    assert await_payload["completed"] is True
+    assert await_payload["run"]["exit_code"] == 0

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from .control_plane import (
+    Event,
     RunStatus,
+    await_run,
     control_plane_home,
     event_stream_path,
+    lookup_run,
     read_event_tail,
     run_snapshot_dir,
+    subscribe_events,
     sync_state,
 )
+from .events import append_event
 from .doctor import doctor_run, doctor_summary
 from .git import repo_full, repo_full_summary
 from .iterm2_osc import (
@@ -46,6 +51,7 @@ from .iterm2_profiles import (
     stable_guid,
     uninstall_profiles,
 )
+from . import iterm2_plugin
 from .runtime_paths import (
     read_version_file,
     resolve_env_path,
@@ -66,7 +72,10 @@ __all__ = [
     "PROFILE_SPECS",
     "ProfileSpec",
     "RunStatus",
+    "Event",
     "WorkflowLaunchSpec",
+    "append_event",
+    "await_run",
     "block_end",
     "block_start",
     "build_launch_command",
@@ -87,7 +96,9 @@ __all__ = [
     "hyperlink",
     "install_profiles",
     "invalidate_buttons",
+    "iterm2_plugin",
     "launch_workflow",
+    "lookup_run",
     "normalize_launch_spec",
     "post_notification",
     "progress",
@@ -108,6 +119,7 @@ __all__ = [
     "set_user_var",
     "stable_guid",
     "steal_focus",
+    "subscribe_events",
     "sync_state",
     "uninstall_profiles",
     "update_block",

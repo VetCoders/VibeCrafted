@@ -280,6 +280,7 @@ q_store="$(spawn_shell_quote "$store")"
 success_hook="bash $q_scripts/marbles_next.sh $q_state $count 1 $marbles_run_id $q_root $q_runtime $q_scripts $q_lock $q_store"
 failure_hook="bash $q_scripts/marbles_next.sh --failed $q_state $count 1 $marbles_run_id $q_root $q_runtime $q_scripts $q_lock $q_store"
 
+export SPAWN_LOOP_NR=1
 export VIBECRAFTED_LOOP_NR=1
 export VIBECRAFTED_RUN_ID="${marbles_run_id}-001"
 export VIBECRAFTED_SKILL_CODE="marb"
@@ -310,6 +311,7 @@ if (( use_watcher )); then
   # extra report-path hint from the child spawn so long paths do not get
   # interleaved into that redraw surface.
   VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right \
+    SPAWN_LOOP_NR=1 \
     VIBECRAFTED_STORE_DIR="$store" \
     VIBECRAFTED_STORE_ROOT="$root_dir" \
     VIBECRAFTED_MARBLES_WATCHER=1 \
@@ -320,5 +322,5 @@ if (( use_watcher )); then
     "$marbles_run_id" "$state_dir" "$count" \
     "$root_dir" "$runtime" "$store" "$session_lock"
 else
-  VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right VIBECRAFTED_STORE_DIR="$store" VIBECRAFTED_STORE_ROOT="$root_dir" bash "$SCRIPT_DIR/${agent}_spawn.sh" "${spawn_args[@]}" "$l1_plan"
+  VIBECRAFTED_ZELLIJ_SPAWN_DIRECTION=right SPAWN_LOOP_NR=1 VIBECRAFTED_STORE_DIR="$store" VIBECRAFTED_STORE_ROOT="$root_dir" bash "$SCRIPT_DIR/${agent}_spawn.sh" "${spawn_args[@]}" "$l1_plan"
 fi
