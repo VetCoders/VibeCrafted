@@ -14,7 +14,26 @@ spawn_require_file() {
 spawn_require_command() {
   local cmd="${1:-}"
   [[ -n "$cmd" ]] || spawn_die "Missing required command name."
+  spawn_prepend_agent_tool_paths
   command -v "$cmd" >/dev/null 2>&1 || spawn_die "Required command not found: $cmd"
+}
+
+spawn_prepend_agent_tool_paths() {
+  local candidate
+  for candidate in \
+    /usr/local/bin \
+    /opt/homebrew/sbin \
+    /opt/homebrew/bin \
+    "${HOME:-}/tools/scripts" \
+    "${HOME:-}/.cargo/bin" \
+    "${HOME:-}/.local/bin" \
+    "${HOME:-}/.vibecrafted/bin"; do
+    [[ -n "$candidate" && -d "$candidate" ]] || continue
+    case ":${PATH:-}:" in
+      *":$candidate:"*) ;;
+      *) export PATH="$candidate${PATH:+:$PATH}" ;;
+    esac
+  done
 }
 
 spawn_require_positive_int() {

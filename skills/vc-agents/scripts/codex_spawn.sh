@@ -150,11 +150,15 @@ spawn_generate_launcher "$SPAWN_LAUNCHER" \
 
 
 chmod +x "$SPAWN_LAUNCHER"
-spawn_print_launch codex "$mode" "$runtime"
+spawn_print_launch codex "$mode" "$runtime" "$dry_run"
 spawn_launch "$SPAWN_LAUNCHER" "$runtime" "$dry_run" "codex-${VIBECRAFTED_SKILL_NAME:-$mode}"
 if [[ "${VIBECRAFTED_SUPPRESS_REPORT_HINT:-0}" != "1" ]]; then
-  printf 'Agent launched.\n'
-  bash "$SCRIPT_DIR/await.sh" codex --describe "$SPAWN_LAUNCHER" 2>/dev/null || true
-  printf '\nAwait:\n\n'
-  printf 'vibecrafted codex await --run-id %s\n' "$SPAWN_RUN_ID"
+  if (( dry_run )); then
+    printf 'Dry run: agent not launched.\n'
+  else
+    printf 'Agent launched.\n'
+    bash "$SCRIPT_DIR/await.sh" codex --describe "$SPAWN_LAUNCHER" 2>/dev/null || true
+    printf '\nAwait:\n\n'
+    printf 'vibecrafted codex await --run-id %s\n' "$SPAWN_RUN_ID"
+  fi
 fi

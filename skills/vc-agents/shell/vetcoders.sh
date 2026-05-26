@@ -893,6 +893,7 @@ _vetcoders_contract_reset() {
   _vetcoders_contract_depth=""
   _vetcoders_contract_runtime=""
   _vetcoders_contract_root=""
+  _vetcoders_contract_dry_run=""
   _vetcoders_contract_tail=""
   _vetcoders_contract_no_aicx=""
   _vetcoders_contract_no_context_corpus=""
@@ -959,6 +960,9 @@ _vetcoders_parse_contract() {
         shift
         [[ $# -gt 0 ]] || { echo "Missing value for --root" >&2; return 1; }
         _vetcoders_contract_root="$1"
+        ;;
+      --dry-run)
+        _vetcoders_contract_dry_run=1
         ;;
       --)
         shift
@@ -1786,6 +1790,7 @@ _vetcoders_skill() {
   fi
   local spawn_args=(--runtime "$(_vetcoders_effective_runtime)")
   [[ -n "$_vetcoders_contract_root" ]] && spawn_args+=(--root "$_vetcoders_contract_root")
+  [[ -n "$_vetcoders_contract_dry_run" ]] && spawn_args+=(--dry-run)
   if [[ "$skill" == "polarize" && "$prism_band" =~ ^(pass|doctrine)$ ]]; then
     local dispatch_output dispatch_status agent_log session_uuid
     agent_log="$(_vetcoders_store_dir "$root")/polarize/$run_id/${tool}.stdout.log"
