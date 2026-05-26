@@ -1300,6 +1300,157 @@ def test_marbles_delete_control_subcommand_routes_to_helper(tmp_path: Path) -> N
     assert payload == ["marb-424242"]
 
 
+def test_loop_help_exposes_interactive_operator_runtime() -> None:
+    result = subprocess.run(
+        [str(LAUNCHER), "loop", "--help"],
+        check=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Interactive Agent-Operator continuation" in result.stdout
+    assert "vibecrafted loop await-run --run-id" in result.stdout
+    assert "vc-loop status" in result.stdout
+    assert "<repo-root>/.vibecrafted/operator-loop.local.md" in result.stdout
+    assert "Operator-approved command" in result.stdout
+
+
+def test_loop_start_next_and_max_iteration_stop(tmp_path: Path) -> None:
+    subprocess.run(
+        [
+            str(LAUNCHER),
+            "loop",
+            "start",
+            "--prompt",
+            "Keep conducting the dispatch",
+            "--max-iterations",
+            "2",
+            "--completion-promise",
+            "READY",
+        ],
+        check=True,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    first_next = subprocess.run(
+        [str(LAUNCHER), "loop", "next"],
+        check=True,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "CONTINUE: operator loop iteration 2" in first_next.stdout
+    assert "Keep conducting the dispatch" in first_next.stdout
+    assert "<promise>READY</promise>" in first_next.stdout
+
+    second_next = subprocess.run(
+        [str(LAUNCHER), "loop", "next"],
+        check=True,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "STOP: max iterations reached (2)." in second_next.stdout
+
+
+def test_loop_state_defaults_to_git_root_from_subdirectory(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    nested = repo / "nested" / "dir"
+    nested.mkdir(parents=True)
+    subprocess.run(
+        ["git", "init"], cwd=repo, check=True, capture_output=True, text=True
+    )
+
+    subprocess.run(
+        [
+            str(LAUNCHER),
+            "loop",
+            "start",
+            "--prompt",
+            "Keep conducting from a subdirectory",
+            "--max-iterations",
+            "2",
+        ],
+        check=True,
+        cwd=nested,
+        capture_output=True,
+        text=True,
+    )
+
+    root_state = repo / ".vibecrafted" / "operator-loop.local.md"
+    nested_state = nested / ".vibecrafted" / "operator-loop.local.md"
+    assert root_state.exists()
+    assert not nested_state.exists()
+
+    result = subprocess.run(
+        [str(LAUNCHER), "loop", "next"],
+        check=True,
+        cwd=nested,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "CONTINUE: operator loop iteration 2" in result.stdout
+    assert "Keep conducting from a subdirectory" in result.stdout
+
+
+def test_loop_completion_promise_allows_colons(tmp_path: Path) -> None:
+    subprocess.run(
+        [
+            str(LAUNCHER),
+            "loop",
+            "start",
+            "--prompt",
+            "Finish the cut",
+            "--completion-promise",
+            "READY: audited",
+        ],
+        check=True,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    result = subprocess.run(
+        [
+            str(LAUNCHER),
+            "loop",
+            "complete",
+            "--promise",
+            "READY: audited",
+        ],
+        check=True,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert (
+        "Completed operator loop with <promise>READY: audited</promise>."
+        in result.stdout
+    )
+
+
+def test_vc_loop_wrapper_routes_to_loop_command(tmp_path: Path) -> None:
+    wrapper = tmp_path / "vc-loop"
+    wrapper.symlink_to(LAUNCHER)
+
+    result = subprocess.run(
+        ["bash", str(wrapper), "--help"],
+        check=True,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Interactive Agent-Operator continuation" in result.stdout
+
+
 def test_agent_subcommand_help_lists_modes() -> None:
     result = subprocess.run(
         [str(LAUNCHER), "codex", "--help"],

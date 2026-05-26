@@ -1759,8 +1759,89 @@ def test_spawn_probe_uses_active_tab_and_restores_focus(tmp_path: Path) -> None:
     assert "--tab-id" in probe_call
     assert "9" in probe_call
     assert "--name" in probe_call
-    assert "probe-gemini" in probe_call
+    assert any("probe-gemini" in part for part in probe_call)
     assert any(call[:3] == ["action", "focus-pane-id", "terminal_42"] for call in calls)
+
+
+def test_spawn_probe_watch_does_not_fail_live_worker_on_transient_error(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "trace.log"
+    transcript.write_text(
+        "\n".join(
+            [
+                "2026-05-26T04:44:37Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed",
+                "[22:44:37] session: 019e6299-554a-76b2-900d-6dde67314658",
+                "I will use the VC Workflow skill and continue.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    notify_capture = tmp_path / "notifications.txt"
+    (fake_bin / "uname").write_text(
+        "#!/usr/bin/env bash\nprintf 'Darwin\\n'\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "osascript").write_text(
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$NOTIFY_CAPTURE"\n',
+        encoding="utf-8",
+    )
+    (fake_bin / "uname").chmod(0o755)
+    (fake_bin / "osascript").chmod(0o755)
+
+    _bash(
+        f'''
+        set -euo pipefail
+        export PATH="{fake_bin}:$PATH"
+        export NOTIFY_CAPTURE="{notify_capture}"
+        source "{COMMON_SH}"
+        spawn_probe_watch "{transcript}" 1 codex wflw-224433-38831
+        '''
+    )
+
+    assert not notify_capture.exists()
+
+
+def test_spawn_probe_watch_reports_transient_error_as_warning_not_failure(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "trace.log"
+    transcript.write_text(
+        "2026-05-26T04:44:37Z ERROR rmcp::transport::worker: request failed\n",
+        encoding="utf-8",
+    )
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    notify_capture = tmp_path / "notifications.txt"
+    (fake_bin / "uname").write_text(
+        "#!/usr/bin/env bash\nprintf 'Darwin\\n'\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "osascript").write_text(
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$NOTIFY_CAPTURE"\n',
+        encoding="utf-8",
+    )
+    (fake_bin / "uname").chmod(0o755)
+    (fake_bin / "osascript").chmod(0o755)
+
+    _bash(
+        f'''
+        set -euo pipefail
+        export PATH="{fake_bin}:$PATH"
+        export NOTIFY_CAPTURE="{notify_capture}"
+        source "{COMMON_SH}"
+        spawn_probe_watch "{transcript}" 1 codex wflw-224433-38831
+        '''
+    )
+
+    notification = notify_capture.read_text(encoding="utf-8")
+    assert "Worker startup warning" in notification
+    assert "Worker FAILED" not in notification
 
 
 def test_spawn_in_operator_session_new_tab_uses_run_tab_without_startup_monitor(

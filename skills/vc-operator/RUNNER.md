@@ -178,9 +178,24 @@ parallel / D close-out). Fire one wave at a time. Within a wave,
 fire all parallel prompts in a single batch; sequential prompts
 wait for the prior commit to land.
 
-### 7. Enter `/loop <interval>` cadence and append `journal.md`
+### 7. Enter the canonical loop runtime and append `journal.md`
 
-After firing the wave, enter `/loop` as the **primary** post-
+Use `vibecrafted loop` as the canonical interactive continuation surface
+when the operator-agent must keep state across replies:
+
+```bash
+vibecrafted loop start --file <artifact-dir>/master-dispatch.md --max-iterations <n> --completion-promise "<done-condition>"
+vibecrafted loop next
+vibecrafted loop complete --promise "<done-condition>"
+```
+
+The default loop state is repo-root anchored at
+`<repo-root>/.vibecrafted/operator-loop.local.md`, which is local runtime
+state and must not be committed. The loop runtime is a continuation and
+await-chain mechanism; it does not replace the operator decision doctrine
+in this runner.
+
+After firing the wave, enter `vibecrafted loop` / `/loop` as the **primary** post-
 dispatch cadence (REC-3). `ScheduleWakeup` heartbeat is the
 **fallback** safety net only — see `./AWAIT.md` for delay table.
 

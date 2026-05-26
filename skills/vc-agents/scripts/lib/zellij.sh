@@ -519,7 +519,8 @@ spawn_probe() {
   # Exit triggers (whichever fires first within probe_seconds):
   #   GOOD: transcript has [HH:MM:SS] timestamp OR `session: <uuid>` line
   #     → silent close, no notification
-  #   BAD:  ERROR|FATAL|panic:|Traceback|BrokenPipe in transcript
+  #   WARN: ERROR in transcript before a good signal
+  #   BAD:  FATAL|panic:|Traceback|BrokenPipe in transcript
   #         OR exit_code != 0 in meta
   #         OR worker pid dies within probe window
   #     → close + system notification with reason
@@ -577,7 +578,7 @@ spawn_probe_watch() {
   fi
 
   local deadline=$(( $(date +%s) + window ))
-  local good=0 bad="" reason=""
+  local good=0 bad="" warning="" reason=""
 
   while [[ $(date +%s) -lt $deadline ]]; do
     if [[ -f "$transcript" ]]; then
@@ -585,9 +586,18 @@ spawn_probe_watch() {
       if [[ "$good" == "0" ]] && grep -qE '\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]|session: [a-f0-9-]{8,}' "$transcript" 2>/dev/null; then
         good=1
       fi
-      # BAD: error patterns
+      # WARN: transient transport/runtime noise. Do not call the worker failed
+      # unless the authoritative meta/launcher state or a fatal pattern agrees.
+      if [[ -z "$warning" ]]; then
+        if reason=$(grep -oE 'ERROR' "$transcript" 2>/dev/null | head -1); then
+          if [[ -n "$reason" ]]; then
+            warning="$reason"
+          fi
+        fi
+      fi
+      # BAD: fatal patterns
       if [[ -z "$bad" ]]; then
-        if reason=$(grep -oE 'ERROR|FATAL|panic:|Traceback|BrokenPipeError' "$transcript" 2>/dev/null | head -1); then
+        if reason=$(grep -oE 'FATAL|panic:|Traceback|BrokenPipeError' "$transcript" 2>/dev/null | head -1); then
           if [[ -n "$reason" ]]; then
             bad="$reason"
           fi
@@ -614,19 +624,33 @@ spawn_probe_watch() {
     sleep 1
   done
 
-  # Emit notification iff bad OR silent (not good and not bad → silent)
+  # Emit notification iff bad OR silent/warn-without-good. A good signal after
+  # a transient ERROR means the worker is alive; do not create a fake failure.
   if [[ -n "$bad" ]]; then
     spawn_probe_notify "Worker FAILED" "${agent}:${rid##*-} — $bad"
+  elif [[ "$good" == "0" && -n "$warning" ]]; then
+    spawn_probe_notify "Worker startup warning" "${agent}:${rid##*-} — $warning; check await pane"
   elif [[ "$good" == "0" ]]; then
     spawn_probe_notify "Worker silent on startup" "${agent}:${rid##*-} — check logs"
   fi
 }
 
-# Cross-platform system notification helper. macOS uses osascript; Linux uses
-# notify-send. Silent no-op when neither is available.
+# Cross-platform system notification helper. iTerm2 OSC 9 is preferred so the
+# Notification Center owner is iTerm2, not Script Editor via osascript.
+# Silent no-op when no notifier is available.
 spawn_probe_notify() {
   local title="$1"
   local body="$2"
+  local message="𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. — ${title}: ${body}"
+  message="${message//$'\033'/ }"
+  message="${message//$'\a'/ }"
+
+  if [[ -n "${ITERM_SESSION_ID:-}" || "${TERM_PROGRAM:-}" == "iTerm.app" ]]; then
+    if printf '\033]9;%s\a' "$message" >/dev/tty 2>/dev/null; then
+      return 0
+    fi
+  fi
+
   if [[ "$(uname -s 2>/dev/null)" == "Darwin" ]] && command -v osascript >/dev/null 2>&1; then
     osascript -e "display notification \"${body//\"/\\\"}\" with title \"𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. — ${title//\"/\\\"}\"" >/dev/null 2>&1 || true
   elif command -v notify-send >/dev/null 2>&1; then

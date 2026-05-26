@@ -24,6 +24,20 @@ For operator mode that translates into:
   60 seconds burns the prompt cache and signals to the operator that you
   don't trust your own infrastructure.
 
+`vibecrafted loop await-run` is the canonical local runtime bridge for
+interactive await chaining:
+
+```bash
+vibecrafted loop await-run --run-id <run-id> --agent <agent> \
+  --then-cmd "vibecrafted workflow <agent> --file <next-plan.md>"
+```
+
+`--then-cmd` intentionally executes through `bash -lc` after a successful
+await. Use it only for operator-approved continuation commands from the
+active plan. Do not use it for push, deploy, publish, purchase, deletion,
+or other externally visible/destructive actions unless the plan explicitly
+authorizes that step.
+
 ---
 
 ## The await life-cycle of one dispatch
