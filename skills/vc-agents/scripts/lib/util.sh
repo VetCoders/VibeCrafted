@@ -19,21 +19,88 @@ spawn_require_command() {
 }
 
 spawn_prepend_agent_tool_paths() {
-  local candidate
-  for candidate in \
-    /usr/local/bin \
-    /opt/homebrew/sbin \
-    /opt/homebrew/bin \
-    "${HOME:-}/tools/scripts" \
-    "${HOME:-}/.cargo/bin" \
-    "${HOME:-}/.local/bin" \
-    "${HOME:-}/.vibecrafted/bin"; do
-    [[ -n "$candidate" && -d "$candidate" ]] || continue
-    case ":${PATH:-}:" in
-      *":$candidate:"*) ;;
-      *) export PATH="$candidate${PATH:+:$PATH}" ;;
-    esac
+  local home="${HOME:-}"
+  local pnpm_home="${PNPM_HOME:-}"
+  local bun_install="${BUN_INSTALL:-}"
+  local entry dir found skip joined
+  local -a contract existing filtered final
+
+  [[ -n "$pnpm_home" ]] || pnpm_home="${home:+$home/Library/pnpm}"
+  [[ -n "$bun_install" ]] || bun_install="${home:+$home/.bun}"
+
+  # Mirror Silver's runtime contract for detached agent launchers whose parent
+  # process may not have gone through zsh startup files.
+  contract=(
+    "${home:+$home/tools/scripts}"
+    "${home:+$home/.local/bin}"
+    /opt/homebrew/bin
+    /opt/homebrew/sbin
+    "${home:+$home/.cargo/bin}"
+    "$pnpm_home"
+    "${home:+$home/.lmstudio/bin}"
+    "${bun_install:+$bun_install/bin}"
+  )
+
+  IFS=: read -r -a existing <<< "${PATH:-}"
+  filtered=()
+  for entry in "${existing[@]}"; do
+    [[ -n "$entry" ]] || continue
+    skip=0
+
+    if [[ -n "$home" ]]; then
+      case "$entry" in
+        "$home/bin"|"$home/tools"|"$home/Git/tools"|"$home/.vibecrafted/bin"|"$home"/.claude/plugins/cache/*/bin|"$home"/.claude/plugins/cache/*/*/bin|"$home"/.claude/plugins/cache/*/*/*/bin)
+          skip=1
+          ;;
+      esac
+    fi
+
+    if (( ! skip )); then
+      for dir in "${contract[@]}"; do
+        [[ -n "$dir" && "$entry" == "$dir" ]] || continue
+        skip=1
+        break
+      done
+    fi
+    (( skip )) && continue
+
+    found=0
+    if (( ${#filtered[@]} > 0 )); then
+      for dir in "${filtered[@]}"; do
+        [[ "$entry" == "$dir" ]] || continue
+        found=1
+        break
+      done
+    fi
+    (( found )) || filtered+=("$entry")
   done
+
+  final=()
+  for dir in "${contract[@]}"; do
+    [[ -n "$dir" && -d "$dir" ]] || continue
+    found=0
+    if (( ${#final[@]} > 0 )); then
+      for entry in "${final[@]}"; do
+        [[ "$entry" == "$dir" ]] || continue
+        found=1
+        break
+      done
+    fi
+    (( found )) || final+=("$dir")
+  done
+  if (( ${#filtered[@]} > 0 )); then
+    final+=("${filtered[@]}")
+  fi
+
+  joined=""
+  for entry in "${final[@]}"; do
+    if [[ -z "$joined" ]]; then
+      joined="$entry"
+    else
+      joined="$joined:$entry"
+    fi
+  done
+  export PATH="$joined"
 }
 
 spawn_require_positive_int() {

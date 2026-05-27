@@ -89,6 +89,66 @@ def test_spawn_require_command_adds_curated_agent_tool_paths(tmp_path: Path) -> 
     assert result.stdout.strip() == str(fake_claude)
 
 
+def test_spawn_tool_paths_follow_silver_runtime_contract(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    for rel in (
+        "tools/scripts",
+        ".local/bin",
+        ".cargo/bin",
+        "Library/pnpm",
+        ".lmstudio/bin",
+        ".bun/bin",
+        ".vibecrafted/bin",
+        ".claude/plugins/cache/example/tool/bin",
+        "bin",
+        "tools",
+        "Git/tools",
+    ):
+        (home / rel).mkdir(parents=True, exist_ok=True)
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        export HOME="{home}"
+        export PNPM_HOME="{home / "Library" / "pnpm"}"
+        export BUN_INSTALL="{home / ".bun"}"
+        export PATH="{home / ".vibecrafted" / "bin"}:{home / ".cargo" / "bin"}:{home / ".claude" / "plugins" / "cache" / "example" / "tool" / "bin"}:{home / "tools"}:{home / "bin"}:{home / ".local" / "bin"}:/usr/bin:/bin:/usr/bin"
+        source "{COMMON_SH}"
+        spawn_prepend_agent_tool_paths
+        printf '%s\n' "$PATH" | tr ':' '\n'
+        '''
+    )
+
+    expected_prefix = [
+        str(home / "tools" / "scripts"),
+        str(home / ".local" / "bin"),
+    ]
+    if Path("/opt/homebrew/bin").is_dir():
+        expected_prefix.append("/opt/homebrew/bin")
+    if Path("/opt/homebrew/sbin").is_dir():
+        expected_prefix.append("/opt/homebrew/sbin")
+    expected_prefix.extend(
+        [
+            str(home / ".cargo" / "bin"),
+            str(home / "Library" / "pnpm"),
+            str(home / ".lmstudio" / "bin"),
+            str(home / ".bun" / "bin"),
+        ]
+    )
+
+    entries = result.stdout.splitlines()
+    assert entries[: len(expected_prefix)] == expected_prefix
+    assert len(entries) == len(set(entries))
+    assert str(home / ".vibecrafted" / "bin") not in entries
+    assert (
+        str(home / ".claude" / "plugins" / "cache" / "example" / "tool" / "bin")
+        not in entries
+    )
+    assert str(home / "bin") not in entries
+    assert str(home / "tools") not in entries
+    assert str(home / "Git" / "tools") not in entries
+
+
 def test_skill_dry_run_reaches_spawn_launcher_without_launching(tmp_path: Path) -> None:
     home = tmp_path / "home"
     crafted_home = home / ".vibecrafted"
@@ -782,11 +842,11 @@ def test_codex_spawn_marks_meta_failed_when_codex_emits_non_json_auth_error(
 ) -> None:
     home = tmp_path / "home"
     crafted_home = home / ".vibecrafted"
-    fake_bin = tmp_path / "bin"
+    fake_bin = home / ".local" / "bin"
     plan = tmp_path / "plan.md"
 
     home.mkdir()
-    fake_bin.mkdir()
+    fake_bin.mkdir(parents=True)
     plan.write_text("# Plan\n", encoding="utf-8")
 
     fake_codex = fake_bin / "codex"
@@ -875,11 +935,11 @@ def test_codex_spawn_preserves_standalone_report_when_last_message_is_handoff(
 ) -> None:
     home = tmp_path / "home"
     crafted_home = home / ".vibecrafted"
-    fake_bin = tmp_path / "bin"
+    fake_bin = home / ".local" / "bin"
     plan = tmp_path / "research-plan.md"
 
     home.mkdir()
-    fake_bin.mkdir()
+    fake_bin.mkdir(parents=True)
     plan.write_text("# Research Plan\n", encoding="utf-8")
 
     fake_codex = fake_bin / "codex"
@@ -981,11 +1041,11 @@ def test_codex_research_does_not_copy_pointer_last_message_as_report(
 ) -> None:
     home = tmp_path / "home"
     crafted_home = home / ".vibecrafted"
-    fake_bin = tmp_path / "bin"
+    fake_bin = home / ".local" / "bin"
     plan = tmp_path / "research-plan.md"
 
     home.mkdir()
-    fake_bin.mkdir()
+    fake_bin.mkdir(parents=True)
     plan.write_text("# Research Plan\n", encoding="utf-8")
 
     fake_codex = fake_bin / "codex"
