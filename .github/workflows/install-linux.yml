@@ -71,6 +71,7 @@ jobs:
             build-essential \
             cmake \
             libclang-dev \
+            libprotobuf-dev \
             make \
             protobuf-compiler \
             python3 \
@@ -135,6 +136,7 @@ jobs:
             curl \
             git \
             libclang-dev \
+            libprotobuf-dev \
             make \
             protobuf-compiler \
             python3 \

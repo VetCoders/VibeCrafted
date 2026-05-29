@@ -518,12 +518,12 @@ def test_vc_dashboard_recreates_dead_run_id_session_without_layout_suffix(
 
 def test_skill_bootstraps_operator_session_before_spawning(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    fake_bin = tmp_path / "bin"
+    fake_bin = home / ".local" / "bin"
     capture_file = tmp_path / "capture.log"
     session_state_file = tmp_path / "session-state.txt"
 
     home.mkdir()
-    fake_bin.mkdir()
+    fake_bin.mkdir(parents=True)
     _write_stateful_zellij(fake_bin, capture_file, session_state_file)
     _write_fake_osascript(fake_bin, capture_file, session_state_file)
     _write_capture_command(fake_bin, "codex", tmp_path / "unused-codex.txt")
