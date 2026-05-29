@@ -142,9 +142,6 @@ if [[ "${VIBECRAFTED_INLINE_STARTUP_WATCH:-1}" != "0" ]]; then
 fi
 
 if bash -c "$SPAWN_CMD"; then
-EOF_LAUNCH
-
-  cat >> "$launcher" <<'EOF_LAUNCH'
   spawn_finish_meta "$meta" "completed" "0"
 EOF_LAUNCH
 

@@ -72,9 +72,13 @@ Agents should be launched with a small, explicit PATH when practical:
 /sbin
 ```
 
+Agent launchers build this PATH as an allowlist. They do not append arbitrary
+entries inherited from the parent process, so command checks cannot pass through
+stale temp directories, shell plugin caches, or local editor tool paths.
+
 Agents should not assume Bun, LM Studio, Antigravity IDE, or `python@3.13` paths
-exist. If a task needs one of those tools, verify it explicitly with
-`command -v` and report the requirement.
+exist. If a task needs one of those tools, put it in the declared runtime
+contract or verify and report the requirement explicitly.
 
 ## Loader Rule
 

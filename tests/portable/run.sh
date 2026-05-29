@@ -93,7 +93,7 @@ bootstrap_config_dir="$bootstrap_home/.config"
 home_dir="$workspace/home"
 config_dir="$home_dir/.config"
 work_repo="$workspace/workrepo"
-fake_bin="$workspace/fake-bin"
+fake_bin="$home_dir/.local/bin"
 bootstrap_archive="$workspace/vibecrafted-bootstrap.tar.gz"
 mkdir -p "$bootstrap_home" "$bootstrap_config_dir" "$home_dir" "$config_dir" "$work_repo" "$fake_bin"
 

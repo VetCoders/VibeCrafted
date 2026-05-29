@@ -16,6 +16,17 @@ description: >
 > Before you edit code, you read the structure.
 > Loctree is how you see.
 
+## Canonical Orientation Gate
+
+Before this workflow performs repo-specific analysis, planning, implementation,
+review, release, or delegation, it MUST run or consume the `vc-init` procedure
+for the assigned repo. If fresh `vc-init` evidence is absent, perform the init
+pass first and treat workflow-specific work as blocked until repo truth exists.
+
+`Loctree:loctree` is the default structural perception skill for that pass. Use
+Loctree before grep or docs-driven claims to produce or refresh the Code-Derived
+Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant.
+
 ## The Craft
 
 Language models cannot guess architecture topology. And you should not

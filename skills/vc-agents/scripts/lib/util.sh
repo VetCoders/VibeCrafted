@@ -20,60 +20,29 @@ spawn_require_command() {
 
 spawn_prepend_agent_tool_paths() {
   local home="${HOME:-}"
-  local pnpm_home="${PNPM_HOME:-}"
-  local bun_install="${BUN_INSTALL:-}"
-  local entry dir found skip joined
-  local -a contract existing filtered final
+  local crafted_home="${VIBECRAFTED_HOME:-}"
+  local entry found joined
+  local -a contract final
 
-  [[ -n "$pnpm_home" ]] || pnpm_home="${home:+$home/Library/pnpm}"
-  [[ -n "$bun_install" ]] || bun_install="${home:+$home/.bun}"
+  [[ -n "$crafted_home" ]] || crafted_home="${home:+$home/.vibecrafted}"
 
   # Mirror Silver's runtime contract for detached agent launchers whose parent
-  # process may not have gone through zsh startup files.
+  # process may not have gone through zsh startup files. This is intentionally
+  # an allowlist: inherited PATH entries do not participate in agent command
+  # resolution.
   contract=(
-    "${home:+$home/tools/scripts}"
+    "${crafted_home:+$crafted_home/bin}"
     "${home:+$home/.local/bin}"
+    "${home:+$home/.cargo/bin}"
+    "${home:+$home/tools/scripts}"
     /opt/homebrew/bin
     /opt/homebrew/sbin
-    "${home:+$home/.cargo/bin}"
-    "$pnpm_home"
-    "${home:+$home/.lmstudio/bin}"
-    "${bun_install:+$bun_install/bin}"
+    /usr/local/bin
+    /usr/bin
+    /bin
+    /usr/sbin
+    /sbin
   )
-
-  IFS=: read -r -a existing <<< "${PATH:-}"
-  filtered=()
-  for entry in "${existing[@]}"; do
-    [[ -n "$entry" ]] || continue
-    skip=0
-
-    if [[ -n "$home" ]]; then
-      case "$entry" in
-        "$home/bin"|"$home/tools"|"$home/Git/tools"|"$home/.vibecrafted/bin"|"$home"/.claude/plugins/cache/*/bin|"$home"/.claude/plugins/cache/*/*/bin|"$home"/.claude/plugins/cache/*/*/*/bin)
-          skip=1
-          ;;
-      esac
-    fi
-
-    if (( ! skip )); then
-      for dir in "${contract[@]}"; do
-        [[ -n "$dir" && "$entry" == "$dir" ]] || continue
-        skip=1
-        break
-      done
-    fi
-    (( skip )) && continue
-
-    found=0
-    if (( ${#filtered[@]} > 0 )); then
-      for dir in "${filtered[@]}"; do
-        [[ "$entry" == "$dir" ]] || continue
-        found=1
-        break
-      done
-    fi
-    (( found )) || filtered+=("$entry")
-  done
 
   final=()
   for dir in "${contract[@]}"; do
@@ -88,9 +57,6 @@ spawn_prepend_agent_tool_paths() {
     fi
     (( found )) || final+=("$dir")
   done
-  if (( ${#filtered[@]} > 0 )); then
-    final+=("${filtered[@]}")
-  fi
 
   joined=""
   for entry in "${final[@]}"; do

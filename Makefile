@@ -47,6 +47,8 @@ help:
 	@printf "  \033[32m✓\033[0m  make test-aicx-sync \033[2mVerify AICX cross-machine sync v2 + authority conflict resolution (Plan 08)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test-hammerspoon \033[2mVerify Hammerspoon URL handler stack + injection sanitization (Plan 11)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
+	@printf "  \033[32m◇\033[0m  make version-show  \033[2mShow VERSION and matching tag state\033[0m\n"
+	@printf "  \033[32m◇\033[0m  make version-bump VERSION=X \033[2mBump VERSION: patch, minor, major, or x.y.z\033[0m\n"
 	@printf "\n"
 	@printf "  \033[33m◆\033[0m  make migrate       \033[2mMigrate .ai-agents/ to $$VIBECRAFTED_ROOT/.vibecrafted/artifacts/\033[0m\n"
 	@printf "  \033[33m◇\033[0m  make migrate-dry   \033[2mPreview migration (dry run)\033[0m\n"

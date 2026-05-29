@@ -91,13 +91,11 @@ def test_spawn_require_command_adds_curated_agent_tool_paths(tmp_path: Path) -> 
 
 def test_spawn_tool_paths_follow_silver_runtime_contract(tmp_path: Path) -> None:
     home = tmp_path / "home"
+    rogue_bin = tmp_path / "rogue" / "bin"
     for rel in (
         "tools/scripts",
         ".local/bin",
         ".cargo/bin",
-        "Library/pnpm",
-        ".lmstudio/bin",
-        ".bun/bin",
         ".vibecrafted/bin",
         ".claude/plugins/cache/example/tool/bin",
         "bin",
@@ -105,14 +103,13 @@ def test_spawn_tool_paths_follow_silver_runtime_contract(tmp_path: Path) -> None
         "Git/tools",
     ):
         (home / rel).mkdir(parents=True, exist_ok=True)
+    rogue_bin.mkdir(parents=True)
 
     result = _bash(
         f'''
         set -euo pipefail
         export HOME="{home}"
-        export PNPM_HOME="{home / "Library" / "pnpm"}"
-        export BUN_INSTALL="{home / ".bun"}"
-        export PATH="{home / ".vibecrafted" / "bin"}:{home / ".cargo" / "bin"}:{home / ".claude" / "plugins" / "cache" / "example" / "tool" / "bin"}:{home / "tools"}:{home / "bin"}:{home / ".local" / "bin"}:/usr/bin:/bin:/usr/bin"
+        export PATH="{rogue_bin}:{home / ".vibecrafted" / "bin"}:{home / ".cargo" / "bin"}:{home / ".claude" / "plugins" / "cache" / "example" / "tool" / "bin"}:{home / "tools"}:{home / "bin"}:{home / ".local" / "bin"}:/usr/bin:/bin:/usr/bin"
         source "{COMMON_SH}"
         spawn_prepend_agent_tool_paths
         printf '%s\n' "$PATH" | tr ':' '\n'
@@ -120,8 +117,10 @@ def test_spawn_tool_paths_follow_silver_runtime_contract(tmp_path: Path) -> None
     )
 
     expected_prefix = [
-        str(home / "tools" / "scripts"),
+        str(home / ".vibecrafted" / "bin"),
         str(home / ".local" / "bin"),
+        str(home / ".cargo" / "bin"),
+        str(home / "tools" / "scripts"),
     ]
     if Path("/opt/homebrew/bin").is_dir():
         expected_prefix.append("/opt/homebrew/bin")
@@ -129,17 +128,18 @@ def test_spawn_tool_paths_follow_silver_runtime_contract(tmp_path: Path) -> None
         expected_prefix.append("/opt/homebrew/sbin")
     expected_prefix.extend(
         [
-            str(home / ".cargo" / "bin"),
-            str(home / "Library" / "pnpm"),
-            str(home / ".lmstudio" / "bin"),
-            str(home / ".bun" / "bin"),
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
         ]
     )
 
     entries = result.stdout.splitlines()
     assert entries[: len(expected_prefix)] == expected_prefix
     assert len(entries) == len(set(entries))
-    assert str(home / ".vibecrafted" / "bin") not in entries
+    assert str(rogue_bin) not in entries
     assert (
         str(home / ".claude" / "plugins" / "cache" / "example" / "tool" / "bin")
         not in entries
@@ -147,6 +147,41 @@ def test_spawn_tool_paths_follow_silver_runtime_contract(tmp_path: Path) -> None
     assert str(home / "bin") not in entries
     assert str(home / "tools") not in entries
     assert str(home / "Git" / "tools") not in entries
+
+
+def test_spawn_require_command_rejects_non_contract_path_entries(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    rogue_bin = tmp_path / "rogue" / "bin"
+    rogue_bin.mkdir(parents=True)
+    fake_claude = rogue_bin / "claude"
+    fake_claude.write_text(
+        "#!/usr/bin/env bash\nprintf 'rogue-claude\\n'\n", encoding="utf-8"
+    )
+    fake_claude.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            _ENV_SANITIZE
+            + f'''
+            set -euo pipefail
+            export HOME="{home}"
+            export PATH="{rogue_bin}:/usr/bin:/bin:/usr/sbin:/sbin"
+            source "{COMMON_SH}"
+            spawn_require_command claude
+            ''',
+        ],
+        check=False,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Required command not found: claude" in result.stderr
 
 
 def test_skill_dry_run_reaches_spawn_launcher_without_launching(tmp_path: Path) -> None:
@@ -1141,11 +1176,11 @@ def test_claude_spawn_marks_meta_failed_when_stream_has_no_json(
 ) -> None:
     home = tmp_path / "home"
     crafted_home = home / ".vibecrafted"
-    fake_bin = tmp_path / "bin"
+    fake_bin = home / ".local" / "bin"
     plan = tmp_path / "plan.md"
 
     home.mkdir()
-    fake_bin.mkdir()
+    fake_bin.mkdir(parents=True)
     plan.write_text("# Plan\n", encoding="utf-8")
 
     fake_claude = fake_bin / "claude"
