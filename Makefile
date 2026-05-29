@@ -273,7 +273,9 @@ demo-full:
 	@bash scripts/vc-dashboard --html
 
 init-hooks:
-	@if git rev-parse --git-dir >/dev/null 2>&1; then \
+	@if [ "$$CI" = "true" ]; then \
+		echo "CI detected — skipping git hook bootstrap."; \
+	elif git rev-parse --git-dir >/dev/null 2>&1; then \
 		echo "Installing custom git hooks..."; \
 		git config core.hooksPath scripts/hooks; \
 		chmod +x scripts/hooks/pre-commit scripts/hooks/pre-push; \
