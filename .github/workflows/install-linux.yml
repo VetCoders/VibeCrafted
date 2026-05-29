@@ -31,6 +31,9 @@ jobs:
   # ---------------------------------------------------------------------------
   ubuntu-native:
     name: install.sh (ubuntu-${{ matrix.runner-version }})
+    env:
+      # `cargo install aicx` is memory-heavy; keep CI runners from OOM-killing rustc.
+      CARGO_BUILD_JOBS: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -106,6 +109,9 @@ jobs:
   debian-bookworm-container:
     name: install.sh (debian-12 container)
     runs-on: ubuntu-latest
+    env:
+      # debian:bookworm-slim runs with limited memory inside the job container.
+      CARGO_BUILD_JOBS: "1"
     container:
       image: debian:bookworm-slim
     # bare debian:bookworm-slim ships dash as /bin/sh and no bash. The first
