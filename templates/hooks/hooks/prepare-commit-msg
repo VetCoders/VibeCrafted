@@ -21,7 +21,13 @@ case "$COMMIT_SOURCE" in
   merge|squash|commit|message|template) exit 0 ;;
 esac
 
-latest_warn="$(ls -1t "$(husky_warns_dir)"/pre-commit-*.log 2>/dev/null | head -1 || true)"
+latest_warn=""
+for warn_file in "$(husky_warns_dir)"/pre-commit-*.log; do
+  [ -e "$warn_file" ] || continue
+  if [ -z "$latest_warn" ] || [ "$warn_file" -nt "$latest_warn" ]; then
+    latest_warn="$warn_file"
+  fi
+done
 [ -z "$latest_warn" ] && exit 0
 
 sig="$(grep '^signature=' "$latest_warn" | head -1 | cut -d= -f2-)"

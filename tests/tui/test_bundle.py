@@ -30,7 +30,7 @@ def test_discover_bundle_skills_tracks_live_skill_surface() -> None:
     assert "vc-marbles" in skill_names
     assert "vc-ship" not in skill_names
     assert "vc-ownership" in skill_names
-    assert "vc-screenscribe" not in skill_names
+    assert "vc-screenscribe" in skill_names
 
 
 def test_top_level_skill_dirs_are_live_skills_or_foundations() -> None:
@@ -70,7 +70,7 @@ def test_write_bundle_uses_current_metadata_and_skill_inventory(tmp_path: Path) 
     assert "skills/vc-marbles/SKILL.md" in members
     assert "skills/vc-ship/SKILL.md" not in members
     assert "skills/vc-ownership/SKILL.md" in members
-    assert "skills/vc-screenscribe/SKILL.md" not in members
+    assert "skills/vc-screenscribe/SKILL.md" in members
     assert "docs/RELEASE_KICKOFF.md" in members
     assert "docs/SUBMISSION_FORMS.md" in members
 

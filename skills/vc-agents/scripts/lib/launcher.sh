@@ -82,6 +82,7 @@ if [[ -n "$pre_hook" ]]; then
   cat >> "$launcher" <<'EOF_LAUNCH'
 spawn_export_frontier_sidecars
 export PATH="${PATH:-/usr/local/bin:/usr/bin:/bin}"
+spawn_prepend_agent_tool_paths
 if [[ "${SPAWN_SKILL_NAME:-}" == "research" || "${SPAWN_SKILL_CODE:-}" == "rsch" || "${VIBECRAFTED_RESEARCH_MODE:-0}" == "1" ]]; then
   export VIBECRAFTED_RESEARCH_MODE=1
   export VIBECRAFTED_NO_GIT_WRITES=1
@@ -141,9 +142,6 @@ if [[ "${VIBECRAFTED_INLINE_STARTUP_WATCH:-1}" != "0" ]]; then
 fi
 
 if bash -c "$SPAWN_CMD"; then
-EOF_LAUNCH
-
-  cat >> "$launcher" <<'EOF_LAUNCH'
   spawn_finish_meta "$meta" "completed" "0"
 EOF_LAUNCH
 
@@ -245,6 +243,7 @@ spawn_print_launch() {
   local agent="$1"
   local mode="$2"
   local runtime="${3:-terminal}"
+  local dry_run="${4:-0}"
 
   # ── 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. branded spawn output ──────────────────────────────
   local _dim='\033[2m'    _bold='\033[1m'
@@ -260,5 +259,9 @@ spawn_print_launch() {
   printf '%b  trace:   %b%s%b\n'   "$_steel" "$_reset" "${SPAWN_TRANSCRIPT:-—}" "$_reset"
   printf '%b  runtime: %b%s%b\n'   "$_steel" "$_reset" "$runtime" "$_reset"
   printf '%b\n' "$_bar"
-  printf '%b  Agent launched.%b\n\n' "$_dim" "$_reset"
+  if [[ "$dry_run" == "1" ]]; then
+    printf '%b  Dry run: launcher generated only.%b\n\n' "$_dim" "$_reset"
+  else
+    printf '%b  Agent launched.%b\n\n' "$_dim" "$_reset"
+  fi
 }

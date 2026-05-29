@@ -20,6 +20,17 @@ Use this skill for two related jobs:
 1. Run ScreenScribe on real recordings and turn them into actionable outputs.
 2. Work on the ScreenScribe codebase without guessing its CLI, gates, or report model.
 
+## Canonical Orientation Gate
+
+Before this workflow performs repo-specific analysis, planning, implementation,
+review, release, or delegation, it MUST run or consume the `vc-init` procedure
+for the assigned repo. If fresh `vc-init` evidence is absent, perform the init
+pass first and treat workflow-specific work as blocked until repo truth exists.
+
+`Loctree:loctree` is the default structural perception skill for that pass. Use
+Loctree before grep or docs-driven claims to produce or refresh the Code-Derived
+Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant.
+
 ## What ScreenScribe Is
 
 ScreenScribe is a screencast pipeline, not a vague "video AI thing."

@@ -16,6 +16,17 @@ Turns a completed workflow into a reusable agent skill. Specifically, this skill
 extracts patterns from an interaction or workflow that **already happened** and
 packages them.
 
+## Canonical Orientation Gate
+
+Before this workflow performs repo-specific analysis, planning, implementation,
+review, release, or delegation, it MUST run or consume the `vc-init` procedure
+for the assigned repo. If fresh `vc-init` evidence is absent, perform the init
+pass first and treat workflow-specific work as blocked until repo truth exists.
+
+`Loctree:loctree` is the default structural perception skill for that pass. Use
+Loctree before grep or docs-driven claims to produce or refresh the Code-Derived
+Code-Derived Application Map: repo-view, focus, slice, impact, find, and follow as relevant.
+
 > [!CAUTION] **You MUST complete Phase 1 (Brainstorming) before writing any code
 > or SKILL.md content.** Skipping brainstorming produces skills that are either
 > too rigid or too vague. The brainstorming conversation is the most important
