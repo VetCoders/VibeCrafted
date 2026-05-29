@@ -27,9 +27,10 @@ Non-destructive. Interactive. Tells you what it does before it does it.
 Asks before touching your shell config. Everything reversible with
 `make -C $VIBECRAFTED_ROOT/.vibecrafted/tools/vibecrafted-current uninstall`.
 
-Inside a local checkout, `make vibecrafted` runs the terminal-native installer
-wizard (default shell-first front door) and `make install` stays
-direct/non-interactive. If you prefer the browser-guided surface, run
+Inside a local checkout, `make install` runs the terminal-native installer
+wizard with checkpoints and REASON. Use `make setup-dev` for the same
+meta-installer with advanced options, or `make install-auto` for the
+auto-approved automation path. If you prefer the browser-guided surface, run
 `make wizard` or the alias `make gui-install`.
 
 After install, open a new terminal or:

@@ -16,6 +16,14 @@ description: >
 > Before you edit code, you read the structure.
 > Loctree is how you see.
 
+## Canonical Structural Gate
+
+For repo-specific work, this skill is the structural half of the `vc-init`
+procedure. `Loctree:loctree` must produce or refresh the Code-Derived Application Map before implementation, review, release, pruning, or deletion.
+
+Use repo-view, focus, slice, impact, find, and follow as relevant. If the task
+is not repo-specific, say so explicitly instead of pretending a map exists.
+
 ## The Craft
 
 Language models cannot guess architecture topology. And you should not

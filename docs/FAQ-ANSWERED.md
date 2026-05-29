@@ -15,11 +15,11 @@ Answers from the trenches. This is the truth as of April 2026.
   non-VetCoders skills there, it leaves them alone. 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. skills are symlinked into `$HOME/.agents/skills/` (and
   others) so your agents "see" them, but the source of truth remains in `$VIBECRAFTED_ROOT/.vibecrafted/`.
 
-- **Why does `make vibecrafted` run an interactive installer wizard instead of just installing silently?**
-  Because the default human front door should show the machine shape before it mutates it. `make vibecrafted` runs the
-  terminal-native installer wizard — the shell-first default front door. It checks foundations, streams the repo-owned
-  compact installer truth, and leaves a plain-language `START_HERE.md` behind. If you prefer the browser surface,
-  run `make wizard` (or its alias `make gui-install`). For a direct non-interactive install path, use `make install` or
+- **Why does `make install` run an interactive installer wizard instead of just installing silently?**
+  Because the default human front door should show the machine shape before it mutates it. `make install` runs the
+  terminal-native installer wizard — the shell-first default front door. It checks foundations, runs the repo-owned
+  compact installer truth with a quiet progress surface, and leaves a plain-language `START_HERE.md` behind. If you prefer the browser surface,
+  run `make wizard` (or its alias `make gui-install`). For a direct non-interactive install path, use `make install-auto` or
   call `python3 scripts/vetcoders_install.py install --source "$PWD" --non-interactive`.
 
 - **Can I install 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. without giving it write access to my shell rc files?**
@@ -82,6 +82,7 @@ Answers from the trenches. This is the truth as of April 2026.
   surgical, high-signal context rather than a history dump.
 
 - **How does `vc-followup` decide between P0, P1, and P2 severity?**
+
   - **P0**: Blocker. Code doesn't compile, critical security leak, or core feature is fundamentally broken.
   - **P1**: High Risk. Regression likely, edge cases unhandled, or architectural mismatch.
   - **P2**: Polish/Gap. Missing tests, suboptimal naming, observability gaps, or minor UI jank.
@@ -111,6 +112,7 @@ Answers from the trenches. This is the truth as of April 2026.
   storage allows you to improve your agent's "brain" once and have it apply across all your repos.
 
 - **What is the relationship between `$VIBECRAFTED_ROOT/.vibecrafted/skills/`, `$HOME/.claude/skills/`, and `$HOME/.agents/skills/`?**
+
   - `$VIBECRAFTED_ROOT/.vibecrafted/skills/`: The **Central Store** (Source of Truth).
   - `$HOME/.claude/skills/`, `$HOME/.agents/skills/`: **Symlink Views**. These are portals that let specific agent CLIs find
     the skills. They point back to the Central Store.
@@ -169,6 +171,7 @@ Answers from the trenches. This is the truth as of April 2026.
 ## Workflow
 
 - **What does "Craft, Converge, Ship" actually mean in practice?**
+
   - **Craft**: Research, scaffold, and implement the initial "noise" (rough code).
   - **Converge**: Run Marbles loops to denoise the code, fix bugs, and fill gaps until P0/P1/P2 = 0.
   - **Ship**: Run `vc-dou`, hydrate the product (docs, SEO), and push to market.
@@ -197,7 +200,7 @@ Answers from the trenches. This is the truth as of April 2026.
   powers iterative AI loops. `vc-marbles` is the sophisticated, score-driven version of this simple persistent loop.
 
 - **Can I run 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. in CI/CD or is it only for interactive use?**
-  Yes. Use the direct non-interactive install path (`make install` or
+  Yes. Use the direct non-interactive install path (`make install-auto` or
   `python3 scripts/vetcoders_install.py install --source "$PWD" --non-interactive`). `vc-review` and `vc-followup` are
   designed to run as quality gates in CI pipelines.
 
@@ -220,6 +223,7 @@ Answers from the trenches. This is the truth as of April 2026.
   hoping didn't scale. Trust it or don't — the code is open, the methodology is documented, the results are measurable.
 
 - **What makes 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. different from AutoGPT/CrewAI/LangChain agents?**
+
   - **AutoGPT**: May be too chaotic; some claims that it lacks structural anchoring.
   - **CrewAI**: Great for roles, but lacks the "denoising" rigor of the Marbles loop.
   - **LangChain**: A library for building tools, not a workflow for shipping products.

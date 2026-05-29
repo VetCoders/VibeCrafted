@@ -1466,6 +1466,15 @@ _vetcoders_init_command_text() {
     gemini)
       printf 'gemini -y -i %s' "$quoted_prompt"
       ;;
+    agy)
+      printf 'agy --prompt-interactive --dangerously-skip-permissions --add-dir . %s' "$quoted_prompt"
+      ;;
+    junie)
+      printf 'junie --task=%s --project=. --skip-update-check --use-local-cache' "$quoted_prompt"
+      ;;
+    grok)
+      printf 'grok --cwd . --permission-mode bypassPermissions --no-alt-screen --single %s' "$quoted_prompt"
+      ;;
     *)
       echo "Unsupported init agent: $tool" >&2
       return 1
@@ -1522,6 +1531,15 @@ _vetcoders_operator_command_text() {
       ;;
     gemini)
       printf 'gemini -y -i %s' "$quoted_prompt"
+      ;;
+    agy)
+      printf 'agy --prompt-interactive --dangerously-skip-permissions --add-dir . %s' "$quoted_prompt"
+      ;;
+    junie)
+      printf 'junie --task=%s --project=. --skip-update-check --use-local-cache' "$quoted_prompt"
+      ;;
+    grok)
+      printf 'grok --cwd . --permission-mode bypassPermissions --no-alt-screen --single %s' "$quoted_prompt"
       ;;
     *)
       echo "Unsupported operator agent: $tool" >&2
@@ -1666,6 +1684,42 @@ gemini-implement() {
   _vetcoders_spawn_plan gemini implement "$1" --runtime "$(_vetcoders_default_runtime)"
 }
 
+agy-review() {
+  _vetcoders_spawn_plan agy review "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+agy-plan() {
+  _vetcoders_spawn_plan agy plan "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+agy-implement() {
+  _vetcoders_spawn_plan agy implement "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+junie-review() {
+  _vetcoders_spawn_plan junie review "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+junie-plan() {
+  _vetcoders_spawn_plan junie plan "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+junie-implement() {
+  _vetcoders_spawn_plan junie implement "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+grok-review() {
+  _vetcoders_spawn_plan grok review "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+grok-plan() {
+  _vetcoders_spawn_plan grok plan "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+grok-implement() {
+  _vetcoders_spawn_plan grok implement "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
 codex-research() {
   _vetcoders_spawn_plan codex research "$1" --runtime "$(_vetcoders_default_runtime)"
 }
@@ -1678,6 +1732,18 @@ gemini-research() {
   _vetcoders_spawn_plan gemini research "$1" --runtime "$(_vetcoders_default_runtime)"
 }
 
+agy-research() {
+  _vetcoders_spawn_plan agy research "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+junie-research() {
+  _vetcoders_spawn_plan junie research "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
+grok-research() {
+  _vetcoders_spawn_plan grok research "$1" --runtime "$(_vetcoders_default_runtime)"
+}
+
 codex-prompt() {
   _vetcoders_prompt codex implement "$@"
 }
@@ -1688,6 +1754,18 @@ claude-prompt() {
 
 gemini-prompt() {
   _vetcoders_prompt gemini implement "$@"
+}
+
+agy-prompt() {
+  _vetcoders_prompt agy implement "$@"
+}
+
+junie-prompt() {
+  _vetcoders_prompt junie implement "$@"
+}
+
+grok-prompt() {
+  _vetcoders_prompt grok implement "$@"
 }
 
 codex-observe() {
@@ -1712,6 +1790,30 @@ gemini-observe() {
 
 gemini-await() {
   _vetcoders_await gemini "$@"
+}
+
+agy-observe() {
+  _vetcoders_observe agy "$@"
+}
+
+agy-await() {
+  _vetcoders_await agy "$@"
+}
+
+junie-observe() {
+  _vetcoders_observe junie "$@"
+}
+
+junie-await() {
+  _vetcoders_await junie "$@"
+}
+
+grok-observe() {
+  _vetcoders_observe grok "$@"
+}
+
+grok-await() {
+  _vetcoders_await grok "$@"
 }
 
 _vetcoders_skill() {
@@ -1888,11 +1990,59 @@ _vetcoders_research_launcher_path() {
   printf '%s\n' "$launcher"
 }
 
+_vetcoders_runtime_manifest_path() {
+  local candidate
+  for candidate in \
+    "${VIBECRAFTED_ROOT:-}" \
+    "$(_vetcoders_repo_root)" \
+    "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/tools/vibecrafted-current"
+  do
+    [[ -n "$candidate" && -f "$candidate/install.toml" ]] || continue
+    printf '%s/install.toml\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+_vetcoders_research_agents() {
+  local manifest
+
+  if [[ -n "${VIBECRAFTED_RESEARCH_AGENTS:-}" ]]; then
+    printf '%s\n' "${VIBECRAFTED_RESEARCH_AGENTS}" | tr ', ' '\n' | awk 'NF'
+    return 0
+  fi
+
+  manifest="$(_vetcoders_runtime_manifest_path 2>/dev/null || true)"
+  if [[ -n "$manifest" ]]; then
+    python3 - "$manifest" <<'PY' 2>/dev/null && return 0
+import sys
+try:
+    import tomllib
+except ModuleNotFoundError:
+    sys.exit(1)
+
+with open(sys.argv[1], "rb") as handle:
+    data = tomllib.load(handle)
+
+agents = (
+    data.get("runtime", {})
+    .get("picking", {})
+    .get("research", {})
+    .get("default_agents", [])
+)
+for agent in agents:
+    if isinstance(agent, str) and agent.strip():
+        print(agent.strip())
+PY
+  fi
+
+  printf '%s\n' claude codex junie
+}
+
 _vetcoders_write_research_layout() {
   local layout_file="$1"
-  local claude_script="$2"
-  local codex_script="$3"
-  local gemini_script="$4"
+  shift
+  local entry agent script
 
   cat > "$layout_file" <<EOF
 layout {
@@ -1910,15 +2060,20 @@ layout {
         pane split_direction="vertical" {
             pane name="synthesis" size="55%" focus=true command="zsh"
             pane split_direction="horizontal" size="45%" {
-                pane name="claude" command="bash" {
-                    args "$claude_script"
+EOF
+
+  for entry in "$@"; do
+    agent="${entry%%=*}"
+    script="${entry#*=}"
+    [[ -n "$agent" && "$agent" != "$entry" ]] || continue
+    cat >> "$layout_file" <<EOF
+                pane name="$agent" command="bash" {
+                    args "$script"
                 }
-                pane name="codex" command="bash" {
-                    args "$codex_script"
-                }
-                pane name="gemini" command="bash" {
-                    args "$gemini_script"
-                }
+EOF
+  done
+
+  cat >> "$layout_file" <<EOF
             }
         }
     }
@@ -1930,7 +2085,7 @@ _vetcoders_research_help() {
   cat <<'HELP'
 ⚒  research
 ─────────────────────────────────────────
-Triple-agent research swarm launcher (claude + codex + gemini).
+Triple-agent research swarm launcher (claude + codex + junie by default).
 
 Usage:
   vc-research --prompt "Question to research"
@@ -1956,8 +2111,8 @@ _vetcoders_research() {
   local first_arg="${1:-}"
   local inherited_run_id inherited_run_lock
   local prompt root run_id run_lock runtime run_dir prompt_file layout_file summary_file
-  local claude_launcher codex_launcher gemini_launcher
-  local claude_cmd codex_cmd gemini_cmd session_name
+  local session_name agent launcher cmd_file
+  local -a research_agents launchers launcher_entries command_entries
 
   for _arg in "$@"; do
     case "$_arg" in
@@ -1969,7 +2124,7 @@ _vetcoders_research() {
   done
 
   case "$first_arg" in
-    claude|codex|gemini)
+    claude|codex|gemini|agy|junie|grok)
     printf 'vc-research is a triple-agent swarm launcher. Do not pass %s.\n' "$first_arg" >&2
     printf 'Use vc-research --prompt "..." or vc-research --file /path/to/plan.md.\n' >&2
     printf 'If you intentionally want one researcher, use vibecrafted <agent> research <plan.md>.\n' >&2
@@ -2012,10 +2167,27 @@ _vetcoders_research() {
   mkdir -p "$run_dir/plans" "$run_dir/reports" "$run_dir/logs" "$run_dir/tmp"
   prompt_file="$(_vetcoders_research_prompt_file "$run_dir" "$prompt")" || return 1
 
-  claude_launcher="$(_vetcoders_research_launcher_path claude "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime" "$run_dir")" || return 1
-  codex_launcher="$(_vetcoders_research_launcher_path codex "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime" "$run_dir")" || return 1
-  gemini_launcher="$(_vetcoders_research_launcher_path gemini "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime" "$run_dir")" || return 1
-  summary_file="$(_vetcoders_write_research_summary "$run_dir" "$run_id" "$root" "$prompt_file" "$claude_launcher" "$codex_launcher" "$gemini_launcher")" || return 1
+  research_agents=()
+  while IFS= read -r agent; do
+    case "$agent" in
+      claude|codex|gemini|agy|junie|grok) research_agents+=("$agent") ;;
+      "") ;;
+      *) printf 'Ignoring unsupported research agent from runtime picking config: %s\n' "$agent" >&2 ;;
+    esac
+  done < <(_vetcoders_research_agents)
+  if (( ${#research_agents[@]} == 0 )); then
+    research_agents=(claude codex junie)
+  fi
+
+  launchers=()
+  launcher_entries=()
+  for agent in "${research_agents[@]}"; do
+    launcher="$(_vetcoders_research_launcher_path "$agent" "$prompt_file" "$root" "$run_id" "$run_lock" "$runtime" "$run_dir")" || return 1
+    launchers+=("$launcher")
+    launcher_entries+=("$agent=$launcher")
+  done
+
+  summary_file="$(_vetcoders_write_research_summary "$run_dir" "$run_id" "$root" "$prompt_file" "${launcher_entries[@]}")" || return 1
 
   if [[ "$runtime" =~ ^(terminal|visible)$ ]]; then
     _vetcoders_prepare_operator_runtime "$runtime" || return 1
@@ -2030,15 +2202,17 @@ _vetcoders_research() {
       return 1
     }
 
-    claude_cmd="$run_dir/tmp/claude_cmd.sh"
-    codex_cmd="$run_dir/tmp/codex_cmd.sh"
-    gemini_cmd="$run_dir/tmp/gemini_cmd.sh"
     layout_file="$run_dir/tmp/research.kdl"
 
-    _vetcoders_write_command_script "$claude_cmd" "bash $(_vetcoders_shell_quote "$claude_launcher")" || return 1
-    _vetcoders_write_command_script "$codex_cmd" "bash $(_vetcoders_shell_quote "$codex_launcher")" || return 1
-    _vetcoders_write_command_script "$gemini_cmd" "bash $(_vetcoders_shell_quote "$gemini_launcher")" || return 1
-    _vetcoders_write_research_layout "$layout_file" "$claude_cmd" "$codex_cmd" "$gemini_cmd"
+    command_entries=()
+    for entry in "${launcher_entries[@]}"; do
+      agent="${entry%%=*}"
+      launcher="${entry#*=}"
+      cmd_file="$run_dir/tmp/${agent}_cmd.sh"
+      _vetcoders_write_command_script "$cmd_file" "bash $(_vetcoders_shell_quote "$launcher")" || return 1
+      command_entries+=("$agent=$cmd_file")
+    done
+    _vetcoders_write_research_layout "$layout_file" "${command_entries[@]}"
 
     # Intended exports to env for the zellij child process — false-positive SC2031.
     # shellcheck disable=SC2031
@@ -2062,7 +2236,7 @@ _vetcoders_research() {
     printf '  run dir: %s\n' "$run_dir"
     printf '  reports: %s\n' "$run_dir/reports"
     printf '  summary: %s\n' "$summary_file"
-    _vetcoders_await "" --describe "$claude_launcher" "$codex_launcher" "$gemini_launcher" || true
+    _vetcoders_await "" --describe "${launchers[@]}" || true
     printf '\nAwait:\n\n'
     printf 'vc-research-await --run-id %s\n' "$run_id"
     return 0
@@ -2073,9 +2247,11 @@ _vetcoders_research() {
   printf 'Reports: %s\n' "$run_dir/reports"
   printf 'Summary: %s\n' "$summary_file"
   printf 'Launchers:\n'
-  printf '  claude: %s\n' "$claude_launcher"
-  printf '  codex:  %s\n' "$codex_launcher"
-  printf '  gemini: %s\n' "$gemini_launcher"
+  for entry in "${launcher_entries[@]}"; do
+    agent="${entry%%=*}"
+    launcher="${entry#*=}"
+    printf '  %s: %s\n' "$agent" "$launcher"
+  done
   printf '\nAwait:\n\n'
   printf 'vc-research-await --run-id %s\n' "$run_id"
 }
@@ -2145,10 +2321,16 @@ _vetcoders_skill_operator() {
 codex-dou() { _vetcoders_skill codex dou "$@"; }
 claude-dou() { _vetcoders_skill claude dou "$@"; }
 gemini-dou() { _vetcoders_skill gemini dou "$@"; }
+agy-dou() { _vetcoders_skill agy dou "$@"; }
+junie-dou() { _vetcoders_skill junie dou "$@"; }
+grok-dou() { _vetcoders_skill grok dou "$@"; }
 
 codex-hydrate() { _vetcoders_skill codex hydrate "$@"; }
 claude-hydrate() { _vetcoders_skill claude hydrate "$@"; }
 gemini-hydrate() { _vetcoders_skill gemini hydrate "$@"; }
+agy-hydrate() { _vetcoders_skill agy hydrate "$@"; }
+junie-hydrate() { _vetcoders_skill junie hydrate "$@"; }
+grok-hydrate() { _vetcoders_skill grok hydrate "$@"; }
 
 _vetcoders_marbles() {
   local tool="$1"
@@ -2278,7 +2460,7 @@ _vetcoders_resume_agent() {
   shift
   _vetcoders_parse_contract "$@" || return 1
   [[ -n "$_vetcoders_contract_session" ]] || {
-    echo "Usage: vibecrafted resume <claude|codex|gemini> --session <session_id> [--prompt <text>] [--file <path>]" >&2
+    echo "Usage: vc-resume [<claude|codex|gemini|agy|junie|grok>] --session <session_id> [--prompt <text>] [--file <path>]" >&2
     return 1
   }
   [[ -z "$_vetcoders_contract_count" ]] || {
@@ -2315,6 +2497,27 @@ _vetcoders_resume_agent() {
         gemini --resume "$_vetcoders_contract_session"
       fi
       ;;
+    agy)
+      if [[ -n "$resume_prompt" ]]; then
+        agy --conversation "$_vetcoders_contract_session" --prompt-interactive "$resume_prompt"
+      else
+        agy --conversation "$_vetcoders_contract_session"
+      fi
+      ;;
+    junie)
+      if [[ -n "$resume_prompt" ]]; then
+        junie --session-id="$_vetcoders_contract_session" --resume --task="$resume_prompt" --project=. --skip-update-check
+      else
+        junie --session-id="$_vetcoders_contract_session" --resume --project=. --skip-update-check
+      fi
+      ;;
+    grok)
+      if [[ -n "$resume_prompt" ]]; then
+        grok --resume "$_vetcoders_contract_session" --cwd . --permission-mode bypassPermissions --no-alt-screen --single "$resume_prompt"
+      else
+        grok --resume "$_vetcoders_contract_session" --cwd . --permission-mode bypassPermissions --no-alt-screen
+      fi
+      ;;
     *)
       echo "Unknown agent for resume: $tool" >&2
       return 1
@@ -2322,19 +2525,66 @@ _vetcoders_resume_agent() {
   esac
 }
 
+_vetcoders_agent_for_session() {
+  local session_id="$1"
+  [[ -n "$session_id" ]] || return 1
+  python3 - "$session_id" "${VIBECRAFTED_HOME:-$HOME/.vibecrafted}/artifacts" <<'PY'
+import json
+import pathlib
+import sys
+
+session_id, artifacts_root = sys.argv[1:3]
+root = pathlib.Path(artifacts_root)
+if not root.is_dir():
+    raise SystemExit(1)
+
+matches = []
+for meta_path in root.rglob("*.meta.json"):
+    try:
+        payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        continue
+    if payload.get("session_id") != session_id:
+        continue
+    agent = payload.get("agent")
+    if agent:
+        try:
+            mtime = meta_path.stat().st_mtime
+        except OSError:
+            mtime = 0
+        matches.append((mtime, agent))
+
+if not matches:
+    raise SystemExit(1)
+print(sorted(matches)[-1][1])
+PY
+}
+
 vc-resume() {
   local tool="${1:-}"
   [[ -n "$tool" ]] || {
-    echo "Usage: vibecrafted resume <claude|codex|gemini> --session <session_id> [--prompt <text>] [--file <path>]" >&2
+    echo "Usage: vc-resume [<claude|codex|gemini|agy|junie|grok>] --session <session_id> [--prompt <text>] [--file <path>]" >&2
     return 1
   }
-  shift || true
+  if [[ "$tool" == "--session" ]]; then
+    _vetcoders_parse_contract "$@" || return 1
+    tool="$(_vetcoders_agent_for_session "$_vetcoders_contract_session")" || {
+      echo "Could not infer agent for session: $_vetcoders_contract_session" >&2
+      echo "Usage: vc-resume <claude|codex|gemini|agy|junie|grok> --session $_vetcoders_contract_session" >&2
+      return 1
+    }
+  else
+    shift || true
+  fi
   _vetcoders_resume_agent "$tool" "$@"
 }
 
 codex-marbles() { _vetcoders_marbles codex "$@"; }
 claude-marbles() { _vetcoders_marbles claude "$@"; }
 gemini-marbles() { _vetcoders_marbles gemini "$@"; }
+agy-marbles() { _vetcoders_marbles agy "$@"; }
+junie-marbles() { _vetcoders_marbles junie "$@"; }
+grok-marbles() { _vetcoders_marbles grok "$@"; }
 
 # Marbles control subcommands
 marbles-pause()   { local s; s="$(_vetcoders_spawn_script claude "marbles_ctl.sh")" && bash "$s" pause "$@"; }
@@ -2348,30 +2598,51 @@ marbles-gc()      { local s; s="$(_vetcoders_spawn_script claude "marbles_ctl.sh
 codex-decorate() { _vetcoders_skill codex decorate "$@"; }
 claude-decorate() { _vetcoders_skill claude decorate "$@"; }
 gemini-decorate() { _vetcoders_skill gemini decorate "$@"; }
+agy-decorate() { _vetcoders_skill agy decorate "$@"; }
+junie-decorate() { _vetcoders_skill junie decorate "$@"; }
+grok-decorate() { _vetcoders_skill grok decorate "$@"; }
 
 codex-followup() { _vetcoders_skill codex followup "$@"; }
 claude-followup() { _vetcoders_skill claude followup "$@"; }
 gemini-followup() { _vetcoders_skill gemini followup "$@"; }
+agy-followup() { _vetcoders_skill agy followup "$@"; }
+junie-followup() { _vetcoders_skill junie followup "$@"; }
+grok-followup() { _vetcoders_skill grok followup "$@"; }
 
 codex-prune() { _vetcoders_skill codex prune "$@"; }
 claude-prune() { _vetcoders_skill claude prune "$@"; }
 gemini-prune() { _vetcoders_skill gemini prune "$@"; }
+agy-prune() { _vetcoders_skill agy prune "$@"; }
+junie-prune() { _vetcoders_skill junie prune "$@"; }
+grok-prune() { _vetcoders_skill grok prune "$@"; }
 
 codex-scaffold() { _vetcoders_skill codex scaffold "$@"; }
 claude-scaffold() { _vetcoders_skill claude scaffold "$@"; }
 gemini-scaffold() { _vetcoders_skill gemini scaffold "$@"; }
+agy-scaffold() { _vetcoders_skill agy scaffold "$@"; }
+junie-scaffold() { _vetcoders_skill junie scaffold "$@"; }
+grok-scaffold() { _vetcoders_skill grok scaffold "$@"; }
 
 codex-release() { _vetcoders_skill codex release "$@"; }
 claude-release() { _vetcoders_skill claude release "$@"; }
 gemini-release() { _vetcoders_skill gemini release "$@"; }
+agy-release() { _vetcoders_skill agy release "$@"; }
+junie-release() { _vetcoders_skill junie release "$@"; }
+grok-release() { _vetcoders_skill grok release "$@"; }
 
 codex-justdo() { _vetcoders_skill codex justdo "$@"; }
 claude-justdo() { _vetcoders_skill claude justdo "$@"; }
 gemini-justdo() { _vetcoders_skill gemini justdo "$@"; }
+agy-justdo() { _vetcoders_skill agy justdo "$@"; }
+junie-justdo() { _vetcoders_skill junie justdo "$@"; }
+grok-justdo() { _vetcoders_skill grok justdo "$@"; }
 
 codex-partner() { _vetcoders_skill codex partner "$@"; }
 claude-partner() { _vetcoders_skill claude partner "$@"; }
 gemini-partner() { _vetcoders_skill gemini partner "$@"; }
+agy-partner() { _vetcoders_skill agy partner "$@"; }
+junie-partner() { _vetcoders_skill junie partner "$@"; }
+grok-partner() { _vetcoders_skill grok partner "$@"; }
 
 codex-skill-agents() { _vetcoders_skill_entry codex agents "$@"; }
 claude-skill-agents() { _vetcoders_skill_entry claude agents "$@"; }
@@ -2458,25 +2729,28 @@ _vetcoders_skill_wrapper_usage() {
   local skill="$1"
   case "$skill" in
     init)
-      printf 'Usage: vc-init <claude|codex|gemini> [--prompt <text>] [--file <path>]\n' >&2
+      printf 'Usage: vc-init <claude|codex|gemini|agy|junie|grok> [--prompt <text>] [--file <path>]\n' >&2
       ;;
     marbles)
-      printf 'Usage: vc-marbles <claude|codex|gemini> [--prompt <text>|--file <path>|--depth <n>] [--count <n>]\n' >&2
+      printf 'Usage: vc-marbles <claude|codex|gemini|agy|junie|grok> [--prompt <text>|--file <path>|--depth <n>] [--count <n>]\n' >&2
       printf '       vc-marbles <pause|stop|resume|session|inspect|delete|gc> [args]\n' >&2
       ;;
     polarize)
-      printf 'Usage: vc-polarize <claude|codex|gemini> --task <text> [--prompt <text>] [--file <path>] [--no-aicx] [--no-context-corpus]\n' >&2
-      printf '       vc-polarize <claude|codex|gemini> [--prompt <text>] [--file <path>]\n' >&2
+      printf 'Usage: vc-polarize <claude|codex|gemini|agy|junie|grok> --task <text> [--prompt <text>] [--file <path>] [--no-aicx] [--no-context-corpus]\n' >&2
+      printf '       vc-polarize <claude|codex|gemini|agy|junie|grok> [--prompt <text>] [--file <path>]\n' >&2
       ;;
     *)
-      printf 'Usage: vc-%s <claude|codex|gemini> [--prompt <text>] [--file <path>]\n' "$skill" >&2
+      printf 'Usage: vc-%s <claude|codex|gemini|agy|junie|grok> [--prompt <text>] [--file <path>]\n' "$skill" >&2
       ;;
   esac
 }
 
 _vetcoders_has_agent() {
   local candidate="${1:-}"
-  [[ "$candidate" == "claude" || "$candidate" == "codex" || "$candidate" == "gemini" ]]
+  case "$candidate" in
+    claude|codex|gemini|agy|junie|grok) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 _vetcoders_is_help_flag() {
@@ -2504,7 +2778,7 @@ _vetcoders_skill_wrapper() {
     return 1
   }
   _vetcoders_has_agent "$tool" || {
-    printf 'vc-%s expects <claude|codex|gemini> as the first argument.\n' "$skill" >&2
+    printf 'vc-%s expects <claude|codex|gemini|agy|junie|grok> as the first argument.\n' "$skill" >&2
     _vetcoders_skill_wrapper_usage "$skill"
     return 1
   }

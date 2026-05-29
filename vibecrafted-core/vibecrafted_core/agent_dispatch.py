@@ -50,6 +50,7 @@ _PARENT_ENV_VARS = (
     "CLAUDE_MODEL",
     "CODEX_MODEL",
     "GEMINI_MODEL",
+    "GROK_MODEL",
 )
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -65,10 +66,18 @@ _SESSION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
             re.IGNORECASE,
         ),
     )
-    for agent in ("claude", "codex", "gemini", "agy", "junie")
+    for agent in ("claude", "codex", "gemini", "agy", "junie", "grok")
 }
 
-_SANDBOX_SUPPORTED_AGENTS = {"claude", "codex", "gemini", "command"}
+_SANDBOX_SUPPORTED_AGENTS = {
+    "claude",
+    "codex",
+    "gemini",
+    "agy",
+    "junie",
+    "grok",
+    "command",
+}
 
 
 def detect_parent_model() -> Optional[str]:

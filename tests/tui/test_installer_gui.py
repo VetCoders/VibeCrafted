@@ -214,7 +214,7 @@ def test_build_html_renders_wizard_shell() -> None:
             },
             "launcher_defaults": {
                 "workflows": ["workflow", "research", "review", "marbles"],
-                "agents": ["claude", "codex", "gemini"],
+                "agents": ["claude", "codex", "gemini", "agy", "junie", "grok"],
                 "runtimes": ["headless", "terminal", "visible"],
             },
             "categories": [],
@@ -227,7 +227,7 @@ def test_build_html_renders_wizard_shell() -> None:
     assert "Launch guided install" in html
     assert "Finish state" in html
     assert "make wizard" in html
-    assert "make vibecrafted" in html
+    assert "make install" in html
     assert "Local checkout GUI" in html
     assert "Terminal-native fallback" not in html
     assert "height: calc(100dvh - 36px);" in html

@@ -425,7 +425,7 @@ def test_vc_help_wrapper_forwards_topic_help(tmp_path: Path) -> None:
     )
 
     assert "Start an interactive repository orientation session" in result.stdout
-    assert "vc-init [claude|codex|gemini]" in result.stdout
+    assert "vc-init [claude|codex|gemini|agy|junie|grok]" in result.stdout
     assert "Front door:" not in result.stdout
 
 
@@ -959,8 +959,8 @@ def test_gui_help_exposes_local_server_flags() -> None:
 @pytest.mark.parametrize(
     ("topic", "expected"),
     [
-        ("init", "vc-init [claude|codex|gemini]"),
-        ("vc-init", "vc-init [claude|codex|gemini]"),
+        ("init", "vc-init [claude|codex|gemini|agy|junie|grok]"),
+        ("vc-init", "vc-init [claude|codex|gemini|agy|junie|grok]"),
         ("vc-review", 'vibecrafted review codex --prompt "Review PR #14"'),
         ("status", "vibecrafted stats"),
     ],
@@ -1017,9 +1017,15 @@ def test_implement_help_is_the_canonical_autonomous_delivery_surface() -> None:
 
     assert "implement" in result.stdout
     assert "Autonomous end-to-end implementation" in result.stdout
-    assert "vibecrafted implement <claude|codex|gemini> [flags]" in result.stdout
-    assert "vc-implement <claude|codex|gemini> [flags]" in result.stdout
-    assert "Alias: vibecrafted justdo <claude|codex|gemini> [flags]" in result.stdout
+    assert (
+        "vibecrafted implement <claude|codex|gemini|agy|junie|grok> [flags]"
+        in result.stdout
+    )
+    assert "vc-implement <claude|codex|gemini|agy|junie|grok> [flags]" in result.stdout
+    assert (
+        "Alias: vibecrafted justdo <claude|codex|gemini|agy|junie|grok> [flags]"
+        in result.stdout
+    )
 
 
 def test_justdo_help_points_back_to_implement() -> None:
@@ -1033,9 +1039,15 @@ def test_justdo_help_points_back_to_implement() -> None:
 
     assert "justdo" in result.stdout
     assert "Convenient alias for vc-implement" in result.stdout
-    assert "vibecrafted implement <claude|codex|gemini> [flags]" in result.stdout
-    assert "vc-implement <claude|codex|gemini> [flags]" in result.stdout
-    assert "Alias: vibecrafted justdo <claude|codex|gemini> [flags]" in result.stdout
+    assert (
+        "vibecrafted implement <claude|codex|gemini|agy|junie|grok> [flags]"
+        in result.stdout
+    )
+    assert "vc-implement <claude|codex|gemini|agy|junie|grok> [flags]" in result.stdout
+    assert (
+        "Alias: vibecrafted justdo <claude|codex|gemini|agy|junie|grok> [flags]"
+        in result.stdout
+    )
 
 
 def test_compact_help_teaches_implement_before_alias() -> None:
@@ -1129,7 +1141,9 @@ def test_skill_wrapper_help_is_human_readable_without_agent(
 
     assert skill in result.stdout
     assert description in result.stdout
-    assert f"{wrapper_name} <claude|codex|gemini> [flags]" in result.stdout
+    assert (
+        f"{wrapper_name} <claude|codex|gemini|agy|junie|grok> [flags]" in result.stdout
+    )
 
 
 @pytest.mark.parametrize(

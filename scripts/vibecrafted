@@ -25,7 +25,7 @@ _cyan='\033[36m'
 _red='\033[31m'
 _reset='\033[0m'
 
-_agents=(claude codex gemini)
+_agents=(claude codex gemini agy junie grok)
 _modes=(implement research review plan prompt observe await)
 _skills=(audit decorate delegate dou followup hydrate implement intents justdo marbles ownership partner polarize prune release research review scaffold workflow)
 
@@ -106,7 +106,10 @@ PY
 
 _has_agent() {
   local candidate="${1:-}"
-  [[ "$candidate" == "claude" || "$candidate" == "codex" || "$candidate" == "gemini" ]]
+  case "$candidate" in
+    claude|codex|gemini|agy|junie|grok) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 _has_mode() {
@@ -238,7 +241,7 @@ _run_helper() {
   if [[ ! -t 0 || ! -t 1 ]]; then
     printf '  Non-interactive shells should use the standalone bin/vc-* wrappers.\n' >&2
     printf '  Add this repo bin directory to PATH or run scripts/install-foundations.sh:\n' >&2
-    printf '    export PATH="%s/bin:$PATH"\n' "$(_repo_source_root 2>/dev/null || _script_repo_root)" >&2
+    printf "    export PATH=\"%s/bin:\$PATH\"\n" "$(_repo_source_root 2>/dev/null || _script_repo_root)" >&2
   fi
   return 1
 }
@@ -381,7 +384,7 @@ _print_ship_path() {
 
 cmd_skill_help() {
   local skill="$1"
-  local agent="${2:-<claude|codex|gemini>}"
+  local agent="${2:-<claude|codex|gemini|agy|junie|grok>}"
   local wrapper="vc-$skill"
   local display_skill="$skill"
   local version=""
@@ -623,7 +626,7 @@ cmd_resume_help() {
   printf '  Resume an existing agent session.\n'
   printf '\n'
   printf '%bUsage:%b\n' "$_bold" "$_reset"
-  printf '  vibecrafted resume <claude|codex|gemini> --session <session_id> [flags]\n'
+  printf '  vibecrafted resume <claude|codex|gemini|agy|junie|grok> --session <session_id> [flags]\n'
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted resume claude --session abc123\n'
@@ -640,8 +643,8 @@ cmd_init_help() {
   printf '  Start an interactive repository orientation session with an agent.\n'
   printf '\n'
   printf '%bUsage:%b\n' "$_bold" "$_reset"
-  printf '  vibecrafted init [claude|codex|gemini]\n'
-  printf '  vc-init [claude|codex|gemini]\n'
+  printf '  vibecrafted init [claude|codex|gemini|agy|junie|grok]\n'
+  printf '  vc-init [claude|codex|gemini|agy|junie|grok]\n'
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  vibecrafted init claude\n'
@@ -716,8 +719,8 @@ cmd_telemetry_help() {
   printf '  Smoke the marbles telemetry path through the installed command deck.\n'
   printf '\n'
   printf '%bUsage:%b\n' "$_bold" "$_reset"
-  printf '  telemetry smoke [--agent <claude|codex|gemini>] [--count <n>] [--root <path>] [--no-watch|--watch]\n'
-  printf '  vibecrafted telemetry smoke [--agent <claude|codex|gemini>] [--count <n>] [--root <path>] [--no-watch|--watch]\n'
+  printf '  telemetry smoke [--agent <claude|codex|gemini|agy|junie|grok>] [--count <n>] [--root <path>] [--no-watch|--watch]\n'
+  printf '  vibecrafted telemetry smoke [--agent <claude|codex|gemini|agy|junie|grok>] [--count <n>] [--root <path>] [--no-watch|--watch]\n'
   printf '\n'
   printf '%bExamples:%b\n' "$_bold" "$_reset"
   printf '  telemetry smoke --count 1 --no-watch\n'
@@ -1018,7 +1021,7 @@ cmd_help() {
   case "$topic" in
     ""|-h|--help)
       ;;
-    claude|codex|gemini)
+    claude|codex|gemini|agy|junie|grok)
       cmd_agent_help "$topic"
       return
       ;;
@@ -1207,8 +1210,8 @@ cmd_help_full() {
   printf '\n'
   printf '%b=== RESEARCH (launcher) ===%b\n' "$_bold" "$_reset"
   printf '\n'
-  printf '  %bvibecrafted research%b --prompt "text"%b   Launch Claude + codex + gemini swarm\n' "$_cyan" "$_reset" "$_reset"
-  printf '  %bvc-research%b --prompt "text"%b         Launch Claude + codex + gemini swarm\n' "$_cyan" "$_reset" "$_reset"
+  printf '  %bvibecrafted research%b --prompt "text"%b   Launch Claude + codex + junie swarm\n' "$_cyan" "$_reset" "$_reset"
+  printf '  %bvc-research%b --prompt "text"%b         Launch Claude + codex + junie swarm\n' "$_cyan" "$_reset" "$_reset"
   printf '  %bvibecrafted research%b --file plan.md%b    Launch swarm from plan file\n' "$_cyan" "$_reset" "$_reset"
   printf '  %bvc-research%b --file plan.md%b          Launch swarm from plan file\n' "$_cyan" "$_reset" "$_reset"
   printf '\n'
@@ -1228,7 +1231,7 @@ cmd_help_full() {
   printf '  %bvibecrafted gui%b                       Public/local-web launch + observe surface\n' "$_cyan" "$_reset"
   printf '  %bvibecrafted tui%b                       Rust operator console over shared state\n' "$_cyan" "$_reset"
   printf '\n'
-  printf '  Agents: %bclaude%b · %bcodex%b · %bgemini%b\n' "$_bold" "$_reset" "$_bold" "$_reset" "$_bold" "$_reset"
+  printf '  Agents: %bclaude%b · %bcodex%b · %bgemini%b · %bagy%b · %bjunie%b · %bgrok%b\n' "$_bold" "$_reset" "$_bold" "$_reset" "$_bold" "$_reset" "$_bold" "$_reset" "$_bold" "$_reset" "$_bold" "$_reset"
   printf '\n'
   printf '%b=== ADDITIONAL SKILLS ===%b\n' "$_bold" "$_reset"
   printf '\n'
@@ -1238,7 +1241,7 @@ cmd_help_full() {
   printf '  %bpartner%b    Shared steering and executive reasoning with the user\n' "$_copper" "$_reset"
   printf '  %bownership%b  Full-spectrum operational ownership and delivery\n' "$_copper" "$_reset"
   printf '  %bdelegate%b   In-session native subagent delegation\n' "$_copper" "$_reset"
-  printf '  %bresearch%b   Triple-agent research (claude + codex + gemini)\n' "$_copper" "$_reset"
+  printf '  %bresearch%b   Triple-agent research (claude + codex + junie)\n' "$_copper" "$_reset"
   printf '  %breview%b     (vc-review v2.0.0) Bounded PR, branch, commit-range, or artifact-pack review\n' "$_copper" "$_reset"
   printf '  %bprune%b      Runtime/publish cone extraction\n' "$_copper" "$_reset"
   printf '\n'
@@ -1348,6 +1351,9 @@ cmd_init() {
     claude) command -v claude >/dev/null 2>&1 || return 1 ;;
     codex) command -v codex >/dev/null 2>&1 || return 1 ;;
     gemini) command -v gemini >/dev/null 2>&1 || return 1 ;;
+    agy) command -v agy >/dev/null 2>&1 || return 1 ;;
+    junie) command -v junie >/dev/null 2>&1 || return 1 ;;
+    grok) command -v grok >/dev/null 2>&1 || return 1 ;;
   esac
 
   [[ $# -gt 0 ]] && shift
@@ -1922,7 +1928,7 @@ main() {
     uninstall|remove) cmd_uninstall ;;
     version|--version|-v) printf 'vibecrafted %s\n' "$(_version)" ;;
     agents) cmd_agents "$@" ;;
-    claude|codex|gemini)
+    claude|codex|gemini|agy|junie|grok)
       local mode="${1:-}"
       if _is_help_flag "$mode"; then
         cmd_agent_help "$cmd"

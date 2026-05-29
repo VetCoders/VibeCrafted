@@ -28,11 +28,17 @@ PRVIEW_REPO="VetCoders/prview"
 
 ZELLIJ_REPO="zellij-org/zellij"
 
-# Agent CLIs — all npm packages
+# Agent CLIs — npm packages when the vendor publishes an official package.
 AGENT_PACKAGES=(
   "claude:@anthropic-ai/claude-code"
   "codex:@openai/codex"
   "gemini:@google/gemini-cli"
+  "junie:@jetbrains/junie"
+  "grok:@xai-official/grok"
+)
+
+AGENT_MANUAL_INSTALLS=(
+  "agy|Install Google Antigravity CLI from its vendor distribution, then run: agy install"
 )
 
 # Script/source resolution (used by the bundled-toolchain attempt).
@@ -221,7 +227,7 @@ ensure_node() {
 
   if is_interactive; then
     printf '\n'
-    info "Node.js is required for agent CLIs (claude, codex, gemini)."
+    info "Node.js is required for npm-installed agent CLIs."
     info "Installing to ${node_dir} (no sudo needed)."
     printf '  Press Enter to proceed, or Ctrl-C to skip: '
     read -r _
@@ -784,11 +790,11 @@ install_zellij() {
 }
 
 # ---------------------------------------------------------------------------
-# Agent CLI installer — all via npm
+# Agent CLI installer
 # ---------------------------------------------------------------------------
 
 install_agents() {
-  local entry binary package installed=0 total=0
+  local entry binary package hint installed=0 total=0
 
   for entry in "${AGENT_PACKAGES[@]}"; do
     binary="${entry%%:*}"
@@ -807,6 +813,24 @@ install_agents() {
     fi
 
     install_from_npm "$package" "$binary" && installed=$((installed + 1))
+  done
+
+  for entry in "${AGENT_MANUAL_INSTALLS[@]}"; do
+    binary="${entry%%|*}"
+    hint="${entry#*|}"
+    total=$((total + 1))
+
+    if has_cmd "$binary"; then
+      ok "$binary already installed: $(command -v "$binary")"
+      installed=$((installed + 1))
+      continue
+    fi
+
+    if (( CHECK_ONLY )); then
+      info "Would verify $binary; install manually: $hint"
+    else
+      warn "$binary not installed. $hint"
+    fi
   done
 
   if (( installed == total )); then

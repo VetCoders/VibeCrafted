@@ -14,7 +14,7 @@ Runs <agent> in a loop of <count> iterations against a live ancestor plan.
 Convergence happens through code state, not report chaining.
 
 Options:
-  --agent <name>      claude, codex, or gemini (required)
+  --agent <name>      claude, codex, gemini, agy, junie, or grok (required)
   --depth <n>         Crawl last n plan files as context (default: 3 when no source is given)
   --file <file>       Use specific plan/input file
   --prompt <text>     Inline prompt string; captures the rest of the command line
@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$agent" ]] || spawn_die "Missing --agent"
-[[ "$agent" =~ ^(claude|codex|gemini)$ ]] || spawn_die "Invalid agent: $agent"
+[[ "$agent" =~ ^(claude|codex|gemini|agy|junie|grok)$ ]] || spawn_die "Invalid agent: $agent"
 spawn_validate_runtime "$runtime"
 spawn_require_positive_int "$count" "--count"
 spawn_rotation_validate_mode "$rotation"

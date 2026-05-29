@@ -48,7 +48,7 @@ CATEGORY_ORDER = tuple(CATEGORY_LABELS)
 FOUNDATION_COMMANDS = ("loctree-mcp", "aicx-mcp", "prview", "screenscribe")
 BUNDLED_BIN_NAMES = ("aicx-mcp", "aicx", "loctree-mcp", "loctree", "loct", "prview")
 TOOLCHAIN_COMMANDS = ("python3", "node", "git", "rsync")
-AGENT_COMMANDS = ("claude", "codex", "gemini")
+AGENT_COMMANDS = ("claude", "codex", "gemini", "agy", "junie", "grok")
 ADDITIONAL_TOOL_COMMANDS = ("mise", "starship", "atuin", "zoxide")
 
 
@@ -83,6 +83,9 @@ def runtime_skill_views() -> dict[str, Path]:
         "claude": home / ".claude" / "skills",
         "codex": home / ".codex" / "skills",
         "gemini": home / ".gemini" / "skills",
+        "agy": home / ".agy" / "skills",
+        "junie": home / ".junie" / "skills",
+        "grok": home / ".grok" / "skills",
     }
 
 
@@ -233,7 +236,7 @@ def _framework_checks() -> dict[str, dict[str, Any]]:
             "found": bool(active_views),
             "detail": ", ".join(active_views)
             if active_views
-            else "No runtime skill views detected in $HOME/.agents, $HOME/.claude, $HOME/.codex, or $HOME/.gemini",
+            else "No runtime skill views detected in $HOME/.agents, $HOME/.claude, $HOME/.codex, $HOME/.gemini, $HOME/.agy, $HOME/.junie, or $HOME/.grok",
             "kind": "path",
         },
     }
@@ -521,7 +524,7 @@ class InstallController:
             "control_plane": control_plane,
             "launcher_defaults": {
                 "workflows": ["workflow", "research", "review", "marbles"],
-                "agents": ["claude", "codex", "gemini"],
+                "agents": ["claude", "codex", "gemini", "agy", "junie", "grok"],
                 "runtimes": ["headless", "terminal", "visible"],
             },
             "status": self.status_payload(),
@@ -1744,7 +1747,7 @@ def build_html(preflight: dict[str, Any]) -> str:
                   <p class="slide-note">%%PRODUCT_LINE%%</p>
                   <code class="fallback-code">make wizard</code>
                   <p class="slide-note">
-                    Local checkout GUI stays available for operators who want this browser-guided rhythm. For terminal-native flow, use <code>make vibecrafted</code>.
+                    Local checkout GUI stays available for operators who want this browser-guided rhythm. For terminal-native flow, use <code>make install</code>.
                   </p>
                 </section>
               </aside>
@@ -1933,7 +1936,7 @@ def build_html(preflight: dict[str, Any]) -> str:
                             <section class="summary-card">
                               <h3>Local install view</h3>
                               <p class="summary-copy">
-                                `make wizard` opens this same browser-guided surface from a local checkout. `make vibecrafted` stays the shell-first default.
+                                `make wizard` opens this same browser-guided surface from a local checkout. `make install` stays the shell-first default.
                               </p>
                             </section>
                           </div>

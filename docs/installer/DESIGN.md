@@ -14,7 +14,7 @@ not the log of the process.
 
 ## Current Problem
 
-`make vibecrafted` currently outputs ~80 lines across:
+`make install` used to output ~80 lines across:
 
 -𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. Framework Setup header + plan (8 lines)
 
@@ -217,7 +217,7 @@ Verification:
     🅵·🅁·🄰·🄼·🄴·🅆·🅞·🅡·🅺
 ```
 
-## Target flow for interactive mode (`make vibecrafted`):
+## Target flow for interactive mode (`make install`):
 
 - I. Upper portion - Hero
 
@@ -386,7 +386,7 @@ III. Action prompt or progress bar
 
 ---
 
-# Target for non-interactive mode (`make install`):
+# Target for non-interactive mode (`make install-auto`):
 
 Same output but without Y/n prompts — just runs and prints the final state.
 
@@ -511,8 +511,8 @@ The installer runs without additional prompts when called with --compact.
 
 ## Test
 
-- `make vibecrafted` fits on one screen (~25 lines)
-- `make install` still works (verbose by default)
+- `make install` fits on one screen (~25 lines)
+- `make install-auto` still works without prompts
 - `$VIBECRAFTED_ROOT/.vibecrafted/install.log` contains full verbose output
 - `bash scripts/check-portable.sh` passes
 - All 16 skills installed correctly

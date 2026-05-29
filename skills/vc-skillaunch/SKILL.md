@@ -16,6 +16,16 @@ Turns a completed workflow into a reusable agent skill. Specifically, this skill
 extracts patterns from an interaction or workflow that **already happened** and
 packages them.
 
+## Canonical Orientation Gate
+
+If the workflow being distilled depends on a repository, run or consume the
+`vc-init` procedure before writing the skill contract. `Loctree:loctree` is the
+default structural perception skill for that pass and must produce or refresh
+the Code-Derived Application Map.
+
+If the workflow is not repo-specific, state the no-repo exception and distill
+the interaction evidence directly.
+
 > [!CAUTION] **You MUST complete Phase 1 (Brainstorming) before writing any code
 > or SKILL.md content.** Skipping brainstorming produces skills that are either
 > too rigid or too vague. The brainstorming conversation is the most important

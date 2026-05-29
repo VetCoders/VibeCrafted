@@ -448,9 +448,9 @@ def _is_writable(path: Path) -> bool:
         return False
 
 
-AGENT_RUNTIMES = ["codex", "claude", "gemini", "agy", "junie"]
+AGENT_RUNTIMES = ["codex", "claude", "gemini", "agy", "junie", "grok"]
 SYMLINK_TARGETS = ["agents", "claude", "codex"]
-SYMLINK_TARGET_CHOICES = [*SYMLINK_TARGETS, "gemini", "agy", "junie"]
+SYMLINK_TARGET_CHOICES = [*SYMLINK_TARGETS, "gemini", "agy", "junie", "grok"]
 
 # ---------------------------------------------------------------------------
 # Install state
@@ -2927,6 +2927,7 @@ def run_doctor(store_path: Path, state: InstallState) -> List[DoctorFinding]:
         "gemini": [["--version"], ["-v"], ["--help"]],
         "agy": [["--version"], ["--help"]],
         "junie": [["--version"], ["--help"]],
+        "grok": [["--version"], ["--help"]],
     }
     for agent_name, flag_options in _agent_flag_checks.items():
         agent_bin = shutil.which(agent_name)
@@ -3797,6 +3798,11 @@ def _cmd_install_compact(args: argparse.Namespace, repo_root: Path) -> int:
             "Diagnostics and Plan",
             "We show the shape before changing files, so the install is consentful and debuggable.",
             (
+                "Action  Set artifacts storage location",
+                "REASON  𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. keeps persistent artifacts on the developer's hard disk for past-session context retrieval. We make the location explicit so you can inspect, move, or delete it.",
+                f"Path    {shared_home / 'artifacts'}",
+                "Action  Choose installation options",
+                "REASON  One installer path with clear choices is more respectful than a wall of maintenance commands.",
                 f"Skills   {len(selected_skills)} -> {store_path}",
                 f"Views    {', '.join(all_runtimes)}",
                 f"Agents   {', '.join(detected_agents) if detected_agents else 'none detected'}",

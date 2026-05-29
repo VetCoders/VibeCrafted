@@ -16,6 +16,16 @@ description: >
 Pull historical context from previous AI sessions for this project. We are looking
 for the _why_, not just a blind dump of _how_.
 
+## Canonical Orientation Gate
+
+For repo-specific work, run or consume the `vc-init` procedure before turning
+AICX memory into a recommendation. `Loctree:loctree` is the default structural
+perception skill for that pass; use it to produce or refresh the
+Code-Derived Application Map before trusting older intent.
+
+AICX explains why prior agents moved. Loctree and current repo gates decide
+whether that intent is still true.
+
 ## The toolset:
 
 1. `aicx` (cli) and `aicx-mcp` (stdio and streamable-http):

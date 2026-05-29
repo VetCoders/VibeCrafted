@@ -17,6 +17,16 @@ Two-phase skill: **Phase 1** generates structured artifacts with prview-rs,
 **Phase 2** squeezes maximum findings from them. Output: P-leveled findings
 with evidence + before-merge TODO checklist.
 
+## Canonical Orientation Gate
+
+Before using prview artifacts as release or merge truth, run or consume the
+`vc-init` procedure for the assigned repo. `Loctree:loctree` is the default
+structural perception skill for that pass and must produce or refresh the
+Code-Derived Application Map.
+
+Use Loctree to identify load-bearing files and blast radius; use prview to
+audit the requested diff or artifact pack against that current structure.
+
 Binary: `prview` (installed at `~/.cargo/bin/prview`)
 Source: `https://github.com/LibraxisAI/prview-rs`
 Author: Monika (@m-szymanska) — LibraxisAI

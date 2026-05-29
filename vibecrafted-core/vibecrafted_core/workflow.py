@@ -11,7 +11,7 @@ from .control_plane import control_plane_home, sync_state
 
 
 SUPPORTED_WORKFLOWS = {"workflow", "research", "review", "marbles"}
-SUPPORTED_AGENTS = {"claude", "codex", "gemini", "swarm"}
+SUPPORTED_AGENTS = {"claude", "codex", "gemini", "agy", "junie", "grok", "swarm"}
 SUPPORTED_RUNTIMES = {"headless", "terminal", "visible"}
 
 

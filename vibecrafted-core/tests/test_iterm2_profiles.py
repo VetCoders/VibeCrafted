@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -287,6 +289,25 @@ def test_cli_help_includes_operations(capsys: pytest.CaptureFixture[str]) -> Non
     assert "uninstall" in captured.out
     assert "refresh" in captured.out
     assert "migrate-from-experimental" in captured.out
+
+
+def test_module_cli_help_runs_without_import_warning() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-Werror",
+            "-m",
+            "vibecrafted_core.iterm2_profiles",
+            "--help",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Usage: python -m vibecrafted_core.iterm2_profiles" in result.stdout
+    assert "RuntimeWarning" not in result.stderr
 
 
 def test_cli_help_drops_experimental_framing(

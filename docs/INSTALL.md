@@ -58,9 +58,9 @@ Or from a local checkout:
 ```bash
 git clone https://github.com/VetCoders/vibecrafted.git
 cd vibecrafted
-make vibecrafted          # interactive wizard
+make install              # interactive wizard
 # or
-make install              # non-interactive (CI-friendly)
+make install-auto         # non-interactive (CI-friendly)
 ```
 
 ### Verify
@@ -158,7 +158,7 @@ to copy-paste, scoped to your detected package manager. Re-run after.
 ```bash
 git clone https://github.com/VetCoders/vibecrafted.git
 cd vibecrafted
-make install               # non-interactive
+make install               # interactive wizard
 ```
 
 ### Verify

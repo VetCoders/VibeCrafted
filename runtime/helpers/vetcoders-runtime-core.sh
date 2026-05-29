@@ -116,10 +116,9 @@ _vetcoders_write_research_summary() {
   local run_id="$2"
   local root="$3"
   local prompt_file="$4"
-  local claude_launcher="$5"
-  local codex_launcher="$6"
-  local gemini_launcher="$7"
+  shift 4
   local summary_file="$run_dir/summary.md"
+  local entry agent launcher label agents_csv
 
   cat > "$summary_file" <<EOF
 # Research Run: $run_id
@@ -130,22 +129,38 @@ Await: vc-research-await --run-id $run_id
 
 ## Reports
 
-- Claude: $run_dir/reports/claude.md
-- Codex: $run_dir/reports/codex.md
-- Gemini: $run_dir/reports/gemini.md
+EOF
+
+  agents_csv=""
+  for entry in "$@"; do
+    agent="${entry%%=*}"
+    launcher="${entry#*=}"
+    [[ -n "$agent" && "$agent" != "$entry" ]] || continue
+    label="$(printf '%s' "$agent" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+    agents_csv="${agents_csv:+$agents_csv,}$agent"
+    printf -- '- %s: %s/reports/%s.md\n' "$label" "$run_dir" "$agent" >> "$summary_file"
+  done
+
+  cat >> "$summary_file" <<EOF
 
 ## Internal Logs
 
-- Metadata: $run_dir/logs/{claude,codex,gemini}.meta.json
-- Transcripts: $run_dir/logs/{claude,codex,gemini}.transcript.log
+- Metadata: $run_dir/logs/{${agents_csv}}.meta.json
+- Transcripts: $run_dir/logs/{${agents_csv}}.transcript.log
 - Launchers and runtime prompts: $run_dir/tmp/
 
 ## Launchers
 
-- Claude: $claude_launcher
-- Codex: $codex_launcher
-- Gemini: $gemini_launcher
 EOF
+
+  for entry in "$@"; do
+    agent="${entry%%=*}"
+    launcher="${entry#*=}"
+    [[ -n "$agent" && "$agent" != "$entry" ]] || continue
+    label="$(printf '%s' "$agent" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+    printf -- '- %s: %s\n' "$label" "$launcher" >> "$summary_file"
+  done
+
   printf '%s\n' "$summary_file"
 }
 

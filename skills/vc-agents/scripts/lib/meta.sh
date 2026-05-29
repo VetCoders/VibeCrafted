@@ -328,3 +328,253 @@ with open(meta_path, "w", encoding="utf-8") as fh:
 PY
   spawn_sync_control_plane
 }
+
+spawn_finalize_artifacts() {
+  local meta_path="$1"
+  local report_path="${2:-}"
+  local transcript_path="${3:-}"
+
+  [[ -f "$meta_path" ]] || return 0
+
+  python3 - "$meta_path" "$report_path" "$transcript_path" <<'PY'
+import datetime as dt
+import json
+import os
+import pathlib
+import re
+import sys
+
+meta_path = pathlib.Path(sys.argv[1])
+report_arg = sys.argv[2]
+transcript_arg = sys.argv[3]
+
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+SESSION_PATTERNS = [
+    re.compile(r"(?:^|\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]\s+)session:\s*([A-Za-z0-9][A-Za-z0-9._:-]*)", re.MULTILINE),
+    re.compile(r"\b(?:thread|conversation|session)[_-]?id['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9][A-Za-z0-9._:-]*)", re.IGNORECASE),
+]
+TOKEN_PATTERN = re.compile(
+    r"tokens:\s*([0-9]+)\s+in(?:\s*\(([0-9]+)\s+cached\))?\s*/\s*([0-9]+)\s+out",
+    re.IGNORECASE,
+)
+COST_PATTERNS = [
+    re.compile(r"cost(?:_usd)?\s*[:=]\s*\$?([0-9]+(?:\.[0-9]+)?)", re.IGNORECASE),
+    re.compile(r"\$([0-9]+\.[0-9]+)\s*(?:usd)?", re.IGNORECASE),
+]
+
+
+def read_text(path: pathlib.Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def write_text(path: pathlib.Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def clean_text(text: str) -> str:
+    return ANSI.sub("", text)
+
+
+def extract_session(text: str) -> str:
+    clean = clean_text(text)
+    for pattern in SESSION_PATTERNS:
+        matches = pattern.findall(clean)
+        if matches:
+            return matches[-1]
+    return ""
+
+
+def extract_tokens(text: str) -> dict[str, int]:
+    clean = clean_text(text)
+    found = TOKEN_PATTERN.findall(clean)
+    if not found:
+        return {"input": 0, "cached_input": 0, "output": 0, "total": 0}
+    input_tokens = cached_tokens = output_tokens = 0
+    for raw_in, raw_cached, raw_out in found:
+        input_tokens += int(raw_in)
+        cached_tokens += int(raw_cached or 0)
+        output_tokens += int(raw_out)
+    return {
+        "input": input_tokens,
+        "cached_input": cached_tokens,
+        "output": output_tokens,
+        "total": input_tokens + output_tokens,
+    }
+
+
+def extract_cost(text: str):
+    clean = clean_text(text)
+    for pattern in COST_PATTERNS:
+        matches = pattern.findall(clean)
+        if matches:
+            try:
+                return round(float(matches[-1]), 6)
+            except ValueError:
+                pass
+    return None
+
+
+def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}, text
+    end = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end = index
+            break
+    if end is None:
+        return {}, text
+    data: dict[str, str] = {}
+    for line in lines[1:end]:
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        data[key.strip()] = value.strip()
+    body = "\n".join(lines[end + 1 :]).lstrip("\n")
+    return data, body
+
+
+def render_frontmatter(data: dict[str, object]) -> str:
+    order = [
+        "run_id",
+        "prompt_id",
+        "agent",
+        "skill",
+        "model",
+        "status",
+        "session_id",
+        "repo_path",
+        "tokens_input",
+        "tokens_output",
+        "tokens_total",
+        "cost_usd",
+    ]
+    lines = ["---"]
+    emitted = set()
+    for key in order:
+        if key in data:
+            value = data.get(key)
+            lines.append(f"{key}: {value if value not in (None, '') else 'unknown'}")
+            emitted.add(key)
+    for key in sorted(k for k in data if k not in emitted):
+        value = data.get(key)
+        lines.append(f"{key}: {value if value not in (None, '') else 'unknown'}")
+    lines.extend(["---", ""])
+    return "\n".join(lines)
+
+
+def footer(marker: str, payload: dict[str, object]) -> str:
+    return "\n".join(
+        [
+            "",
+            f"<!-- vibecrafted-artifact-footer:{marker} -->",
+            "---",
+            "run_closure:",
+            f"  run_id: {payload.get('run_id', 'unknown')}",
+            f"  session_id: {payload.get('session_id') or 'unknown'}",
+            f"  tokens_input: {payload.get('tokens_input', 0)}",
+            f"  tokens_output: {payload.get('tokens_output', 0)}",
+            f"  tokens_total: {payload.get('tokens_total', 0)}",
+            f"  cost_usd: {payload.get('cost_usd') if payload.get('cost_usd') is not None else 'unknown'}",
+            f"  status: {payload.get('status', 'unknown')}",
+            f"  completed_at: {payload.get('completed_at', 'unknown')}",
+            f"  resume_hint: \"{payload.get('resume_hint', '')}\"",
+            "---",
+            "",
+        ]
+    )
+
+
+def normalize_markdown_artifact(path: pathlib.Path, payload: dict[str, object], *, fallback_body: str = "") -> None:
+    text = read_text(path)
+    if not text and fallback_body:
+        text = fallback_body
+    if not text:
+        return
+    fm, body = parse_frontmatter(text)
+    fm.update(
+        {
+            "run_id": payload.get("run_id", "unknown"),
+            "prompt_id": payload.get("prompt_id", "unknown"),
+            "agent": payload.get("agent", "unknown"),
+            "skill": payload.get("skill_code") or payload.get("skill") or "unknown",
+            "model": payload.get("model", "unknown"),
+            "status": payload.get("status", "unknown"),
+            "session_id": payload.get("session_id") or "unknown",
+            "repo_path": payload.get("root", "unknown"),
+            "tokens_input": payload.get("tokens_input", 0),
+            "tokens_output": payload.get("tokens_output", 0),
+            "tokens_total": payload.get("tokens_total", 0),
+            "cost_usd": payload.get("cost_usd") if payload.get("cost_usd") is not None else "unknown",
+        }
+    )
+    marker = str(payload.get("run_id") or "unknown")
+    new_text = render_frontmatter(fm) + body.rstrip() + "\n"
+    if f"vibecrafted-artifact-footer:{marker}" not in new_text:
+        new_text += footer(marker, payload)
+    write_text(path, new_text)
+
+
+try:
+    payload = json.loads(read_text(meta_path))
+except json.JSONDecodeError:
+    raise SystemExit(0)
+
+report_path = pathlib.Path(report_arg or payload.get("report", ""))
+transcript_path = pathlib.Path(transcript_arg or payload.get("transcript", ""))
+transcript_text = read_text(transcript_path) if str(transcript_path) else ""
+report_text = read_text(report_path) if str(report_path) else ""
+combined_text = "\n".join([transcript_text, report_text])
+
+session_id = payload.get("session_id") or extract_session(combined_text)
+tokens = extract_tokens(combined_text)
+cost = extract_cost(combined_text)
+completed_at = payload.get("completed_at") or dt.datetime.now(dt.timezone.utc).isoformat()
+root = payload.get("root") or os.getcwd()
+resume_hint = (
+    f"Use `cd {root} && vc-resume --session {session_id}` to continue work with this Agent."
+    if session_id
+    else f"Use `cd {root} && vc-resume --session <session_id>` to continue work with this Agent."
+)
+
+payload["session_id"] = session_id or payload.get("session_id") or ""
+payload["tokens_input"] = tokens["input"]
+payload["tokens_cached_input"] = tokens["cached_input"]
+payload["tokens_output"] = tokens["output"]
+payload["tokens_total"] = tokens["total"]
+payload["token_usage"] = tokens
+payload["cost_usd"] = cost
+payload["resume_hint"] = resume_hint
+payload["artifact_contract"] = "vibecrafted.agent-artifact.v1"
+payload["artifact_footer"] = {
+    "run_id": payload.get("run_id", "unknown"),
+    "session_id": payload.get("session_id") or "",
+    "tokens_total": tokens["total"],
+    "cost_usd": cost,
+    "resume_hint": resume_hint,
+}
+payload.setdefault("completed_at", completed_at)
+payload["updated_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+
+meta_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+footer_payload = {
+    **payload,
+    "tokens_input": tokens["input"],
+    "tokens_output": tokens["output"],
+    "tokens_total": tokens["total"],
+    "cost_usd": cost,
+}
+
+if str(transcript_path):
+    normalize_markdown_artifact(transcript_path, footer_payload)
+if str(report_path) and report_path.exists() and report_path.suffix.lower() in {".md", ".markdown"}:
+    normalize_markdown_artifact(report_path, footer_payload)
+PY
+  spawn_sync_control_plane
+}

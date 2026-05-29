@@ -71,6 +71,27 @@ def _default_command(agent: str, prompt: str) -> list[str]:
         return ["codex", "--dangerously-bypass-approvals-and-sandbox", prompt]
     if agent == "gemini":
         return ["gemini", "-y", "-i", prompt]
+    if agent == "agy":
+        return [
+            "bash",
+            "-lc",
+            "agy --print --dangerously-skip-permissions --add-dir . --print-timeout 30m '' <<< \"$1\"",
+            "agy",
+            prompt,
+        ]
+    if agent == "junie":
+        return ["junie", "--task", prompt, "--project", ".", "--skip-update-check"]
+    if agent == "grok":
+        return [
+            "grok",
+            "--cwd",
+            ".",
+            "--permission-mode",
+            "bypassPermissions",
+            "--no-alt-screen",
+            "--single",
+            prompt,
+        ]
     raise ValueError(f"unsupported agent: {agent}")
 
 

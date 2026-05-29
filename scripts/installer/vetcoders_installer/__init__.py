@@ -500,7 +500,7 @@ def _load_mock_screen(
     navigation bar and FRAMEWORK tag authored by the designer are preserved
     exactly as written. The nav bar advertises keys (⇅ Nav, ␣ Sel, ⇥ View)
     that belong to the advanced interactive flow reached via
-    ``make setup-dev`` (``vetcoders_install.py install --advanced``); it
+    ``make setup-dev`` (``vetcoders-installer install.toml --advanced``); it
     is a consistent reference across all screens, not a per-screen promise.
 
     ``{version}`` placeholders inside the mockup body are interpolated with
@@ -796,9 +796,9 @@ def _print_summary(
     next_steps = manifest.branding.get("next_steps", []) if manifest.branding else []
 
     installer_cmd = (
-        manifest.branding.get("installer_cmd", "make vibecrafted")
+        manifest.branding.get("installer_cmd", "make install")
         if manifest.branding
-        else "make vibecrafted"
+        else "make install"
     )
 
     if all_ok:

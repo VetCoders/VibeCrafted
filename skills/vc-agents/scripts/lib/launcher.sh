@@ -139,7 +139,6 @@ if [[ "${VIBECRAFTED_INLINE_STARTUP_WATCH:-1}" != "0" ]]; then
   VIBECRAFTED_STARTUP_WATCH_ECHO=0 spawn_watch_startup "$meta" "$transcript" "$report" &
   startup_watch_pid=$!
 fi
-
 if bash -c "$SPAWN_CMD"; then
 EOF_LAUNCH
 
@@ -150,8 +149,8 @@ EOF_LAUNCH
   if [[ -n "$success_hook" ]]; then
     printf '%s\n' "$success_hook" >> "$launcher"
   fi
-
   cat >> "$launcher" <<'EOF_LAUNCH'
+  spawn_finalize_artifacts "$meta" "$report" "$transcript"
   if [[ -n "$startup_watch_pid" ]]; then
     wait "$startup_watch_pid" 2>/dev/null || true
   fi
@@ -163,8 +162,8 @@ EOF_LAUNCH
   if [[ -n "$failure_hook" ]]; then
     printf '%s\n' "$failure_hook" >> "$launcher"
   fi
-
   cat >> "$launcher" <<'EOF_LAUNCH'
+  spawn_finalize_artifacts "$meta" "$report" "$transcript"
   if [[ -n "$startup_watch_pid" ]]; then
     wait "$startup_watch_pid" 2>/dev/null || true
   fi
@@ -245,6 +244,7 @@ spawn_print_launch() {
   local agent="$1"
   local mode="$2"
   local runtime="${3:-terminal}"
+  local dry_run="${4:-0}"
 
   # ── 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. branded spawn output ──────────────────────────────
   local _dim='\033[2m'    _bold='\033[1m'
@@ -260,5 +260,9 @@ spawn_print_launch() {
   printf '%b  trace:   %b%s%b\n'   "$_steel" "$_reset" "${SPAWN_TRANSCRIPT:-—}" "$_reset"
   printf '%b  runtime: %b%s%b\n'   "$_steel" "$_reset" "$runtime" "$_reset"
   printf '%b\n' "$_bar"
-  printf '%b  Agent launched.%b\n\n' "$_dim" "$_reset"
+  if [[ "$dry_run" == "1" ]]; then
+    printf '%b  Dry run: launcher generated only.%b\n\n' "$_dim" "$_reset"
+  else
+    printf '%b  Agent launched.%b\n\n' "$_dim" "$_reset"
+  fi
 }

@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import textwrap
+import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -190,17 +191,17 @@ def test_vc_research_uses_run_scoped_artifact_layout(tmp_path: Path) -> None:
     assert sorted(p.name for p in (run_dir / "logs").glob("*.meta.json")) == [
         "claude.meta.json",
         "codex.meta.json",
-        "gemini.meta.json",
+        "junie.meta.json",
     ]
     assert sorted(p.name for p in (run_dir / "tmp").glob("*_launch.sh")) == [
         "claude_launch.sh",
         "codex_launch.sh",
-        "gemini_launch.sh",
+        "junie_launch.sh",
     ]
     assert not list(run_dir.parent.parent.glob("reports/*rsch*.meta.json"))
     assert not list(run_dir.parent.parent.glob("tmp/vc-research-*"))
 
-    for agent in ("claude", "codex", "gemini"):
+    for agent in ("claude", "codex", "junie"):
         meta = json.loads((run_dir / "logs" / f"{agent}.meta.json").read_text())
         assert meta["run_id"] == run_id
         assert meta["skill_code"] == "rsch"
@@ -236,6 +237,17 @@ def test_vc_research_uses_run_scoped_artifact_layout(tmp_path: Path) -> None:
     assert "tracks:  3" in await_result.stdout
     assert str(run_dir / "reports" / "codex.md") in await_result.stdout
     assert str(run_dir / "logs" / "codex.meta.json") in await_result.stdout
+
+
+def test_runtime_picking_manifest_sets_junie_as_default_third_researcher() -> None:
+    manifest = tomllib.loads((REPO_ROOT / "install.toml").read_text(encoding="utf-8"))
+
+    assert manifest["runtime"]["picking"]["research"]["default_agents"] == [
+        "claude",
+        "codex",
+        "junie",
+    ]
+    assert "agy" in manifest["runtime"]["picking"]["research"]["fallback_agents"]
 
 
 def test_vc_research_skill_documents_read_only_source_repo_contract() -> None:

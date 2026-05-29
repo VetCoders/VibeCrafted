@@ -11,73 +11,41 @@ BRANCH   ?= main
 VERSION_FILE := VERSION
 RUNTIME ?= none
 
-.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij test-iterm2-migrate test-memex test-aicx-sync test-hammerspoon install install-hammerspoon skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall iterm-plugin-migrate demo demo-full commit-safe test-race-protection skill-new
+.PHONY: help vibecrafted gui-install wizard wizard-dev check test test-skills test-install test-parity test-zellij test-iterm2-migrate test-memex test-aicx-sync test-hammerspoon install install-auto install-hammerspoon skills helpers setup-dev dry-run doctor list update uninstall restore migrate migrate-dry init-hooks bundle bundle-check foundations foundations-check semgrep version version-show version-bump bump-patch bump-minor bump-major iterm-plugin iterm-plugin-refresh iterm-plugin-show iterm-plugin-uninstall iterm-plugin-migrate demo demo-full commit-safe test-race-protection skill-new
 
 help:
 	@printf "\n"
 	@printf "  \033[1m\033[38;5;173m⚒  𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. Framework\033[0m\n"
 	@printf "  ─────────────────────────────────────\n"
 	@printf "\n"
-	@printf "  \033[36m▸\033[0m  make vibecrafted   \033[2mTerminal-native installer wizard (default shell-first front door)\033[0m\n"
-	@printf "  \033[36m▸\033[0m  make wizard        \033[2mBrowser-based guided installer (optional GUI surface)\033[0m\n"
-	@printf "  \033[36m▸\033[0m  make gui-install   \033[2mAlias for the browser-based guided installer\033[0m\n"
+	@printf "  \033[36m▸\033[0m  make install       \033[2mInstall interactively with checkpoints and REASON\033[0m\n"
+	@printf "  \033[36m▸\033[0m  make setup-dev     \033[2mOpen the meta-installer for options and local setup\033[0m\n"
+	@printf "  \033[36m▸\033[0m  make wizard        \033[2mOpen the browser-guided installer\033[0m\n"
 	@printf "\n"
-	@printf "  \033[33m◆\033[0m  make install       \033[2mNon-interactive install routed through the same runner with --yes\033[0m\n"
-	@printf "  \033[33m◆\033[0m  make install RUNTIME=wezterm \033[2mInstall and activate a lab runtime horse\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make skills        \033[2mSkills only\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make helpers       \033[2mShell helpers only\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make foundations   \033[2mInstall loctree + aicx binaries\033[0m\n"
+	@printf "  \033[2mOptions live inside the installer. Use setup-dev when you want to choose\033[0m\n"
+	@printf "  \033[2martifacts storage, runtime horse, shell helpers, skills, or dry-run mode.\033[0m\n"
 	@printf "\n"
-	@printf "  \033[36m▸\033[0m  make setup-dev     \033[2mSelective interactive install\033[0m\n"
-	@printf "  \033[36m▸\033[0m  make dry-run       \033[2mPreview install actions\033[0m\n"
+	@printf "  \033[33m◆\033[0m  make install-auto  \033[2mAutomation path: same installer, auto-approved\033[0m\n"
+	@printf "  \033[33m◆\033[0m  make install RUNTIME=wezterm \033[2mInstall with a lab runtime selected\033[0m\n"
 	@printf "\n"
 	@printf "  \033[32m✓\033[0m  make doctor        \033[2mVerify installation health\033[0m\n"
-	@printf "  \033[32m↻\033[0m  make update        \033[2mPull latest + re-install\033[0m\n"
-	@printf "  \033[32m◇\033[0m  make list          \033[2mShow bundle + runtime foundations\033[0m\n"
-	@printf "  \033[32m◇\033[0m  make bundle        \033[2mRefresh marketplace plugin bundle\033[0m\n"
-	@printf "  \033[32m◇\033[0m  make bundle-check  \033[2mFail if the committed marketplace bundle drifted from repo truth\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make test          \033[2mRun installer + marketplace pytest gates\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-skills   \033[2mRun skill-loader integration smoke (frontmatter + helpers + doctor)\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-install  \033[2mRun install.sh / install.ps1 cross-platform smoke (Plan 03)\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-race-protection \033[2mVerify Living Tree commit race detection helper\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-parity   \033[2mVerify AGENT MODEL PARITY enforcement (Plan 06)\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-zellij   \033[2mVerify zellij layouts + mesh themes + auto-theme (Plan 12)\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-iterm2-migrate \033[2mVerify iTerm2 experimental -> GA migration (Plan 10)\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-memex    \033[2mVerify memex cross-session retrieval client (Plan 09)\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-aicx-sync \033[2mVerify AICX cross-machine sync v2 + authority conflict resolution (Plan 08)\033[0m\n"
-	@printf "  \033[32m✓\033[0m  make test-hammerspoon \033[2mVerify Hammerspoon URL handler stack + injection sanitization (Plan 11)\033[0m\n"
 	@printf "  \033[32m✓\033[0m  make check         \033[2mRun basic linters on shell scripts\033[0m\n"
-	@printf "\n"
-	@printf "  \033[33m◆\033[0m  make migrate       \033[2mMigrate .ai-agents/ to $$VIBECRAFTED_ROOT/.vibecrafted/artifacts/\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make migrate-dry   \033[2mPreview migration (dry run)\033[0m\n"
-	@printf "\n"
-	@printf "  \033[31m✕\033[0m  make uninstall     \033[2mRemove skills + helpers\033[0m\n"
-	@printf "  \033[31m↺\033[0m  make restore       \033[2mUndo last install/uninstall\033[0m\n"
-	@printf "\n"
-	@printf "  \033[2m── iTerm2 (GA since v1.8.0) ────────────\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make iterm-plugin           \033[2mInstall iTerm2 Dynamic Profiles (alongside, idempotent)\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make iterm-plugin-refresh   \033[2mOverwrite installed file (creates .bak)\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make iterm-plugin-show      \033[2mPrint generated JSON to stdout\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make iterm-plugin-uninstall \033[2mRemove the installed file\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make iterm-plugin-migrate   \033[2mMigrate v1.7 vibecrafted-experimental.json → vibecrafted.json (Plan 10)\033[0m\n"
-	@printf "  \033[2m── Hammerspoon URL handlers (Plan 11) ──\033[0m\n"
-	@printf "  \033[33m◇\033[0m  make install-hammerspoon    \033[2mCopy config/hammerspoon/init.lua to ~/.hammerspoon/init.lua + reload (Plan 11)\033[0m\n"
-	@printf "  \033[2m── operator dashboards ─────────────────\033[0m\n"
-	@printf "  \033[33m✦\033[0m  make demo                   \033[2mLive terminal dashboard z klikalnymi akcjami (vc-* URL handlers)\033[0m\n"
-	@printf "  \033[33m✦\033[0m  make demo-full              \033[2mDashboard + aicx HTML serve w tle (browser)\033[0m\n"
 	@printf "\n"
 	@printf "  ╭─────────────────────────────────────────╮\n"
 	@printf "  │ Vibecrafted with AI Agents by VetCoders │\n"
 	@printf "  ╰─────────────────────────────────────────╯\n"
 	@printf "\n"
 
-vibecrafted: init-hooks
+vibecrafted: install
+
+install: init-hooks
 	@if ! command -v uv >/dev/null 2>&1; then \
 		echo "bootstrapping uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi; \
 	export PATH="$$HOME/.local/bin:$$PATH"; \
-	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)
+	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --quiet
 
 # BUNDLE_DIR accepts an external prebuilt Svelte site/dist tree
 # (e.g. from the sibling vibecrafted-io repo). When empty, `make wizard`
@@ -120,13 +88,13 @@ gui-install: wizard
 # `make wizard` already rebuilds the sibling site when it is available.
 wizard-dev: wizard
 
-install: init-hooks
+install-auto: init-hooks
 	@if ! command -v uv >/dev/null 2>&1; then \
 		echo "bootstrapping uv..."; \
 		curl -LsSf https://astral.sh/uv/install.sh | sh; \
 	fi; \
 	export PATH="$$HOME/.local/bin:$$PATH"; \
-	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes
+	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes --quiet
 
 skills:
 	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --non-interactive
@@ -141,10 +109,15 @@ foundations-check:
 	@bash scripts/install-foundations.sh --check
 
 setup-dev: init-hooks
-	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --advanced
+	@if ! command -v uv >/dev/null 2>&1; then \
+		echo "bootstrapping uv..."; \
+		curl -LsSf https://astral.sh/uv/install.sh | sh; \
+	fi; \
+	export PATH="$$HOME/.local/bin:$$PATH"; \
+	VIBECRAFTED_RUNTIME="$(RUNTIME)" uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --advanced --quiet
 
 dry-run:
-	@$(PYTHON) $(INSTALLER) install --source "$(SOURCE)" --dry-run
+	@uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --dry-run
 
 doctor:
 	@$(PYTHON) $(INSTALLER) doctor
@@ -272,17 +245,14 @@ demo-full:
 
 init-hooks:
 	@if git rev-parse --git-dir >/dev/null 2>&1; then \
-		echo "Installing custom git hooks..."; \
-		git config core.hooksPath scripts/hooks; \
+		git config core.hooksPath scripts/hooks >/dev/null; \
 		chmod +x scripts/hooks/pre-commit scripts/hooks/pre-push; \
-		echo "Hooks installed to scripts/hooks and activated via core.hooksPath."; \
-		echo "Ensuring hook toolchain..."; \
-		command -v uv >/dev/null 2>&1 || { echo "  installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; }; \
-		uvx ruff --version >/dev/null 2>&1 && echo "  ruff: ok" || echo "  [warn] ruff unavailable via uvx"; \
-		command -v semgrep >/dev/null 2>&1 && echo "  semgrep: ok" || { echo "  checking semgrep via uvx..."; uvx semgrep --version >/dev/null 2>&1 && echo "  semgrep: ok via uvx" || echo "  [warn] semgrep unavailable"; }; \
-		npx --yes prettier --version >/dev/null 2>&1 && echo "  prettier: ok" || echo "  [warn] prettier unavailable via npx"; \
+		command -v uv >/dev/null 2>&1 || { echo "bootstrapping uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; }; \
+		uvx ruff --version >/dev/null 2>&1 || echo "  [warn] ruff unavailable via uvx"; \
+		command -v semgrep >/dev/null 2>&1 || uvx semgrep --version >/dev/null 2>&1 || echo "  [warn] semgrep unavailable"; \
+		npx --yes prettier --version >/dev/null 2>&1 || echo "  [warn] prettier unavailable via npx"; \
 	else \
-		echo "Not a git repo — skipping hooks."; \
+		true; \
 	fi
 
 # -----------------------------------------------------------------------------

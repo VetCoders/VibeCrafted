@@ -14,7 +14,7 @@ from . import control_plane
 from .events import append_event
 from .spawn import Supervisor
 
-AGENTS = {"claude", "codex", "gemini"}
+AGENTS = {"claude", "codex", "gemini", "agy", "junie", "grok"}
 SKILL_PREFIX = {
     "agents": "agnt",
     "followup": "fwup",
@@ -127,7 +127,7 @@ def supervised_skill_main(skill: str, argv: Sequence[str] | None = None) -> int:
         return handle.wait()
     if not args or args[0] not in AGENTS:
         print(
-            f"Usage: vc-{skill} <claude|codex|gemini> [--prompt <text>|--file <path>]",
+            f"Usage: vc-{skill} <claude|codex|gemini|agy|junie|grok> [--prompt <text>|--file <path>]",
             file=sys.stderr,
         )
         return 2

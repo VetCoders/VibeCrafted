@@ -9,6 +9,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMON_SH = REPO_ROOT / "skills" / "vc-agents" / "scripts" / "common.sh"
+SHELL_SH = REPO_ROOT / "skills" / "vc-agents" / "shell" / "vetcoders.sh"
 CLAUDE_SPAWN_SH = REPO_ROOT / "skills" / "vc-agents" / "scripts" / "claude_spawn.sh"
 CODEX_SPAWN_SH = REPO_ROOT / "skills" / "vc-agents" / "scripts" / "codex_spawn.sh"
 CODEX_STREAM_BRIDGE = (
@@ -1246,6 +1247,80 @@ def test_generated_launcher_completes_meta_before_success_hook_failure(
     payload = json.loads(meta.read_text(encoding="utf-8"))
     assert payload["status"] == "completed"
     assert payload["exit_code"] == 0
+
+
+def test_generated_launcher_adds_uniform_artifact_closure(tmp_path: Path) -> None:
+    launcher = tmp_path / "launch.sh"
+    meta = tmp_path / "meta.json"
+    report = tmp_path / "report.md"
+    transcript = tmp_path / "trace.log"
+    root_dir = tmp_path / "repo"
+    root_dir.mkdir()
+
+    _bash(
+        f'''
+        set -euo pipefail
+        source "{COMMON_SH}"
+        export SPAWN_ROOT="{root_dir}"
+        export SPAWN_AGENT="codex"
+        export SPAWN_PROMPT_ID="prompt-123"
+        export SPAWN_RUN_ID="impl-010203-999"
+        export SPAWN_LOOP_NR="0"
+        export SPAWN_SKILL_CODE="impl"
+        cmd='printf "[12:40:43] session: sess-abc-123\\n[12:40:44] tokens: 10 in (3 cached) / 5 out\\n" >> "{transcript}"; printf "body\\n" > "{report}"'
+        spawn_write_meta "{meta}" "launching" "codex" "implement" "{root_dir}" "{tmp_path / "plan.md"}" "{report}" "{transcript}" "{launcher}"
+        spawn_generate_launcher "{launcher}" "{meta}" "{report}" "{transcript}" "{COMMON_SH}" "$cmd"
+        chmod +x "{launcher}"
+        bash "{launcher}"
+        '''
+    )
+
+    payload = json.loads(meta.read_text(encoding="utf-8"))
+    assert payload["session_id"] == "sess-abc-123"
+    assert payload["tokens_input"] == 10
+    assert payload["tokens_cached_input"] == 3
+    assert payload["tokens_output"] == 5
+    assert payload["tokens_total"] == 15
+    assert (
+        payload["resume_hint"]
+        == f"Use `cd {root_dir} && vc-resume --session sess-abc-123` to continue work with this Agent."
+    )
+
+    report_text = report.read_text(encoding="utf-8")
+    transcript_text = transcript.read_text(encoding="utf-8")
+    for text in (report_text, transcript_text):
+        assert text.startswith("---\n")
+        assert "session_id: sess-abc-123" in text
+        assert "tokens_input: 10" in text
+        assert "tokens_output: 5" in text
+        assert "tokens_total: 15" in text
+        assert "cost_usd: unknown" in text
+        assert "<!-- vibecrafted-artifact-footer:impl-010203-999 -->" in text
+        assert "vc-resume --session sess-abc-123" in text
+
+
+def test_vc_resume_can_infer_agent_from_session_meta(tmp_path: Path) -> None:
+    crafted_home = tmp_path / ".vibecrafted"
+    meta_dir = (
+        crafted_home / "artifacts" / "VetCoders" / "repo" / "2026_0528" / "reports"
+    )
+    meta_dir.mkdir(parents=True)
+    (meta_dir / "run.meta.json").write_text(
+        json.dumps({"session_id": "sess-abc-123", "agent": "codex"}),
+        encoding="utf-8",
+    )
+
+    result = _bash(
+        f'''
+        set -euo pipefail
+        export VIBECRAFTED_HOME="{crafted_home}"
+        source "{SHELL_SH}"
+        codex() {{ printf 'codex %s\\n' "$*"; }}
+        vc-resume --session sess-abc-123 --prompt hello
+        '''
+    )
+
+    assert "codex resume sess-abc-123 hello" in result.stdout
 
 
 def test_generated_launcher_marks_meta_failed_before_failure_hook(

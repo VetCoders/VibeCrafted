@@ -6,13 +6,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_makefile_keeps_terminal_first_and_gui_fallback() -> None:
-    """Contract: `make vibecrafted` is the terminal-native front door,
-    `make wizard` is the optional browser-based GUI surface, and
-    `make install` routes through the same vetcoders-installer runner
-    with auto-approve for automation parity.
+def test_makefile_keeps_install_as_terminal_first_front_door() -> None:
+    """Contract: `make install` is the terminal-native human front door,
+    `make setup-dev` opens the same meta-installer in advanced mode, and
+    `make install-auto` is the auto-approved automation path.
 
-    The `vibecrafted` and `install` recipes must also keep the uv bootstrap
+    The installer recipes must also keep the uv bootstrap
     and the `uv run` invocation inside one shell stanza, otherwise the
     `export PATH=...` from the bootstrap leg dies before `uv run` sees it
     (each `@`-prefixed recipe line spawns a fresh shell). See P1-01.
@@ -20,34 +19,37 @@ def test_makefile_keeps_terminal_first_and_gui_fallback() -> None:
     text = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
 
     assert (
-        "make vibecrafted   \\033[2mTerminal-native installer wizard "
-        "(default shell-first front door)" in text
+        "make install       \\033[2mInstall interactively with checkpoints and REASON"
+        in text
     )
-    assert (
-        "make wizard        \\033[2mBrowser-based guided installer "
-        "(optional GUI surface)" in text
-    )
+    assert "make setup-dev     \\033[2mOpen the meta-installer for options" in text
+    assert "make install-auto  \\033[2mAutomation path: same installer" in text
+    assert "make skills" not in text.split("help:", 1)[1].split("\nvibecrafted:", 1)[0]
+    assert "vibecrafted: install" in text
 
-    vibecrafted_block = text.split("vibecrafted: init-hooks", 1)[1].split(
-        "\nwizard: init-hooks", 1
-    )[0]
+    install_block = text.split("install: init-hooks", 1)[1].split("\n# BUNDLE_DIR", 1)[
+        0
+    ]
     wizard_block = text.split("wizard: init-hooks", 1)[1].split(
         "\ngui-install: wizard", 1
     )[0]
-    install_block = text.split("install: init-hooks", 1)[1].split("\nskills:", 1)[0]
+    install_auto_block = text.split("install-auto: init-hooks", 1)[1].split(
+        "\nskills:", 1
+    )[0]
+    setup_dev_block = text.split("setup-dev: init-hooks", 1)[1].split("\ndry-run:", 1)[
+        0
+    ]
 
-    # The terminal-native front door must end its single shell stanza with
-    # `uv run ... vetcoders-installer $(MANIFEST)`.
+    # The terminal-native front door suppresses nested subprocess chatter while
+    # retaining the full log on disk.
     assert (
-        "uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST)"
-        in vibecrafted_block
+        "uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --quiet"
+        in install_block
     )
-    # Bootstrap + PATH export + uv run must live in ONE shell stanza.
-    # Shape: the last `\` continuation chain must hold both the fi-terminator
-    # and the `uv run` line so PATH survives the shell boundary.
-    assert 'export PATH="$$HOME/.local/bin:$$PATH"' in vibecrafted_block
-    assert "fi; \\" in vibecrafted_block, (
-        "vibecrafted recipe must chain the uv bootstrap `fi` into the same "
+    assert "--yes" not in install_block
+    assert 'export PATH="$$HOME/.local/bin:$$PATH"' in install_block
+    assert "fi; \\" in install_block, (
+        "install recipe must chain the uv bootstrap `fi` into the same "
         "shell as `uv run` via `fi; \\`"
     )
 
@@ -58,17 +60,18 @@ def test_makefile_keeps_terminal_first_and_gui_fallback() -> None:
     assert '--bundle-dir "$$site_repo/site/dist"' in wizard_block
     assert "wizard-dev: wizard" in text
 
-    # make install routes through the same runner with --yes auto-approve,
-    # so humans (make vibecrafted) and automation (make install) share one engine.
+    # Automation still shares the same runner, but the target name says what it does.
     assert (
-        "uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes"
-        in install_block
+        "uv run --project $(INSTALLER_DIR) --quiet vetcoders-installer $(MANIFEST) --yes --quiet"
+        in install_auto_block
     )
-    assert 'export PATH="$$HOME/.local/bin:$$PATH"' in install_block
-    assert "fi; \\" in install_block, (
-        "install recipe must chain the uv bootstrap `fi` into the same "
+    assert 'export PATH="$$HOME/.local/bin:$$PATH"' in install_auto_block
+    assert "fi; \\" in install_auto_block, (
+        "install-auto recipe must chain the uv bootstrap `fi` into the same "
         "shell as `uv run` via `fi; \\`"
     )
+    assert "--advanced --quiet" in setup_dev_block
+    assert "vetcoders-installer $(MANIFEST)" in setup_dev_block
 
 
 def test_bundle_check_uses_portable_mktemp_template() -> None:
@@ -87,11 +90,31 @@ def test_install_manifest_post_install_uses_mirror_sync() -> None:
     ) in text
 
 
+def test_install_manifest_uses_four_human_checkpoints_with_artifact_reason() -> None:
+    text = (REPO_ROOT / "install.toml").read_text(encoding="utf-8")
+
+    phase_text = text.split("[branding]", 1)[0]
+    labels = [
+        line.split("=", 1)[1].strip().strip('"')
+        for line in phase_text.splitlines()
+        if line.startswith("label = ")
+    ]
+    assert labels == [
+        "Introduction",
+        "Diagnostics and plan",
+        "Installation",
+        "Onboarding",
+    ]
+    assert "Set your artifacts storage location." in text
+    assert "keeps the persistent artifacts on developer's hard disks" in text
+    assert 'installer_cmd = "make install"' in text
+
+
 def test_makefile_exposes_version_bump_contract() -> None:
     text = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
 
-    assert "make version-show" in text
-    assert "make version-bump VERSION=X" in text
+    assert "version-show:" in text
+    assert "version-bump:" in text
     assert (
         "VERSION is required. Usage: make version-bump VERSION={patch|minor|major|x.y.z}"
         in text

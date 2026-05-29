@@ -91,6 +91,12 @@ agent: $agent
 skill: ${SPAWN_SKILL_CODE:-unknown}
 model: $model
 status: $status
+session_id: ${SPAWN_SESSION_ID:-pending}
+repo_path: ${SPAWN_ROOT:-unknown}
+tokens_input: 0
+tokens_output: 0
+tokens_total: 0
+cost_usd: unknown
 ---
 
 EOF_FM
@@ -157,8 +163,15 @@ Start the report with this frontmatter, changing status to failed if the researc
 run_id: $run_id
 prompt_id: $prompt_id
 agent: $agent
+skill: ${SPAWN_SKILL_CODE:-rsch}
 model: $model
 status: completed
+session_id: pending
+repo_path: ${SPAWN_ROOT:-unknown}
+tokens_input: 0
+tokens_output: 0
+tokens_total: 0
+cost_usd: unknown
 ---
 EOF_RESEARCH_CONTRACT
 

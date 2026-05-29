@@ -84,11 +84,11 @@ _(No longer guessing the architecture, but seeing it)._
 
 𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. has three typographic signatures — one for each layer of craft:
 
-| Mark                      | Layer              | When to use                              |
-| ------------------------- | ------------------ | ---------------------------------------- |
+| Mark                       | Layer              | When to use                              |
+| -------------------------- | ------------------ | ---------------------------------------- |
 | `⚒🅅·🄸·🄱·🄴·🄲·🅡·🄰·🄵·🅃·🄴·🄳·` | **Produced with**  | Full product built through the framework |
-| `𝓥𝓲𝓫𝓮𝓬𝓻𝓪𝓯𝓽𝓮𝓭`             | **Designed with**  | Design, UI, visual identity, brand work  |
-| `//𝚟𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍.`          | **Developed with** | Source code, engineering, infrastructure |
+| `𝓥𝓲𝓫𝓮𝓬𝓻𝓪𝓯𝓽𝓮𝓭`              | **Designed with**  | Design, UI, visual identity, brand work  |
+| `//𝚟𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍.`           | **Developed with** | Source code, engineering, infrastructure |
 
 The `` is not decoration. It is the mark.
 
@@ -118,7 +118,7 @@ curl -fsSL https://vibecrafted.io/install.sh | bash
 The bootstrap prints the snapshot source, staging location, and next installer
 step before it stages or installs anything on your machine.
 
-Inside a local checkout, `make vibecrafted` opens the terminal-native installer wizard — the built-in `vetcoders-installer` runner driven from `install.toml`, with reason + consent per phase and cargo-style sticky progress. `make install` routes through the same runner with auto-approve, so automation and humans share one engine.
+Inside a local checkout, `make install` opens the terminal-native installer wizard — the built-in `vetcoders-installer` runner driven from `install.toml`, with reason + consent per phase and a quiet progress surface. `make setup-dev` opens the same meta-installer with advanced options, and `make install-auto` is the auto-approved automation path.
 
 Shell is our everyday workforce entry and all the tools are terminal-native. Nevertheless if you need GUI we also offer it! Run `make wizard` to keep the same trust-building cadence directly in the browser.
 

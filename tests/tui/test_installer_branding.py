@@ -233,7 +233,7 @@ def test_print_summary_pure_cancel_without_branding_uses_defaults(
 
     assert "cancelled" in out.lower()
     # Defaults from the code when branding is empty.
-    assert "make vibecrafted" in out
+    assert "make install" in out
     assert "https://vibecrafted.io" in out
 
 

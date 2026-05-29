@@ -142,7 +142,7 @@ It may not act on it.
 ```markdown
 ---
 run_id: <generated-unique-id>
-agent: <claude|codex|gemini>
+agent: <claude|codex|gemini|agy|junie|grok>
 skill: vc-agents
 project: <repo-name>
 status: <pending|in-progress|completed|failed>

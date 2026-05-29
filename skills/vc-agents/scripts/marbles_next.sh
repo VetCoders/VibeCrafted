@@ -496,7 +496,7 @@ reason: invalid_ancestor_agent
 'ancestor.md' requested an invalid agent for loop $loop_nr.
 
 - Invalid agent: ${invalid_agent:-<empty>}
-- Expected: claude, codex, or gemini
+- Expected: claude, codex, gemini, agy, junie, or grok
 - GOD: $god_plan
 - ANCESTOR: $ancestor_plan
 CONV
@@ -609,6 +609,9 @@ PY
     claude) nohup claude --resume "$sid" "$prompt" >/dev/null 2>&1 & ;;
     codex)  nohup codex resume "$sid" "$prompt" >/dev/null 2>&1 & ;;
     gemini) nohup gemini --resume "$sid" "$prompt" >/dev/null 2>&1 & ;;
+    agy)    nohup agy --conversation "$sid" --prompt-interactive "$prompt" >/dev/null 2>&1 & ;;
+    junie)  nohup junie --session-id="$sid" --resume --task="$prompt" --project=. --skip-update-check >/dev/null 2>&1 & ;;
+    grok)   nohup grok --resume "$sid" --cwd . --permission-mode bypassPermissions --no-alt-screen --single "$prompt" >/dev/null 2>&1 & ;;
     *) printf '    ⚠ Unknown loop agent %s — skipping verification\n' "$loop_agent" ;;
   esac
 }
@@ -975,7 +978,7 @@ printf '    ↳ steering: %s\n' "$_steering_source"
 # Consume the mtime signal so the next round sees only changes made by this child.
 _consume_ancestor_mtime_signal
 
-if [[ ! "$next_agent" =~ ^(claude|codex|gemini)$ ]]; then
+if [[ ! "$next_agent" =~ ^(claude|codex|gemini|agy|junie|grok)$ ]]; then
   rm -f "$next_plan_tmp"
   _write_invalid_ancestor_failure "$next" "$next_agent"
   exit 0

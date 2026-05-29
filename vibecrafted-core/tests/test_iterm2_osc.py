@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import subprocess
+import sys
 
 import pytest
 
@@ -195,3 +197,22 @@ def test_cli_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Usage" in out
     assert "badge" in out
     assert "progress" in out
+
+
+def test_module_cli_help_runs_without_import_warning() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-Werror",
+            "-m",
+            "vibecrafted_core.iterm2_osc",
+            "--help",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Usage: python -m vibecrafted_core.iterm2_osc" in result.stdout
+    assert "RuntimeWarning" not in result.stderr

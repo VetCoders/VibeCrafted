@@ -20,6 +20,16 @@ Use this skill for two related jobs:
 1. Run ScreenScribe on real recordings and turn them into actionable outputs.
 2. Work on the ScreenScribe codebase without guessing its CLI, gates, or report model.
 
+## Canonical Orientation Gate
+
+For ScreenScribe repo work, run or consume the `vc-init` procedure before
+editing, planning, or release judgement. `Loctree:loctree` is the default
+structural perception skill for that pass and must produce or refresh the
+Code-Derived Application Map.
+
+For pure video-analysis runs, state the no-repo exception and use the installed
+ScreenScribe CLI directly.
+
 ## What ScreenScribe Is
 
 ScreenScribe is a screencast pipeline, not a vague "video AI thing."

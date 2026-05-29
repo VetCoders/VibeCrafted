@@ -6,7 +6,7 @@ contracts in `skills/`.
 
 ## Operator entry points
 
-- `make vibecrafted` launches the terminal-native installer wizard.
+- `make install` launches the terminal-native installer wizard.
 - `make wizard` launches the browser-guided installer surface.
 - `vibecrafted help` is the command-deck front door once the framework is installed.
 - `vibecrafted init <agent>` is the interactive first context handoff.
@@ -17,7 +17,7 @@ contracts in `skills/`.
 
 ```mermaid
 flowchart TD
-    A[Operator entry<br/>make vibecrafted / vibecrafted help] --> B[Choose route]
+    A[Operator entry<br/>make install / vibecrafted help] --> B[Choose route]
     B --> C[vibecrafted init agent]
     C --> D{What kind of move?}
 
@@ -82,7 +82,7 @@ flowchart TD
   and `.transcript.log` sidecars for each report basename.
 - `vc-marbles` keeps its ancestor, loop, and watcher outputs under
   `$artifact_root/marbles/`.
-- `make vibecrafted` and `make wizard` are installer entry points, not skill
+- `make install` and `make wizard` are installer entry points, not skill
   execution paths; they exist to get the command deck and wrappers onto the machine.
 - `vibecrafted implement` is the canonical autonomous delivery command. The
   `justdo` command and `vc-justdo` helper remain aliases for installed agents
