@@ -635,6 +635,7 @@ install_aicx() {
   if [[ -n "$target" ]] && has_cmd curl; then
     local patterns=(
       "^${asset_prefix}-v[0-9.]+-${target}\\.tar\\.gz$"
+      "^${asset_prefix}-v[0-9.]+-${target}-slim-unsigned\\.tar\\.gz$"
     )
 
     if (( CHECK_ONLY )); then
