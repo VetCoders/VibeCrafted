@@ -87,7 +87,15 @@ if command -v zsh >/dev/null 2>&1; then
 fi
 
 workspace="$(mktemp -d)"
-trap 'rm -rf "$workspace"' EXIT
+cleanup_workspace() {
+  local status=$?
+  rm -rf "$workspace" 2>/dev/null || {
+    sleep 0.5
+    rm -rf "$workspace" 2>/dev/null || printf '[portable] warn: could not remove temp workspace: %s\n' "$workspace" >&2
+  }
+  exit "$status"
+}
+trap cleanup_workspace EXIT
 bootstrap_home="$workspace/bootstrap-home"
 bootstrap_config_dir="$bootstrap_home/.config"
 home_dir="$workspace/home"
