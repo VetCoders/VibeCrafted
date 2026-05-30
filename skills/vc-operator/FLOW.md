@@ -20,38 +20,42 @@ flowchart TD
     G --> H[Verify cuts with Loctree]
     H --> I[Pick agents via why-matrix]
     I --> J[Render worker briefs]
-    J --> K[Fire Wave N through vibecrafted launcher]
-    K --> L[Await durable artifacts]
-    L --> M{Wave green?}
-    M -->|stalled| N[Recovery dispatch, not restart]
-    N --> L
-    M -->|failed truth drift| O[Escalate slice to vc-marbles]
-    O --> L
-    M -->|green| P[Verify reports, gates, branch, SHA]
-    P --> Q[Append tracker and journal]
-    Q --> R[Synthesize wave close-out]
-    R --> S{More waves?}
+    J --> K[Scan briefs for hard-stop/security triggers]
+    K --> L[Fire Wave N through vibecrafted launcher]
+    L --> M[Await durable artifacts]
+    M --> N{Wave green?}
+    N -->|stalled| O[Recovery dispatch, not restart]
+    O --> M
+    N -->|failed truth drift| P[Escalate slice to vc-marbles]
+    P --> M
+    N -->|green| Q[Verify reports, gates, branch, SHA]
+    Q --> R[Scan landed commits for leaks/local-only material]
+    R --> T[Append tracker and journal]
+    T --> U[Synthesize wave close-out]
+    U --> S
     S -->|yes| K
-    S -->|no| T[Stop at operator button]
-    T --> U[Return push/merge/deploy handoff]
+    S -->|no| V[Stop at unpermitted operator button]
+    V --> W[Return final-goal handoff]
 ```
 
 ## Phase Contract
 
-| Phase            | Question                                              | Required output                |
-| ---------------- | ----------------------------------------------------- | ------------------------------ |
-| Posture          | Did we explicitly enter operator mode?                | one-line framing shift         |
-| Orientation      | Do we have current repo/runtime/intention truth?      | `vc-init` evidence             |
-| Plan intake      | Is the full plan and every cited file read?           | input coverage note            |
-| Dispatchability  | Can the plan be run as waves?                         | wave atlas or scaffold handoff |
-| Cut verification | Does each cut match repo structure?                   | Loctree annotations            |
-| Agent choice     | Who should run each slice?                            | why-matrix rationale           |
-| Briefing         | Can a worker execute without guessing?                | rendered dispatch brief        |
-| Dispatch         | Did every spawn go through framework telemetry?       | run IDs and launch cards       |
-| Await            | Did each worker finish, stall, or fail with evidence? | report/transcript/meta state   |
-| Recovery         | Is the next action focused, not a blind retry?        | recovery brief or escalation   |
-| Close-out        | What landed and where?                                | wave report, SHAs, gates       |
-| Stop             | What remains operator-owned?                          | push/merge/deploy handoff      |
+| Phase            | Question                                              | Required output                 |
+| ---------------- | ----------------------------------------------------- | ------------------------------- |
+| Posture          | Did we explicitly enter operator mode?                | one-line framing shift          |
+| Orientation      | Do we have current repo/runtime/intention truth?      | `vc-init` evidence              |
+| Plan intake      | Is the full plan and every cited file read?           | input coverage note             |
+| Dispatchability  | Can the plan be run as waves?                         | wave atlas or scaffold handoff  |
+| Cut verification | Does each cut match repo structure?                   | Loctree annotations             |
+| Agent choice     | Who should run each slice?                            | why-matrix rationale            |
+| Briefing         | Can a worker execute without guessing?                | rendered dispatch brief         |
+| Brief scan       | Does the prompt contain hard-stop/security triggers?  | scan note or refusal            |
+| Dispatch         | Did every spawn go through framework telemetry?       | run IDs and launch cards        |
+| Await            | Did each worker finish, stall, or fail with evidence? | report/transcript/meta state    |
+| Recovery         | Is the next action focused, not a blind retry?        | recovery brief or escalation    |
+| Commit scan      | Did worker commits leak local-only or sensitive data? | scan note or sanitized recommit |
+| Close-out        | What landed and where?                                | wave report, SHAs, gates        |
+| Stop             | What remains unpermitted/operator-owned?              | final-goal handoff              |
 
 ## Operator Journal
 
@@ -63,6 +67,8 @@ Operator mode keeps two living artifacts:
 
 The tracker lets the operator audit what landed without reading every report.
 The journal explains why the wave moved the way it did.
+Plan mutations and security guardrail incidents are journal entries, not
+memory-only explanations.
 
 ## Routes
 
@@ -97,4 +103,4 @@ The journal explains why the wave moved the way it did.
 - Compressing wave status into "green" without SHAs and gate evidence.
 - Treating native subagents as external fleet dispatches.
 - Authoring worker achievements as operator achievements.
-- Continuing past the operator button.
+- Continuing past an unpermitted operator button.

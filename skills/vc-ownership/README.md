@@ -32,6 +32,7 @@ The skill assumes:
 - reasonable assumptions are good
 - the repo is only part of the product
 - wow effect comes from completeness, not decoration alone
+- green code is not done until read-only perception checks the result
 
 ## Relationship To Other VibeCraft Skills
 
@@ -40,7 +41,9 @@ This skill often composes with:
 - `vc-partner` for shared executive debugging and framing
 - `vc-agents` for external field-team agents
 - `vc-marbles` for convergence loops
-- `vc-dou` for product-surface gap finding
+- `vc-polarize` after marbles when the shape needs one sharp axis
+- `vc-review`, `vc-followup`, `vc-audit`, and `vc-dou` for the read-only
+  cadence before done, including product-surface gap finding
 - `vc-decorate` and `vc-hydrate` for finish and market polish
 
 ## Files

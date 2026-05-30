@@ -40,8 +40,9 @@ existing `vc-ownership/SKILL.md`:
 > refactors that stay inside the repo, local smoke tests, running local
 > services, preparing branches, reports, and artifacts."_
 
-**Stop point**: feature is push-ready. PR not yet opened. Gates green.
-Documentation updated. Push and merge remain operator-side.
+**Stop point**: feature is verified and handoff-ready. PR not yet opened unless the written
+plan or current session explicitly permits it. Gates green. Documentation
+updated. Unpermitted push and merge remain operator-side.
 
 **Decision speed**: bold, assumption-driven. Where the brief is silent,
 prefer the _fuller_ slice that makes the feature feel finished — shell +
@@ -58,9 +59,10 @@ hand-rolled). Your job: read it, fire it, verify it, close it, stop at
 the operator's button.
 
 **Stop point**: "wystarczy wcisnąć guzik" — the line where the next move
-is a human decision (push, PR merge, deploy, public message, paid action,
-trust-boundary action). See [`AUTONOMY.md`](AUTONOMY.md) for the full
-hard-stop schedule.
+is an unpermitted human decision (push, PR merge, deploy, public message,
+paid action, trust-boundary action). Written plan or current-session
+permission may authorize some of these; ambiguity still stops at the button.
+See [`AUTONOMY.md`](AUTONOMY.md) for the full hard-stop schedule.
 
 **Decision speed**: careful pacing, verify-then-advance. Each wave landing
 green earns the right to fire the next wave. Recovery dispatch is the
@@ -129,8 +131,8 @@ The charter you're in determines:
 - which stop point applies
 - which decision-speed default applies
 - whether you may dispatch externally
-- which kinds of changes you may make irreversibly (none, in any mode,
-  without the operator's button)
+- which kinds of changes you may make irreversibly (only those explicitly
+  permitted by plan/session; otherwise stop at the operator button)
 
 ---
 

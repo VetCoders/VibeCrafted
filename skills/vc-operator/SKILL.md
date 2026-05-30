@@ -6,7 +6,8 @@ description: >
   multi-wave dispatch chain. Use when the agent is not building one slice but
   reading a plan, building a wave atlas, dispatching peer agents, awaiting
   durable artifacts, verifying reports and gates, issuing recovery dispatches
-  on stalls, and stopping at the operator button. Mentioning the skill in an
+  on stalls, and stopping at the operator button for actions not already
+  permitted by the written plan or current session. Mentioning the skill in an
   interactive session does not automatically launch the same-named runtime
   workflow.
   Trigger phrases: "operator mode", "vc-operator", "Agent-Operator",
@@ -32,7 +33,7 @@ requires:
 # vc-operator
 
 > Autonomous orchestration posture. Wave discipline. Recovery over retries.
-> Stop at the operator button.
+> Lead to the goal, journal the turns, stop at unpermitted buttons.
 
 ## Taxonomy
 
@@ -76,10 +77,21 @@ other documents are supporting surfaces:
 - [DISPATCH.md](DISPATCH.md) and [DISPATCH_TEMPLATE.md](DISPATCH_TEMPLATE.md) -
   worker brief contract.
 - [AWAIT.md](AWAIT.md) - await/recovery discipline.
-- [AUTONOMY.md](AUTONOMY.md) - the operator button.
+- [AUTONOMY.md](AUTONOMY.md) - autonomy boundaries and the operator button.
 - [JOURNAL.md](JOURNAL.md) - append-only operator journal.
 - [RUNTIME.md](RUNTIME.md) - runtime launch and artifact contract.
 - [WHY_MATRIX_TABLE.md](WHY_MATRIX_TABLE.md) - agent routing.
+
+## Canonical Orientation Gate
+
+Operator mode requires fresh `vc-init` evidence before dispatching anything.
+If fresh `vc-init` evidence is absent, perform the init pass first and treat
+operator dispatch as blocked until repo truth exists.
+
+`Loctree:loctree` is the default structural perception skill for that pass.
+Use it to produce or refresh the Code-Derived Application Map before building
+the wave atlas, writing briefs, dispatching workers, or trusting older plan
+shape. Missing Loctree evidence means the fleet is moving blind.
 
 ## Framing Shift
 
@@ -113,12 +125,14 @@ attached to the workers who produced them.
 
 ## Stop Point
 
-Stop at the operator button: the line where the next action is push, merge,
+Stop at the operator button: the line where the next action is not already
+permitted by the written plan or the current session and touches push, merge,
 deploy, public communication, paid action, irreversible state change, or any
 trust-boundary move that belongs to the human operator.
 
-Operator mode may make the work push-ready. It does not push, merge, deploy, or
-publish unless the operator explicitly presses the button.
+Operator mode may make the work verified and handoff-ready, and may execute actions explicitly
+permitted by the plan/session. If permission is absent or ambiguous, stop and
+write the handoff instead of improvising authority.
 
 ## Operating Loop
 
@@ -129,13 +143,16 @@ publish unless the operator explicitly presses the button.
 5. Verify each cut against Loctree.
 6. Pick agents through `WHY_MATRIX_TABLE.md`.
 7. Render worker briefs from `DISPATCH_TEMPLATE.md`.
-8. Fire one wave at a time through `vibecrafted <skill> <agent>`.
-9. Await durable artifacts.
-10. Verify reports, gates, branch, and SHA.
-11. Use recovery dispatch on stalls; never blind restart.
-12. Append tracker and journal.
-13. Synthesize wave close-out.
-14. Continue or stop at the operator button.
+8. Scan each brief for insecure commands and hard-stop triggers.
+9. Fire one wave at a time through `vibecrafted <skill> <agent>`.
+10. Await durable artifacts.
+11. Verify reports, gates, branch, and SHA.
+12. Scan landed commits for secrets, personal data, local-only paths, local
+    network topology, IP addresses, and internal documents.
+13. Use recovery dispatch on stalls; never blind restart.
+14. Append tracker and journal.
+15. Synthesize wave close-out.
+16. Continue or stop at the unpermitted operator button.
 
 ## Dispatch Law
 
@@ -146,8 +163,15 @@ vibecrafted <skill> <agent> --file <brief>
 ```
 
 No native subagents for fleet dispatch in operator mode. Native delegation is
-for local bounded work; operator waves need telemetry, launch cards, reports,
+allowed for parallel recon or small bounded research inside the operator
+session, but dispatched worker slices need telemetry, launch cards, reports,
 transcripts, meta, and awaitable state.
+
+## Plan Mutation Allowance
+
+The operator may skip, add, reorder, or regroup prompts, and may cherry-pick
+between active wave branches, when doing so does not change the final goal. Each
+change must be recorded in `journal.md` with what changed and why.
 
 ## Journal And Tracker
 
@@ -170,19 +194,21 @@ See [JOURNAL.md](JOURNAL.md).
 - `vc-partner` - shared strategy before a plan is dispatchable.
 - `vc-marbles` - convergence when a slice fails on truth drift.
 - `vc-audit` / `vc-review` / `vc-followup` - verification surfaces after waves.
-- `vc-release` - outward ship once the operator button has been pressed.
+- `vc-release` - outward ship once release actions are permitted by plan/session
+  or the operator button has been pressed.
 
 ## Anti-Patterns
 
 - Acting like a solo implementer after the operator asked for orchestration.
 - Dispatching before the plan is readable as a wave atlas.
 - Re-firing a stalled wave instead of reading artifacts and issuing recovery.
-- Spawning native subagents for operator fleet work.
+- Spawning native subagents as substitutes for telemetry-backed worker dispatch.
 - Silently downgrading model tier or violating agent fairness.
 - Claiming wave green without report, gate, branch, and SHA evidence.
 - Authoring worker commits or close-outs as if the operator did their work.
 - Running headless or unwatchable dispatches.
-- Pushing, merging, deploying, or publishing before the operator button.
+- Pushing, merging, deploying, or publishing without written plan/session
+  permission or an explicit operator button press.
 
 ## Output Shape
 

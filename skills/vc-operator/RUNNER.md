@@ -4,7 +4,7 @@ version: 2.0.0
 role: deterministic entrypoint
 absorbs:
   - REC-1 (7-step deterministic runner)
-  - REC-2 (categorical no native subagents)
+  - REC-2 (categorical no native subagents as fleet dispatch)
   - REC-3 (/loop primary cadence)
   - REC-4 (journal.md append-only convention)
   - REC-11 (vc-scaffold auto-chain on fuzzy plans)
@@ -158,10 +158,11 @@ Where `<mode>` is the dispatched skill (`implement`, `marbles`,
 `scaffold`, `init`) and `<agent>` is the resolved agent from
 step 4.
 
-**Anti-pattern (categorical, REC-2):** never spawn native
-subagents (`Task` tool, `vc-delegate`) for dispatched worker
-slices in operator mode. Every spawn must go through the
-framework launcher.
+**Anti-pattern (categorical, REC-2):** never use native subagents
+(`Task` tool, `vc-delegate`) as substitutes for dispatched worker
+slices in operator mode. Every fleet worker spawn must go through the
+framework launcher. Native subagents remain allowed for parallel recon
+or small bounded research inside the operator session.
 
 **Rationale (do not rationalize around it):**
 
@@ -172,6 +173,10 @@ framework launcher.
   subagents fire into the dark (NIGDY HEADLESS rule)
 - recovery — a stalled launcher dispatch has a known recovery
   doctrine in `./AWAIT.md`; a native subagent stall is invisible
+
+Before firing, scan each prompt body for insecure commands and hard-stop
+triggers. If a prompt asks for an unpermitted hard-stop action, refuse the
+dispatch and write the fork into `journal.md`.
 
 Wave shape per `./GUIDE.md` (A foundation / B sequential / C
 parallel / D close-out). Fire one wave at a time. Within a wave,
@@ -234,21 +239,23 @@ hits all `[x]` or when step 7 reaches the stop point.
 ## Stop condition
 
 ```text
-Operator stops at the operator's button — push, merge, public
-release, deploy, paid action.
+Operator stops at the operator's button for actions not already permitted
+by the written plan or current session — push, merge, public release,
+deploy, paid action.
 ```
 
 See `./AUTONOMY.md` for the hard-stop schedule (git surface +
 external surfaces + trust/security/billing + skill/convention
 surface) and the stop-point handoff template. Soft stops
 (dispatch-shape change, scope skip, scope add, rebase,
-cherry-pick) also require the button — never act, always
-present the fork.
+cherry-pick) may proceed without a new button when they do not change
+the final goal; every such mutation must be recorded in `journal.md`.
+Scope-changing mutations still require the button.
 
-When the wave tracker is all `[x]` and the next move is operator-
-side, write the stop-point handoff per `./AUTONOMY.md` "The
-stop-point handoff" and exit. Do not push. Do not merge. Do not
-deploy.
+When the wave tracker is all `[x]` and the next move is operator-side
+without written plan/session permission, write the stop-point handoff per
+`./AUTONOMY.md` "The stop-point handoff" and exit. Do not push, merge,
+or deploy unless the written plan or current session explicitly permits it.
 
 ---
 
@@ -260,8 +267,8 @@ deploy.
 - [ ] step 3 every cut has `cut-verified: true` annotation
 - [ ] step 4 every prompt has `recommended_agent` from lookup
 - [ ] step 5 every brief rendered to `<artifact-dir>/briefs/`
-- [ ] step 6 every fire went through `vibecrafted` launcher (no
-      native subagents)
+- [ ] step 6 every worker fire went through `vibecrafted` launcher
+      (native subagents only for recon/research, not fleet dispatch)
 - [ ] step 7 `journal.md` is current; wave tracker is current
 - [ ] stop-point handoff written and operator notified
 

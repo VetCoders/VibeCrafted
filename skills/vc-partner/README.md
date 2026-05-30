@@ -1,92 +1,61 @@
 # VetCoders Partner
 
-Executive-brain partner skill for hard debugging, architecture triage, and
-feature framing where:
+Proactive shared-steering posture for sessions where the operator and agent
+must preserve the original shape while still moving decisively.
 
-- user + Codex stay the managing brain
-- spawned agents do the field research, planning, review, and bounded
-  implementation work
-
-This skill is for sessions where we do not want to outsource strategy. We keep
-the problem definition, chronology, contract rules, and final decisions in the
-main thread, then use external agents as comparative field teams.
+`vc-partner` is not a planner-swarm wrapper and not a weaker ownership mode. It
+is the posture that keeps the strategic brain shared while the agent performs
+the heavy work, launches the right runtimes, and checks every result against the
+original shape.
 
 ## What It Is Good For
 
 Use `vc-partner` when:
 
-- runtime truth matters more than static code reading
-- a failure has to be reconstructed step by step
-- one agent opinion is not enough
-- the team wants comparative planner swarms before implementation
-- implementation should continue on the same research threads via `*-resume`
-
-Typical examples:
-
-- entitlement or billing flows with hidden state
-- multimodal/runtime contract bugs
-- architecture forks where the wrong early assumption would waste days
-- product failures where chronology matters as much as code
+- the problem definition matters as much as implementation
+- the original shape must survive compaction and delegation
+- runtime truth can change the plan
+- the operator wants proactive work without silent takeover
+- write lanes need read-only verification before "done"
 
 ## Core Operating Model
 
 The default loop is:
 
-1. define the exact failure or feature surface together
-2. split it into `2-3` clean research tracks
-3. write precise exploratory plans
-4. run the same plans through:
-   - `codex-plan`
-   - `claude-plan`
-   - `gemini-plan` when available
-5. synthesize agreements and disagreements
-6. continue the same sessions through `*-resume`
-7. converge with `vc-marbles`
-
-This is not “ask agents and wait.” It is command-and-control with shared
-reasoning in the center.
+1. define the problem
+2. capture `original_shape`
+3. write the success contract
+4. build the plan with `vc-scaffold`
+5. choose the execution lane
+6. run write work
+7. run `vc-review`, `vc-followup`, `vc-audit`, and `vc-dou`
+8. close gaps with `vc-marbles` or another focused write lane
+9. ship only when DoU is clear or the remaining gaps are explicit
 
 ## Key Rules
 
-- runtime truth beats theoretical correctness
-- one hypothesis at a time; prove or kill it
-- preserve an append-only findings log during the crisis
-- keep the user and Codex as the executive brain
-- agents do not own strategy
-
-## Spawn and Resume
-
-`vc-partner` is designed to pair naturally with
-`vc-agents`:
-
-- planner swarms go out through the portable spawn scripts with `--mode plan`
-- chosen tracks continue via `*-resume` helpers or fresh implementation agents
-
-> **Note**: `codex-plan`, `claude-plan`, `gemini-plan`, `*-resume` are
-> convenience aliases from private dotfiles. The default, machine-portable
-> equivalent is the repo-owned spawn scripts:
-> `bash $VIBECRAFTED_ROOT/skills/vc-agents/scripts/codex_spawn.sh <plan>.md --mode plan`
-> See `vc-partner/SKILL.md` Spawn Playbook for full details.
-
-During resumed implementation, one important rule now applies:
-
-- a resumed implementation agent may spawn **exactly one** extra helper agent,
-  but only for a real, bounded blocker
-- the parent agent still owns the implementation track and final synthesis
-
-That keeps the method sharp without turning it into uncontrolled fleet sprawl.
+- skill invocation is not runtime invocation
+- the partner journal is append-only mission memory
+- workers may execute, but they do not redefine the original shape
+- review checks implementation truth
+- followup checks shape fidelity
+- audit falsifies completion claims
+- DoU checks product-surface undone work
 
 ## Files
 
-- `SKILL.md` — default instructions for the partner workflow
+- `SKILL.md` - posture instructions
+- `FLOW.md` - process map
+- `CONTRACT.md` - binding posture/runtime split
+- `JOURNAL.md` - append-only mission diary
+- `RUNTIME.md` - runtime artifact expectations
+- `TAXONOMY.md` - local taxonomy
 
 ## Relationship To The Rest Of The Stack
 
-`vc-partner` sits above the lower-level tools:
-
-- `vc-agents` for external agent execution
-- `vc-workflow` for structured examine/research/implement flows
-- `vc-marbles` for convergence once the shape is chosen
-
-If `vc-workflow` is the pipeline, `vc-partner` is the
-executive operating mode for the hardest sessions.
+- `vc-init` opens repo/runtime/intention truth.
+- `vc-scaffold` helps build the plan.
+- `vc-implement` and `vc-workflow` run write lanes.
+- `vc-operator` conducts field teams when needed.
+- `vc-ownership` takes over when shared steering is no longer desired.
+- `vc-review`, `vc-followup`, `vc-audit`, and `vc-dou` close the read side.

@@ -22,7 +22,27 @@ compatibility:
     - js_repl
 ---
 
-# VibeCraft Ownership
+# vc-ownership
+
+> Autonomous delivery posture. Take responsibility end-to-end, drive to green,
+> then prove the product surface is not still undone.
+
+## Taxonomy
+
+```yaml
+vc-ownership:
+  kind: autonomous_posture
+  scope: interactive_or_headless_session
+  meaning: take responsibility end-to-end, minimize questions, drive to green
+  autonomy: full
+```
+
+Skill invocation is not runtime invocation. If the operator says
+`$vc-ownership` inside the current conversation, the current agent adopts the
+autonomous delivery posture. A separate runtime run exists only when the
+operator or framework launches `vibecrafted ownership <agent> ...`.
+
+See [TAXONOMY.md](TAXONOMY.md) for the posture/runtime split.
 
 ## Living Tree / Worktree Rule
 
@@ -118,10 +138,10 @@ Also use it when the request clearly spans multiple layers at once:
 
 ### Cross-reference: when ownership becomes multi-dispatch
 
-`vc-ownership` is **solo-thread** (non-interactive) or multi-thread
-(interactive) delivery:
-push-ready as the stop point. When the task grows into a multi-prompt
-chain across multiple agents (wave A → B → C → D, AGENT FAIRNESS
+`vc-ownership` is autonomous delivery in an interactive or headless session.
+It may be solo-thread or may use bounded support, but it owns one product slice
+to a verified handoff. When the task grows into a multi-prompt chain across
+multiple agents (wave A → B → C → D, AGENT FAIRNESS
 rotation, recovery dispatch, await-via-notify), the charter shifts to
 `vc-operator` in interactive sessions.
 
@@ -154,7 +174,10 @@ In ownership mode:
 7. Keep a tight execution narrative in the main thread.
 8. Deliver a strong release-ready features or a hardened
    product surface.
-9. Use `cron` to keep heartbeat and schedule the next step.
+9. Follow write work with read-only review/followup/audit/DoU before claiming
+   the task is finished.
+10. Use `cron` to keep heartbeat and schedule the next step when the session
+    needs unattended progress.
 
 Do not ask permission for every small step.
 Do ask for alignment before moves with hidden blast radius.
@@ -175,6 +198,7 @@ Take initiative without pausing for:
 - preparing branches, reports, and artifacts
 - syncing local skill repos and installer surfaces
 - using agent swarms for research, implementation, or review
+- committing your own scoped, verified work as the recovery checkpoint
 
 ### Pause and realign first
 
@@ -187,6 +211,8 @@ Pause before:
 - changing security, auth, billing, or legal surfaces with real external consequences
 - irreversible desktop actions outside the repo/workspace
 - touching truly sensitive local files unrelated to the task
+- push, merge, deploy, publish, or public/external communication unless the
+  written plan or current session explicitly permits it
 
 When pausing, present the smallest real fork and the recommendation.
 
@@ -222,6 +248,8 @@ Defaults:
   execution runner)
 - `vc-marbles` for closing the gaps and unfinished jobs
 - `vc-polarize` for final shape carving after marbles
+- `vc-review`, `vc-followup`, `vc-audit`, and `vc-dou` as read-only perception
+  after write lanes
 - `vc-release` for making the product shippable
 
 ### Phase 3 - Build the runtime truth
@@ -267,6 +295,21 @@ Examples:
 - does the output feel intentional
 
 If the result works but still feels unfinished, it is unfinished.
+
+### Phase 6 - Read-only cadence before done
+
+Every ownership write lane must end with read-only perception:
+
+```text
+write:
+  direct edits | vc-implement | vc-workflow | vc-marbles | vc-polarize
+
+read:
+  vc-review -> vc-followup -> vc-audit -> vc-dou
+```
+
+Do not claim the task is finished before the Definition of Undone pass has
+cleared or recorded explicit remaining product-surface gaps.
 
 ## Desktop And Browser Control
 
@@ -333,6 +376,7 @@ Do not in ownership mode:
 - stop at code while leaving product shell unfinished
 - create extra systems when one sharp rewrite would do
 - claim wow effect and deliver a placeholder
+- claim done before review/followup/audit/DoU has checked the result
 
 ## Examples
 

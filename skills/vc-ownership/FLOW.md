@@ -7,11 +7,12 @@ flowchart TD
     A[Operator: vibecrafted ownership codex --prompt 'Take the wheel'] --> B[Bootstrap context and repo truth]
     B --> C[Choose the shortest path to a finished product surface]
     C --> D[Implement across code, UX, docs, and packaging]
-    D --> E[Run followup and targeted gates]
-    E --> F{Anything still false or unfinished?}
-    F -->|yes| G[Escalate to vc-marbles, vc-dou, vc-decorate, or vc-hydrate]
-    F -->|no| H[Write ownership handoff and return]
-    G --> D
+    D --> E[Run gates and real-path smoke]
+    E --> F[Run vc-review, vc-followup, vc-audit, vc-dou]
+    F --> G{Anything still false or unfinished?}
+    G -->|yes| H[Escalate to vc-marbles, vc-polarize, vc-decorate, or vc-hydrate]
+    H --> D
+    G -->|no| I[Write ownership handoff and return]
 ```
 
 ## Routes
@@ -26,6 +27,8 @@ flowchart TD
 - Need shared steering on a risky decision -> `vibecrafted partner <agent>`
 - Need more execution units -> `vc-agents`
 - Remaining P0/P1 issues after implementation -> `vibecrafted marbles <agent>`
+- Entropy after marbles -> `vibecrafted polarize <agent>`
+- Product-surface gaps before finish -> `vibecrafted dou <agent>`
 
 ### Session artifacts
 

@@ -25,7 +25,8 @@ The operator posture is responsible for:
 - awaiting durable artifacts
 - issuing recovery dispatches
 - keeping tracker and journal
-- stopping at the operator button
+- leading permitted work to the goal
+- stopping at unpermitted operator buttons
 
 ## Runtime Workflow
 
@@ -52,7 +53,7 @@ Runtime exists only after an explicit framework launch.
 | Skill          | Kind                 | Difference from operator                                          |
 | -------------- | -------------------- | ----------------------------------------------------------------- |
 | `vc-partner`   | interactive posture  | shared steering and original-shape custody before/during strategy |
-| `vc-ownership` | autonomous posture   | one slice driven end-to-end to push-ready                         |
+| `vc-ownership` | autonomous posture   | one slice driven end-to-end to verified handoff                   |
 | `vc-init`      | orientation tool     | opens repo/runtime/intention truth; not a posture                 |
 | `vc-agents`    | external fleet layer | launches workers; does not own the orchestration story by itself  |
 

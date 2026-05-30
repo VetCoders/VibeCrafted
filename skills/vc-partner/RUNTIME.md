@@ -45,6 +45,9 @@ The journal is the memory spine. Reports are snapshots.
 | Implementation review                   | `vibecrafted review <agent>`    |
 | Shape/trajectory check                  | `vibecrafted followup <agent>`  |
 | Independent falsification               | `vibecrafted audit <agent>`     |
+| Product-surface undone check            | `vibecrafted dou <agent>`       |
+| Gap convergence                         | `vibecrafted marbles <agent>`   |
+| Entropy reduction after marbles         | `vibecrafted polarize <agent>`  |
 | Release surface                         | `vibecrafted release <agent>`   |
 
 ## Runtime Close-Out
@@ -57,7 +60,7 @@ terminal_state:
     requires:
       - original_shape preserved or intentionally changed
       - gates recorded
-      - review/followup/audit findings handled or deferred explicitly
+      - review/followup/audit/dou findings handled or deferred explicitly
       - next move named
   escalated_to_ownership:
     requires:

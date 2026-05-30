@@ -22,6 +22,7 @@ The operator runtime creates durable state for fleet orchestration:
 - launch cards and run IDs
 - per-wave close-outs
 - final stop-point handoff
+- plan mutation and security guardrail entries in the operator journal
 
 ## Artifact Layout
 
@@ -60,7 +61,13 @@ terminal_state:
       - wave tracker updated
       - journal updated
       - reports and SHAs named
-      - remaining human action named
+      - remaining unpermitted human action named
+  completed_with_plan_permission:
+    requires:
+      - permission source named
+      - tracker updated
+      - journal updated
+      - reports and SHAs named
   blocked_with_evidence:
     requires:
       - blocker classification
@@ -78,4 +85,5 @@ terminal_state:
 - Do not use runtime to hide decisions from the operator.
 - Do not run unwatchable dispatch.
 - Do not bypass launch telemetry.
-- Do not turn stop-point handoff into push/merge/deploy.
+- Do not turn stop-point handoff into push/merge/deploy unless the written
+  plan or current session explicitly permitted that action.

@@ -63,9 +63,9 @@ vc-operator:
     - silently become a worker
     - dispatch without vc-init evidence
     - dispatch without a wave atlas
-    - use native subagents for fleet dispatch
+    - use native subagents as substitutes for fleet dispatch
     - blind-restart stalled workers
-    - push_merge_deploy_or_publish_without_operator_button
+    - push_merge_deploy_or_publish_without_plan_or_session_permission
 ```
 
 ## Binding Artifacts
@@ -92,6 +92,14 @@ verification:
 recovery:
   stalls: []
   recovery_dispatches: []
+plan_mutations:
+  skipped: []
+  added: []
+  reordered: []
+  cherry_picks: []
+security_guardrails:
+  prompt_scans: []
+  commit_scans: []
 close_out:
   tracker: ""
   journal: ""
@@ -100,7 +108,7 @@ close_out:
 
 ## Stop Button Policy
 
-Operator mode stops before:
+Operator mode stops before any unpermitted:
 
 - push
 - force-push
@@ -111,7 +119,31 @@ Operator mode stops before:
 - irreversible state change
 - trust-boundary action
 
+An action is permitted only when it is explicitly allowed in the written plan or
+stated and documented in the current session. If the permission is ambiguous,
+stop and hand off the button.
+
 The final handoff should make the remaining button obvious.
+
+## Plan Mutation Policy
+
+The operator may change dispatch shape without a new button when the final goal
+does not change:
+
+- regroup waves
+- skip, add, or reorder prompts
+- cherry-pick between active wave branches
+
+Each mutation must be appended to `journal.md` with what changed, why, and what
+goal invariant remains unchanged.
+
+## Security Guardrail Policy
+
+Before each wave, scan worker briefs for insecure commands and hard-stop
+triggers. After each worker commit, scan committed changes for secrets,
+personal data, local-only paths, local network topology, IP addresses, and
+internal documents. If detected, revert the offending commit, sanitize the
+surface, commit again, and record the incident in `journal.md`.
 
 ## Recovery Policy
 

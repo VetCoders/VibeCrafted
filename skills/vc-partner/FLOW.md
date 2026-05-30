@@ -13,7 +13,7 @@ flowchart TD
     A[Operator intent] --> B[Define the problem]
     B --> C[Write the success contract]
     C --> D[Build the plan with vc-scaffold]
-    D --> E{Execution shapev}
+    D --> E{Execution shape}
 
     E -->|single bounded lane| F[Dispatch single vc-implement agent]
     E -->|needs strict ERi pipeline| G[Escalate to vc-workflow agent]
@@ -76,9 +76,10 @@ the flow.
 
 ## A Read-Write Cadence
 
-Every "write" workflow: `vc-implement`, `vc-workflow`, `vc-marbles`, `vc-polarize`
-should be followed by a read-only review runs including: `vc-review`, `vc-followup`
-`vc-audit` and `vc-dou` - the final "Definition of Undone" check before release.
+Every "write" workflow: `vc-implement`, `vc-workflow`, `vc-marbles`,
+`vc-polarize` should be followed by read-only perception runs:
+`vc-review`, `vc-followup`, `vc-audit`, and `vc-dou` - the final
+Definition of Undone check before release.
 
 Do not claim that task is finished before the "Definition of Undone" check pass.
 

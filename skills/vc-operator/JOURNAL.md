@@ -33,6 +33,7 @@ The journal answers "why did the operator do that next?".
 - First entry declares operator posture and plan.
 - Every fire, await, notify, stall, recovery, escalation, close-out, and stop
   point gets an entry.
+- Every plan mutation and security guardrail incident gets an entry.
 - Corrections are written as new entries.
 - Worker-facing closing rails do not appear in operator journal entries.
 - Do not collapse separate worker states into a vague wave status.
@@ -93,6 +94,30 @@ operator_run:
 - Recovery brief:
 - Recovery agent:
 - Expected close condition:
+```
+
+## Plan Mutation Entry
+
+```md
+## <timestamp> - plan mutation
+
+- Changed:
+- Why:
+- Final goal unchanged because:
+- Evidence:
+- Next:
+```
+
+## Security Guardrail Entry
+
+```md
+## <timestamp> - security guardrail
+
+- Surface: prompt | commit
+- Detected:
+- Action taken:
+- Recommit SHA, if applicable:
+- Next:
 ```
 
 ## Close-Out Entry

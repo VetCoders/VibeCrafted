@@ -46,16 +46,20 @@ vc-partner:
     - vc-implement
     - vc-workflow
     - vc-operator
+    - vc-marbles
+    - vc-polarize
     - vc-review
     - vc-followup
     - vc-audit
+    - vc-dou
     - vc-release
   must_not:
     - silently become vc-ownership
     - outsource problem definition to workers
     - allow delegated workers to redefine original_shape
     - treat mermaid as a binding runtime trigger
-    - ship without fresh evidence
+    - claim_done_before_vc_dou
+    - ship_before_read_cadence_or_fresh_evidence
 ```
 
 ## Binding Artifacts
@@ -89,9 +93,26 @@ audit:
   review_report: ""
   followup_report: ""
   audit_report: ""
+  dou_report: ""
 ship:
   commit: ""
   release_or_next_move: ""
+```
+
+## Read-Write Cadence
+
+```yaml
+write_lanes:
+  - vc-implement
+  - vc-workflow
+  - vc-marbles
+  - vc-polarize
+read_lanes:
+  - vc-review
+  - vc-followup
+  - vc-audit
+  - vc-dou
+completion_rule: "Do not claim finished until DoU passes or records explicit remaining gaps."
 ```
 
 ## Drift Policy
