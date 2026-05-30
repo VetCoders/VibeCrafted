@@ -1,82 +1,100 @@
 # `vc-operator` Flow
 
-> The operator-facing flow for the Agent-Operator charter. Loaded alongside
-> `SKILL.md` when the agent must conduct a multi-prompt dispatch chain.
+`vc-operator` is the autonomous orchestration posture for a planned
+multi-wave dispatch chain.
 
-## Flow
+It conducts. It does not become the worker.
+
+## Core Loop
 
 ```mermaid
 flowchart TD
-    A[Operator: vibecrafted operator claude --file 'master-dispatch.md'] --> B[Phase 1 — Read the plan in full]
-    B --> C[Phase 2 — Build the wave atlas]
-    C --> D{Plan understood?}
-    D -->|fuzzy| E[Tighten by inference, surface 1–2 blockers only]
-    D -->|clear| F[Phase 3 — Fire Wave N]
-    E --> F
-    F --> G[Await via notify, NOT polling]
-    G --> H{Wave green?}
-    H -->|yes| I[Synthesize wave close-out + tracker update]
-    H -->|stalled| J[Recovery dispatch — focused integration, NOT restart]
-    J --> G
-    I --> K{More waves?}
-    K -->|yes| F
-    K -->|no| L[Phase 5 — Stop at the operator button]
-    L --> M[Return: status table + push/merge handoff]
+    A[Operator intent or master plan] --> B[Declare operator posture]
+    B --> C[Run or consume vc-init]
+    C --> D[Read plan and cited files]
+    D --> E{Dispatchable?}
+    E -->|no| F[Reshape with vc-scaffold]
+    F --> G[Build wave atlas]
+    E -->|yes| G
+
+    G --> H[Verify cuts with Loctree]
+    H --> I[Pick agents via why-matrix]
+    I --> J[Render worker briefs]
+    J --> K[Fire Wave N through vibecrafted launcher]
+    K --> L[Await durable artifacts]
+    L --> M{Wave green?}
+    M -->|stalled| N[Recovery dispatch, not restart]
+    N --> L
+    M -->|failed truth drift| O[Escalate slice to vc-marbles]
+    O --> L
+    M -->|green| P[Verify reports, gates, branch, SHA]
+    P --> Q[Append tracker and journal]
+    Q --> R[Synthesize wave close-out]
+    R --> S{More waves?}
+    S -->|yes| K
+    S -->|no| T[Stop at operator button]
+    T --> U[Return push/merge/deploy handoff]
 ```
+
+## Phase Contract
+
+| Phase            | Question                                              | Required output                |
+| ---------------- | ----------------------------------------------------- | ------------------------------ |
+| Posture          | Did we explicitly enter operator mode?                | one-line framing shift         |
+| Orientation      | Do we have current repo/runtime/intention truth?      | `vc-init` evidence             |
+| Plan intake      | Is the full plan and every cited file read?           | input coverage note            |
+| Dispatchability  | Can the plan be run as waves?                         | wave atlas or scaffold handoff |
+| Cut verification | Does each cut match repo structure?                   | Loctree annotations            |
+| Agent choice     | Who should run each slice?                            | why-matrix rationale           |
+| Briefing         | Can a worker execute without guessing?                | rendered dispatch brief        |
+| Dispatch         | Did every spawn go through framework telemetry?       | run IDs and launch cards       |
+| Await            | Did each worker finish, stall, or fail with evidence? | report/transcript/meta state   |
+| Recovery         | Is the next action focused, not a blind retry?        | recovery brief or escalation   |
+| Close-out        | What landed and where?                                | wave report, SHAs, gates       |
+| Stop             | What remains operator-owned?                          | push/merge/deploy handoff      |
+
+## Operator Journal
+
+Operator mode keeps two living artifacts:
+
+- `tracker.md` - wave status, checkbox state, run IDs, branches, SHAs, gates.
+- `journal.md` - append-only mission diary for decisions, stalls, recoveries,
+  framing shifts, and stop points.
+
+The tracker lets the operator audit what landed without reading every report.
+The journal explains why the wave moved the way it did.
 
 ## Routes
 
-| Entry                          | Args                   | Produces                                                  | Exit        |
-| ------------------------------ | ---------------------- | --------------------------------------------------------- | ----------- |
-| `vibecrafted operator <agent>` | `--prompt` or `--file` | wave-by-wave close-out reports + final stop-point handoff | `0` on stop |
-| `vc-operator <agent>`          | same                   | same                                                      | `0` on stop |
-| `vc-conductor <agent>`         | same (alias)           | same                                                      | `0` on stop |
+| Entry                          | Args                   | Produces                                              | Exit        |
+| ------------------------------ | ---------------------- | ----------------------------------------------------- | ----------- |
+| `vibecrafted operator <agent>` | `--prompt` or `--file` | tracker, journal, wave close-outs, stop-point handoff | `0` on stop |
+| `vc-operator <agent>`          | same                   | same                                                  | `0` on stop |
+| `vc-conductor <agent>`         | same                   | same                                                  | `0` on stop |
 
 ### Escalation edges
 
-- **Upstream — need a plan first**: hand off to `vibecrafted scaffold <agent>` to author the master dispatch. Resume operator mode once the plan exists.
-- **Downstream — wave failed on truth-drift, not missing feature**: escalate the failing slice into `vibecrafted marbles <agent>` for convergence loop. Resume operator mode after marbles closes.
-- **Sideways — need partner triage on architecture**: pause the wave, escalate to `vibecrafted partner <agent>` for shared executive reasoning. Return with sharpened plan.
-- **Down to ground — wave produced runtime that needs A→Z polish**: hand the surface to `vibecrafted ownership <agent>` for solo-thread completion of the slice that operator mode prepared.
+- Need a plan first -> `vibecrafted scaffold <agent>`
+- Need shared strategy before dispatch -> `vibecrafted partner <agent>`
+- A slice needs solo A to Z delivery -> `vibecrafted ownership <agent>`
+- Wave failed on truth drift -> `vibecrafted marbles <agent>`
+- Completed chain needs release surface -> `vibecrafted release <agent>`
 
 ### Session artifacts
 
 - Artifact root: `$VIBECRAFTED_HOME/artifacts/<org>/<repo>/<YYYY_MMDD>/operator/`
-- Wave tracker: `<artifact-root>/tracker.md` (single living file; append-only per wave close-out)
+- Tracker: `<artifact-root>/tracker.md`
+- Journal: `<artifact-root>/journal.md`
+- Briefs: `<artifact-root>/briefs/*.md`
 - Per-wave close-outs: `<artifact-root>/reports/<ts>_wave-<n>-close-out_operator.md`
 - Final stop-point handoff: `<artifact-root>/reports/<ts>_stop-point_operator.md`
 - Lock: `$VIBECRAFTED_HOME/locks/<org>/<repo>/<run_id>.lock`
 
-### Anti-patterns
+## Anti-Patterns
 
-- Re-firing a stalled wave without reading the failed worker's report → use recovery dispatch instead.
-- Authoring close-out reports in your own `Authored-By:` line when workers did the work → AGENT FAIRNESS lives in _their_ commit attribution; your close-out is _operator narration_, not a commit.
-- Compressing wave status into "yes everything green" without naming the SHAs → the tracker must let the operator audit specific commits without re-reading every worker report.
-- Treating a Skill-tool subagent (native delegation) as equivalent to an external `/vc-agents` dispatch — the former runs inside your context window, the latter inside a separate worker. See `vc-delegate/SKILL.md` for the boundary.
-
----
-
-## Call to Action
-
-Read `SKILL.md` first, then `EMIL.md` for plan shape, then `DISPATCH.md` for
-the worker dispatch body shape with rail-fenced kaomoji + suchar closing.
-Fire Wave A. Schedule the heartbeat. Wait for `notify`.
-
----
-
-## Closing Rail
-
-```text
-=======================
-Flow is not a flowchart you draw and forget — it is the choreography you
-honour wave after wave. The conductor's score is the plan; the conductor's
-discipline is the rests between movements. (งಠ_ಠ)ง
-=======================
-
-Suchar: Why does the wave atlas never get lost? Because every checkbox
-remembers which row it lives on. (._.)
-```
-
----
-
-_Vibecrafted. with AI Agents (c)2024–2026_
+- Acting like the implementer instead of the conductor.
+- Re-firing a stalled wave without reading the failed worker report.
+- Compressing wave status into "green" without SHAs and gate evidence.
+- Treating native subagents as external fleet dispatches.
+- Authoring worker achievements as operator achievements.
+- Continuing past the operator button.

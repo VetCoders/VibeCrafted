@@ -1,273 +1,202 @@
 ---
 name: vc-operator
-version: 2.0.0
+version: 3.0.0-dev
 description: >
-  Agent-Operator charter for multi-dispatch fleet orchestration. Use when the
-  agent is not building a single feature solo but conducting a wave of agents
-  through a planned chain: dispatching prompt bodies, awaiting completion via
-  notify (not polling), enforcing agent fairness and model parity, calling
-  recovery dispatch on stalls, and stopping at the operator's "wystarczy
-  wcisnąć guzik" line so push and merge remain operator-side. Trigger phrases:
-  "operator mode", "Agent-Operator", "tryb operatora", "leć z dispatchem",
-  "prowadź fleet", "konduktorze", "orkiestracja", "dispatch the plan", "fire
-  the wave", "dirygentura", "lećmy z multi-dispatch", "orchestrate this plan",
-  "go autonomiczny do guzika", "tryb dyrygenta".
+  Autonomous orchestration posture for conducting a fleet through a planned
+  multi-wave dispatch chain. Use when the agent is not building one slice but
+  reading a plan, building a wave atlas, dispatching peer agents, awaiting
+  durable artifacts, verifying reports and gates, issuing recovery dispatches
+  on stalls, and stopping at the operator button. Mentioning the skill in an
+  interactive session does not automatically launch the same-named runtime
+  workflow.
+  Trigger phrases: "operator mode", "vc-operator", "Agent-Operator",
+  "tryb operatora", "prowadz fleet", "konduktorze", "orkiestracja",
+  "dispatch the plan", "fire the wave", "dirygentura",
+  "multi-dispatch", "orchestrate this plan", "stop at the button".
 default: vc-operator
 aliases:
   - vc-conductor
 compatibility:
   tools:
-    - Skill
-    - TaskCreate
-    - TaskUpdate
-    - Bash
-    - Agent
-    - Write
-    - Edit
-    - Read
+    - exec_command
+    - apply_patch
+    - update_plan
+    - multi_tool_use.parallel
+    - web.run
+    - js_repl
 requires:
   - vc-init
   - vc-ownership
 ---
 
-# vc-operator — Rhythm and Restraint of the Fleet Conductor
+# vc-operator
 
-> The fourth charter. Where `vc-ownership` says **"I drive the slice end-to-end"**
-> and `vc-marbles` says **"loop until truth"**, this one says **"I conduct the
-> wave, then I stop at the operator's button."**
+> Autonomous orchestration posture. Wave discipline. Recovery over retries.
+> Stop at the operator button.
 
-**Mandatory entrypoint: read [`./RUNNER.md`](./RUNNER.md) first.** It carries
-the deterministic seven-step sequence. SKILL.md is the directory; RUNNER.md is
-the runbook. Lookups: [`./WHY_MATRIX_TABLE.md`](./WHY_MATRIX_TABLE.md) for
-`(task_kind, sensitivity) → ranked_agents`; [`./DISPATCH_TEMPLATE.md`](./DISPATCH_TEMPLATE.md)
-for the Iter-3 fill-by-placeholder worker dispatch body.
+## Taxonomy
 
-**Framing-shift declaration (one line, before first dispatch):**
+```yaml
+vc-operator:
+  kind: orchestration_posture
+  scope: interactive_session
+  meaning: dispatch, await, synthesize, recover, close waves
+  autonomy: orchestration
+```
+
+`vc-operator` is not an implementation skill. It is the conductor posture for
+a planned chain of work.
+
+- `vc-partner` preserves and co-steers the original shape before or during
+  strategy work.
+- `vc-ownership` drives one product slice end-to-end.
+- `vc-operator` conducts a fleet through a plan and stops at the operator
+  button.
+- `vc-init` opens the session with repo/runtime/intention truth; it is not a
+  posture.
+
+Skill invocation is not runtime invocation. If the operator says
+`$vc-operator` inside the current conversation, the current agent adopts this
+orchestration posture. A separate runtime run exists only when the operator or
+framework launches `vibecrafted operator <agent> ...`.
+
+See [CONTRACT.md](CONTRACT.md) for the binding posture/runtime split.
+
+## Mandatory Entrypoint
+
+Read [RUNNER.md](RUNNER.md) first.
+
+`SKILL.md` defines the posture. `RUNNER.md` is the deterministic runbook. The
+other documents are supporting surfaces:
+
+- [FLOW.md](FLOW.md) - orchestration loop and artifacts.
+- [TAXONOMY.md](TAXONOMY.md) - operator posture vs runtime taxonomy.
+- [FRAME.md](FRAME.md) - Worker / Owner / Operator role boundaries.
+- [GUIDE.md](GUIDE.md) - wave atlas structure.
+- [DISPATCH.md](DISPATCH.md) and [DISPATCH_TEMPLATE.md](DISPATCH_TEMPLATE.md) -
+  worker brief contract.
+- [AWAIT.md](AWAIT.md) - await/recovery discipline.
+- [AUTONOMY.md](AUTONOMY.md) - the operator button.
+- [JOURNAL.md](JOURNAL.md) - append-only operator journal.
+- [RUNTIME.md](RUNTIME.md) - runtime launch and artifact contract.
+- [WHY_MATRIX_TABLE.md](WHY_MATRIX_TABLE.md) - agent routing.
+
+## Framing Shift
+
+Before first dispatch, declare the posture in one line:
 
 ```text
-Operator mode active — <plan-name>
+Operator mode active - <plan-name>
 ```
 
-Not a template. See [`./FRAME.md`](./FRAME.md) for charter contrasts.
+If the session was previously in Worker, Partner, or Ownership mode, name the
+shift before firing anything. Silent role drift is an operator failure.
 
----
+## Prime Directive
 
-## Operator Entry
+Conduct the plan. Do not become the worker.
 
-**Living Tree / Worktree Rule.** Operator mode runs in the operator's current
-checkout and branch. Do not create or switch into a worktree unless the
-operator explicitly asks. Re-read files before editing — other agents may
-push between dispatches. See [Living Tree Rule](../LIVING_TREE_RULE.md).
+The operator agent owns:
 
-## Canonical Orientation Gate
+- plan intake
+- wave atlas
+- agent selection
+- dispatch bodies
+- await/recovery
+- report/gate verification
+- tracker and journal
+- close-out synthesis
+- stop-point handoff
 
-Operator mode requires fresh `vc-init` and a `Loctree:loctree` pass
-(the Code-Derived Application Map) before dispatching anything.
-Missing init = process failure. RUNNER.md step 1 absorbs the pass.
+Workers own their slices. Authorship, reports, commits, and findings stay
+attached to the workers who produced them.
 
-Standard launcher:
+## Stop Point
+
+Stop at the operator button: the line where the next action is push, merge,
+deploy, public communication, paid action, irreversible state change, or any
+trust-boundary move that belongs to the human operator.
+
+Operator mode may make the work push-ready. It does not push, merge, deploy, or
+publish unless the operator explicitly presses the button.
+
+## Operating Loop
+
+1. Run or consume fresh `vc-init` evidence.
+2. Read the plan and all cited files in full.
+3. Reshape through `vc-scaffold` if the plan is not dispatchable.
+4. Build the wave atlas.
+5. Verify each cut against Loctree.
+6. Pick agents through `WHY_MATRIX_TABLE.md`.
+7. Render worker briefs from `DISPATCH_TEMPLATE.md`.
+8. Fire one wave at a time through `vibecrafted <skill> <agent>`.
+9. Await durable artifacts.
+10. Verify reports, gates, branch, and SHA.
+11. Use recovery dispatch on stalls; never blind restart.
+12. Append tracker and journal.
+13. Synthesize wave close-out.
+14. Continue or stop at the operator button.
+
+## Dispatch Law
+
+Every external worker dispatch goes through the framework launcher:
 
 ```bash
-vibecrafted start
-vc-operator claude --file '/path/to/master-dispatch.md'
-vc-operator codex  --prompt 'Conduct Wave B to green commits'
+vibecrafted <skill> <agent> --file <brief>
 ```
 
----
+No native subagents for fleet dispatch in operator mode. Native delegation is
+for local bounded work; operator waves need telemetry, launch cards, reports,
+transcripts, meta, and awaitable state.
 
-## Purpose
+## Journal And Tracker
 
-Use this skill when the agent has been promoted from **doing one slice** to
-**conducting a plan**. The operator already chose the plan. The job is to
-send waves of peer-tier agents through it, verify every report and gate,
-call recovery dispatch on stalls (never blind restart), keep the operator's
-hands on push/merge/scope, and stop at "wystarczy wcisnąć guzik" — where the
-next move is a human decision.
+Operator mode keeps two living artifacts:
 
-This is the **discipline + patience** charter. The runner-loop tendency
-("just dispatch one more wave") is the anti-pattern.
+- `tracker.md` - wave status table, checkboxes, run IDs, SHAs, gate state.
+- `journal.md` - append-only mission diary for decisions, stalls, recoveries,
+  role shifts, and stop points.
 
----
+Both are operator-internal artifacts. They do not carry worker closing rails.
 
-## When To Use It
+See [JOURNAL.md](JOURNAL.md).
 
-Use `vc-operator` for a **multi-prompt dispatch plan**, **multi-agent by
-design** (peer-tier rotation), **multiple branches / wave merges**, or a
-`/loop + notify` autonomous tail with a hard stop point.
+## Adjacent Skills
 
-Do **not** use it for: one feature / one branch (`vc-ownership`); convergence
-loop on existing code (`vc-marbles`); research-only (`vc-research`); or shared
-co-steering (`vc-partner`).
-
----
-
-## The Three Roles
-
-A single session can sit in different roles. Silent role drift is the most
-common confusion — always declare the shift (single line, top of file).
-
-| Role                       | Scope                            | Stop point                |
-| -------------------------- | -------------------------------- | ------------------------- |
-| **Worker**                 | one dispatched slice, one report | exit contract             |
-| **Owner** (`vc-ownership`) | one feature, full slice + polish | push-ready                |
-| **Operator** (this skill)  | multi-wave plan + fleet          | "wystarczy wcisnąć guzik" |
-
-See [`./FRAME.md`](./FRAME.md) for charter contrasts.
-
----
-
-## Operating Model
-
-[`./RUNNER.md`](./RUNNER.md) carries the deterministic seven steps. Headlines:
-
-1. **Read inputs** — operator prompt, cited files (full coverage), artifact
-   dir, prior `journal.md`. `aicx` for session continuity.
-2. **Reshape via `vc-scaffold`** — categorical, not ad-hoc — when the plan
-   has >5 prompts, no wave grouping, no dependency graph, or no trackable
-   cuts.
-3. **Build the wave atlas** — A foundation / B sequential / C parallel / D
-   close-out. See [`./GUIDE.md`](./GUIDE.md) for the full framework.
-4. **Pick agents** via [`./WHY_MATRIX_TABLE.md`](./WHY_MATRIX_TABLE.md);
-   rotation breaks ties only.
-5. **Dispatch one wave at a time** via `vibecrafted <skill> <agent>`. **No
-   native subagents** for dispatch — every spawn goes through the framework
-   for telemetry. See [`./DISPATCH.md`](./DISPATCH.md) and
-   [`./DISPATCH_TEMPLATE.md`](./DISPATCH_TEMPLATE.md).
-6. **Await via `/loop` primary**, `ScheduleWakeup` fallback. Read reports,
-   verify gates, verify branch + SHA. Recovery dispatch on stall — never
-   blind restart. See [`./AWAIT.md`](./AWAIT.md).
-7. **Append to `journal.md`** per wake / fire / notify / stop. Synthesize
-   wave close-outs. **Stop at the operator's button** — see
-   [`./AUTONOMY.md`](./AUTONOMY.md) for what you may / must not do without
-   the button press.
-
----
-
-## Modes — `vibecrafted <skill> <agent>` valid pairs
-
-Canonical launcher shape: `vibecrafted <skill> <agent> [flags]` (alt
-`vc-<skill> <agent>`). Agents are peer-tier (claude / codex / gemini); use
-[`./WHY_MATRIX_TABLE.md`](./WHY_MATRIX_TABLE.md) for fit.
-
-| skill     | accepts                       | scope                                                |
-| --------- | ----------------------------- | ---------------------------------------------------- |
-| init      | `--prompt` `--file`           | Repo-truth orientation (perception → intentions)     |
-| scaffold  | `--prompt` `--file`           | Founder-first plan authoring, reshape fuzzy plans    |
-| workflow  | `--prompt` `--file` `--depth` | Examine → research → implement pipeline              |
-| implement | `--prompt` `--file`           | End-to-end bounded feature delivery                  |
-| followup  | `--prompt` `--file`           | READ-ONLY post-implementation trajectory check       |
-| review    | `--prompt` `--file`           | READ-ONLY per-PR findings-max with evidence grade    |
-| marbles   | `--prompt` `--file` `--count` | Loop convergence on existing code                    |
-| audit     | `--prompt` `--file` `--task`  | READ-ONLY plan-vs-code falsification                 |
-| polarize  | `--prompt` `--file`           | One-axis decisive cut after marbles                  |
-| dou       | `--prompt` `--file`           | READ-ONLY Definition-of-Undone product surface       |
-| decorate  | `--prompt` `--file`           | Late-stage visual finishing, coherence pass          |
-| hydrate   | `--prompt` `--file`           | Marketplace listing, SEO, onboarding packaging       |
-| release   | `--prompt` `--file`           | Final outward ship — deploy, DNS, launch             |
-| research  | `--prompt` `--file` `--depth` | Triple-agent gap-free research (claude+codex+gemini) |
-| agents    | `--prompt` `--file`           | External fleet spawn (claude / codex / gemini)       |
-| delegate  | `--prompt` `--file`           | Native operator-side delegation for bounded cuts     |
-| intents   | `--prompt` `--file`           | Intention-vs-runtime truth audit                     |
-| ownership | `--prompt` `--file`           | Full-spectrum solo delivery, A → Z                   |
-| partner   | `--prompt` `--file`           | Shared executive brain co-steering                   |
-| prune     | `--prompt` `--file`           | Repository curation + silencer strip                 |
-
-Flags: `--prompt` (inline), `--file` (plan path), `--count` (marbles cap),
-`--depth` (research / workflow breadth), `--task` (audit task slug).
-
----
-
-## Plan-shape: `[ ]` → `[x]`
-
-Every plan, dispatch body, tracker, and stop-point handoff under operator
-mode follows the **`[ ]` → `[x]`** checkbox discipline plus numbered-sections
-shape — see [`./EMIL.md`](./EMIL.md). Worker dispatch bodies additionally
-carry the rail-fenced closing block — see
-[`./DISPATCH.md`](./DISPATCH.md) Section "Closing rail".
-
----
-
-## Closing rail policy
-
-The folk-horror anti-debt rail (kaomoji + suchar) is **mandatory** at the
-bottom of every **worker-facing dispatch body**. It is **exempt** for
-**operator-side artifacts**: tracker, `journal.md`, wave close-out, and
-stop-point handoff all skip the rail, the kaomoji, and the suchar — they
-are operator-internal artifacts, not worker briefs. SKILL.md and RUNNER.md
-themselves keep the rail because they are worker-facing reference material.
-
----
-
-## Composition with adjacent skills
-
-`vc-operator` composes with — does not replace — these:
-
-- **`vc-init`** — required gate. Without fresh init evidence, fleet work is blind.
-- **`vc-scaffold`** — owns plan authoring. No plan → escalate to `vc-scaffold` first.
-- **`vc-ownership`** — each worker you dispatch is in ownership mode for their slice; you are in operator mode for the chain.
-- **`vc-marbles`** — when a wave fails on truth-drift, escalate the slice into marbles, not another implementation pass.
-- **`vc-partner`** — partner mode for triage **before** the plan; operator mode for execution **after** it. Don't blur them.
-
----
+- `vc-init` - required orientation gate.
+- `vc-scaffold` - plan authoring or reshaping before dispatch.
+- `vc-ownership` - each worker may operate with ownership inside its slice; the
+  operator owns the chain.
+- `vc-partner` - shared strategy before a plan is dispatchable.
+- `vc-marbles` - convergence when a slice fails on truth drift.
+- `vc-audit` / `vc-review` / `vc-followup` - verification surfaces after waves.
+- `vc-release` - outward ship once the operator button has been pressed.
 
 ## Anti-Patterns
 
-Do not in operator mode:
+- Acting like a solo implementer after the operator asked for orchestration.
+- Dispatching before the plan is readable as a wave atlas.
+- Re-firing a stalled wave instead of reading artifacts and issuing recovery.
+- Spawning native subagents for operator fleet work.
+- Silently downgrading model tier or violating agent fairness.
+- Claiming wave green without report, gate, branch, and SHA evidence.
+- Authoring worker commits or close-outs as if the operator did their work.
+- Running headless or unwatchable dispatches.
+- Pushing, merging, deploying, or publishing before the operator button.
 
-- restart a failed wave blindly — recovery dispatch is a focused integration
-  agent, not a re-fire
-- silently downgrade model tier (MODEL PARITY: parent Opus → every worker
-  Opus, no exceptions)
-- author commits in your own name when an agent did the work (AGENT FAIRNESS:
-  `Authored-By:` is the worker's)
-- push, force-push, merge PRs, or any irreversible operator-side action —
-  even when the plan says "next step is merge"
-- spawn another `vc-agents` fleet from inside operator mode — recursion is
-  operator-only authorization
-- spawn native subagents for dispatch — every spawn goes through `vibecrafted`
-  for telemetry
-- accept role promotion silently — declare the framing-shift
-- run dispatch headless / non-watchable (NIGDY HEADLESS)
-- claim wave completion when only some prompts in the wave landed green
+## Output Shape
 
----
+For progress:
 
-## Output Style
+1. Current state - wave, prompt, agent, run ID, branch/SHA if landed.
+2. Evidence - report/gate/artifact status.
+3. Decision - continue, recover, pause, or stop.
+4. Next move - exactly one.
 
-Default to: **Current state** (wave, prompt, SHA landed) → **Proposal**
-(next wave shape, agent, recovery hooks) → **Execution** (run_id, await
-tracker ID) → **Open risks** → **Next move** (exactly one).
+For final handoff:
 
-If a wave is in flight, compress output to a checkbox tracker per
-[`./EMIL.md`](./EMIL.md) Rule 1 — one bullet per prompt with status,
-agent, SHA, and branch.
-
----
-
-## Call to Action
-
-Read [`./RUNNER.md`](./RUNNER.md) first — it is the mandatory entrypoint.
-Then [`./WHY_MATRIX_TABLE.md`](./WHY_MATRIX_TABLE.md) for agent routing,
-[`./DISPATCH_TEMPLATE.md`](./DISPATCH_TEMPLATE.md) for the Iter-3 fill-by-
-placeholder body, and [`./EMIL.md`](./EMIL.md) for plan checkbox shape.
-Then fire Wave A and let `notify` wake you when it lands.
-
----
-
-## Closing Rail
-
-```text
-=======================
-Remember: operator mode is permission to remove friction, not permission
-to drive the operator's car. You raise the baton, you cue the sections,
-you read the score, you stop the piece. The operator owns the hall.
-(งಠ_ಠ)ง
-=======================
-
-Suchar: Why does the runner-loop never sleep? Because it forgot to checkbox
-its own bedtime. (._.)
-```
-
----
-
-_𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. with AI Agents by VetCoders (c)2024-2026 LibraxisAI_
+1. Plan and wave coverage.
+2. Worker outputs and SHAs.
+3. Gates and unresolved risks.
+4. Recovery actions taken.
+5. Stop-point handoff: what button remains for the operator.
