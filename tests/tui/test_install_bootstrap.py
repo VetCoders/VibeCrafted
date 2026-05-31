@@ -161,30 +161,21 @@ def test_install_sh_yes_skips_attended_prompt_for_pipe_bootstrap(
     archive_path = tmp_path / "vibecrafted-bootstrap.tar.gz"
     fake_bin = tmp_path / "bin"
     home = tmp_path / "home"
-    python_capture = tmp_path / "python-args.txt"
+    make_capture = tmp_path / "make-ran.txt"
 
     scripts_dir.mkdir(parents=True)
     fake_bin.mkdir()
     home.mkdir()
 
-    (source_dir / "Makefile").write_text("install:\n\t@echo ok\n", encoding="utf-8")
+    (source_dir / "Makefile").write_text(
+        "install-auto:\n\t@printf 'install-auto RUNTIME=$(RUNTIME)\\n' > $(MAKE_CAPTURE)\n",
+        encoding="utf-8",
+    )
     (scripts_dir / "placeholder").write_text("", encoding="utf-8")
     (scripts_dir / "vetcoders_install.py").write_text("# compact\n", encoding="utf-8")
 
     with tarfile.open(archive_path, "w:gz") as archive:
         archive.add(source_dir, arcname="vibecrafted-main")
-
-    _write_executable(
-        fake_bin / "python3",
-        "\n".join(
-            [
-                "#!/usr/bin/env bash",
-                "set -euo pipefail",
-                'printf "%s\\n" "$@" > "$PYTHON_CAPTURE"',
-            ]
-        )
-        + "\n",
-    )
 
     command = " ; ".join(
         [
@@ -192,7 +183,7 @@ def test_install_sh_yes_skips_attended_prompt_for_pipe_bootstrap(
             f"export XDG_CONFIG_HOME={shlex.quote(str(home / '.config'))}",
             f"export VIBECRAFTED_HOME={shlex.quote(str(home / '.vibecrafted'))}",
             f"export PATH={shlex.quote(f'{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin')}",
-            f"export PYTHON_CAPTURE={shlex.quote(str(python_capture))}",
+            f"export MAKE_CAPTURE={shlex.quote(str(make_capture))}",
             (
                 f"printf '' | bash {shlex.quote(str(INSTALL_SH))}"
                 f" --archive-file {shlex.quote(str(archive_path))} --yes"
@@ -205,20 +196,12 @@ def test_install_sh_yes_skips_attended_prompt_for_pipe_bootstrap(
     staged_root = home / ".vibecrafted" / "tools" / "vibecrafted-current"
     assert exit_code == 0
     assert "Proceed? [y/N]" not in output
-    assert "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. bootstrap" in output
-    assert "Running     compact installer" in output
+    assert "𝚅𝚒𝚋𝚎𝚌𝚛𝚊𝚏𝚝𝚎𝚍. bootstrap" not in output
+    assert "Running     compact installer" not in output
     assert "Non-interactive bootstrap detected" not in output
     assert "Launching installer:" not in output
     assert staged_root.is_symlink()
-    assert python_capture.read_text(encoding="utf-8").splitlines() == [
-        str(staged_root / "scripts" / "vetcoders_install.py"),
-        "install",
-        "--source",
-        str(staged_root),
-        "--with-shell",
-        "--compact",
-        "--non-interactive",
-    ]
+    assert make_capture.read_text(encoding="utf-8") == "install-auto RUNTIME=none\n"
 
 
 def test_install_sh_runtime_flag_dispatches_staged_runtime_helper(
@@ -229,14 +212,16 @@ def test_install_sh_runtime_flag_dispatches_staged_runtime_helper(
     archive_path = tmp_path / "vibecrafted-bootstrap.tar.gz"
     fake_bin = tmp_path / "bin"
     home = tmp_path / "home"
-    python_capture = tmp_path / "python-args.txt"
-    runtime_capture = tmp_path / "runtime-args.txt"
+    make_capture = tmp_path / "make-ran.txt"
 
     scripts_dir.mkdir(parents=True)
     fake_bin.mkdir()
     home.mkdir()
 
-    (source_dir / "Makefile").write_text("install:\n\t@echo ok\n", encoding="utf-8")
+    (source_dir / "Makefile").write_text(
+        "install-auto:\n\t@printf 'install-auto RUNTIME=$(RUNTIME)\\n' > $(MAKE_CAPTURE)\n",
+        encoding="utf-8",
+    )
     (scripts_dir / "vetcoders_install.py").write_text("# compact\n", encoding="utf-8")
     (scripts_dir / "install-runtime.sh").write_text(
         "#!/usr/bin/env bash\n"
@@ -248,25 +233,12 @@ def test_install_sh_runtime_flag_dispatches_staged_runtime_helper(
     with tarfile.open(archive_path, "w:gz") as archive:
         archive.add(source_dir, arcname="vibecrafted-main")
 
-    _write_executable(
-        fake_bin / "python3",
-        "\n".join(
-            [
-                "#!/usr/bin/env bash",
-                "set -euo pipefail",
-                'printf "%s\\n" "$@" > "$PYTHON_CAPTURE"',
-            ]
-        )
-        + "\n",
-    )
-
     env = os.environ.copy()
     env["HOME"] = str(home)
     env["XDG_CONFIG_HOME"] = str(home / ".config")
     env["VIBECRAFTED_HOME"] = str(home / ".vibecrafted")
     env["PATH"] = f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin"
-    env["PYTHON_CAPTURE"] = str(python_capture)
-    env["RUNTIME_CAPTURE"] = str(runtime_capture)
+    env["MAKE_CAPTURE"] = str(make_capture)
 
     subprocess.run(
         [
@@ -285,14 +257,7 @@ def test_install_sh_runtime_flag_dispatches_staged_runtime_helper(
 
     staged_root = home / ".vibecrafted" / "tools" / "vibecrafted-current"
     assert staged_root.is_symlink()
-    assert runtime_capture.read_text(encoding="utf-8").splitlines() == [
-        "--runtime",
-        "wezterm",
-        "--yes",
-    ]
-    assert python_capture.read_text(encoding="utf-8").splitlines()[0] == str(
-        staged_root / "scripts" / "vetcoders_install.py"
-    )
+    assert make_capture.read_text(encoding="utf-8") == "install-auto RUNTIME=wezterm\n"
 
 
 def test_install_sh_archive_install_runs_local_make_target(tmp_path: Path) -> None:

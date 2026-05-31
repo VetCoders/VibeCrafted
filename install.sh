@@ -555,44 +555,19 @@ if [[ "$target" == "vibecrafted" && "$use_gui" == "1" ]]; then
 fi
 
 if [[ "$target" == "vibecrafted" ]] && ! is_interactive_session; then
-  installer="$current_link/scripts/vetcoders_install.py"
-  [[ -f "$installer" ]] || die "Installer not found: $installer"
-  write_bootstrap_log_header
-  compact_bootstrap_banner
-
-  # Install foundations (loctree, aicx) from GH releases before the main installer.
-  foundations_script="$current_link/scripts/install-foundations.sh"
-  if [[ -x "$foundations_script" ]] || [[ -f "$foundations_script" ]]; then
-    if bash "$foundations_script" >> "$bootstrap_log" 2>&1; then
-      info "  [ok]        foundations ready"
-    else
-      info "  [warn]      foundations had issues; continuing"
-    fi
-  fi
-
-  runtime_script="$current_link/scripts/install-runtime.sh"
-  if [[ "$runtime" != "none" ]]; then
-    [[ -f "$runtime_script" ]] || die "Runtime installer not found: $runtime_script"
-    if bash "$runtime_script" --runtime "$runtime" --yes >> "$bootstrap_log" 2>&1; then
-      info "  [ok]        runtime $runtime ready"
-    else
-      die "Runtime installer failed; see $bootstrap_log"
-    fi
-  fi
-
-  # Ensure foundations and tools installed by install-foundations.sh are visible.
-  for _p in "${vibecrafted_home}/bin" "${vibecrafted_home}/tools/node/bin" "$HOME/.cargo/bin"; do
+  # Non-TTY public installs use the same automation lane as local source
+  # installs. Keep the old bootstrap/staging work above, then hand off to the
+  # manifest-owned installer so stdout remains compact and the detail lands in
+  # the installer log.
+  for _p in "${vibecrafted_home}/bin" "${vibecrafted_home}/tools/node/bin" "$HOME/.cargo/bin" "$HOME/.local/bin"; do
     case ":${PATH}:" in
       *":${_p}:"*) ;;
       *) [[ -d "$_p" ]] && export PATH="${_p}:${PATH}" ;;
     esac
   done
 
-  printf '\n'
-  info "  Running     compact installer"
-  printf '\n'
   export VIBECRAFTED_RUNTIME="$runtime"
-  exec python3 "$installer" install --source "$current_link" --with-shell --compact --non-interactive
+  exec make --no-print-directory -C "$current_link" install-auto RUNTIME="$runtime"
 fi
 
 # Interactive terminal session: default target is the built-in
