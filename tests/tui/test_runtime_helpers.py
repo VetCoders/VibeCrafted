@@ -21,7 +21,7 @@ def _run_vetcoders_helper(
     if env:
         run_env.update(env)
     return subprocess.run(
-        ["bash", "-lc", f'source "{helper_script}"; {command}'],
+        ["bash", "--noprofile", "--norc", "-c", f'source "{helper_script}"; {command}'],
         cwd=str(REPO_ROOT),
         env=run_env,
         capture_output=True,
@@ -191,6 +191,55 @@ def test_vc_skill_wrapper_help_after_agent_does_not_launch_worker() -> None:
     assert result.returncode == 0
     assert "Usage: vc-ownership <claude|codex|gemini|agy|junie|grok>" in result.stderr
     assert "launched" not in result.stdout
+
+
+def test_skill_dispatch_prints_launch_receipt(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    control_dir = home / ".vibecrafted" / "control_plane" / "runs"
+    report = tmp_path / "report.md"
+    transcript = tmp_path / "trace.log"
+    launcher = tmp_path / "launcher.sh"
+
+    result = _run_vetcoders_helper(
+        HELPER_SCRIPT,
+        (
+            "_vetcoders_generate_run_id() { printf 'prun-010203-44444\\n'; }; "
+            "_vetcoders_default_runtime() { printf 'headless\\n'; }; "
+            "_vetcoders_dispatch_skill_prompt() { "
+            '  mkdir -p "$CONTROL_DIR"; '
+            '  cat > "$CONTROL_DIR/$5.json" <<JSON\n'
+            "{"
+            f'"state":"launching",'
+            f'"latest_report":"{report}",'
+            f'"latest_transcript":"{transcript}",'
+            f'"launcher":"{launcher}"'
+            "}\n"
+            "JSON\n"
+            "  printf 'stub dispatch\\n'; "
+            "}; "
+            "vc-prune claude --prompt 'triage gems'"
+        ),
+        {
+            "VIBECRAFTED_ROOT": str(REPO_ROOT),
+            "VIBECRAFTED_HOME": str(home / ".vibecrafted"),
+            "CONTROL_DIR": str(control_dir),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "stub dispatch" in result.stdout
+    assert "VIBECRAFTED LAUNCH RECEIPT" in result.stdout
+    assert "run_id:     prun-010203-44444" in result.stdout
+    assert "report:     " + str(report) in result.stdout
+    assert "transcript: " + str(transcript) in result.stdout
+    assert (
+        "observe:    vibecrafted claude observe --run-id prun-010203-44444"
+        in result.stdout
+    )
+    assert (
+        "await:      vibecrafted claude await --run-id prun-010203-44444"
+        in result.stdout
+    )
 
 
 def test_vc_polarize_task_injects_prism_payload(tmp_path: Path) -> None:

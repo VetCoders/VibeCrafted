@@ -1615,6 +1615,67 @@ _vetcoders_dispatch_skill_prompt() {
   )
 }
 
+_vetcoders_launch_receipt_field() {
+  local json_path="$1"
+  local field_name="$2"
+  [[ -f "$json_path" ]] || return 0
+  python3 - "$json_path" "$field_name" <<'PY'
+import json
+import sys
+
+path, field = sys.argv[1:3]
+try:
+    with open(path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(0)
+
+value = payload.get(field, "")
+if value is None:
+    value = ""
+print(value, end="")
+PY
+}
+
+_vetcoders_print_launch_receipt() {
+  local tool="$1"
+  local skill="$2"
+  local run_id="$3"
+  local root="$4"
+  local dispatch_rc="${5:-0}"
+  local crafted_home control_json status report transcript launcher
+
+  [[ "${VIBECRAFTED_SUPPRESS_LAUNCH_RECEIPT:-0}" != "1" ]] || return 0
+  [[ -n "$run_id" ]] || return 0
+
+  crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
+  control_json="$crafted_home/control_plane/runs/${run_id}.json"
+
+  status="$(_vetcoders_launch_receipt_field "$control_json" "state")"
+  [[ -n "$status" ]] || status="$(_vetcoders_launch_receipt_field "$control_json" "status")"
+  report="$(_vetcoders_launch_receipt_field "$control_json" "latest_report")"
+  [[ -n "$report" ]] || report="$(_vetcoders_launch_receipt_field "$control_json" "report")"
+  transcript="$(_vetcoders_launch_receipt_field "$control_json" "latest_transcript")"
+  [[ -n "$transcript" ]] || transcript="$(_vetcoders_launch_receipt_field "$control_json" "transcript")"
+  launcher="$(_vetcoders_launch_receipt_field "$control_json" "launcher")"
+
+  printf '\n'
+  printf '==================== VIBECRAFTED LAUNCH RECEIPT ====================\n'
+  printf 'run_id:     %s\n' "$run_id"
+  printf 'agent:      %s\n' "$tool"
+  printf 'skill:      %s\n' "$skill"
+  printf 'root:       %s\n' "$root"
+  printf 'dispatch:   %s\n' "$dispatch_rc"
+  [[ -z "$status" ]] || printf 'status:     %s\n' "$status"
+  printf 'control:    %s\n' "$control_json"
+  [[ -z "$report" ]] || printf 'report:     %s\n' "$report"
+  [[ -z "$transcript" ]] || printf 'transcript: %s\n' "$transcript"
+  [[ -z "$launcher" ]] || printf 'launcher:   %s\n' "$launcher"
+  printf 'observe:    vibecrafted %s observe --run-id %s\n' "$tool" "$run_id"
+  printf 'await:      vibecrafted %s await --run-id %s\n' "$tool" "$run_id"
+  printf '=====================================================================\n'
+}
+
 _vetcoders_observe() {
   local tool="$1"
   shift
@@ -1896,6 +1957,7 @@ _vetcoders_skill() {
     dispatch_status=$?
     printf '%s\n' "$dispatch_output"
     printf '%s\n' "$dispatch_output" > "$agent_log"
+    _vetcoders_print_launch_receipt "$tool" "$skill" "$run_id" "$root" "$dispatch_status"
     [[ "$dispatch_status" -eq 0 ]] || return "$dispatch_status"
     if [[ -z "$_vetcoders_contract_no_context_corpus" ]]; then
       session_uuid="$(_vetcoders_capture_session_uuid "$agent_log")"
@@ -1908,6 +1970,7 @@ _vetcoders_skill() {
 
   _vetcoders_dispatch_skill_prompt "$tool" "$skill" "$skill_code" "$loop_nr" "$run_id" "$run_lock" "$prompt" "${spawn_args[@]}"
   local _dispatch_rc=$?
+  _vetcoders_print_launch_receipt "$tool" "$skill" "$run_id" "$root" "$_dispatch_rc"
   _vetcoders_maybe_spawn_await_pane "$tool" "$skill" "$run_id" "$root"
   return "$_dispatch_rc"
 }
@@ -2891,7 +2954,136 @@ skills-sync() {
   bash "$script" "$@"
 }
 
+_repo_full_rescue_emit_txt() {
+  local file="$1"
+  awk '
+    /^REPO:/ || /^REMOTE:/ || /^BRANCH:/ || /^HEAD:/ || /^UPSTREAM:/ { print }
+    /^===== STATUS =====/ { p=1; print; next }
+    /^===== LOCAL DIFF FILES =====/ { p=1; print; next }
+    /^===== LOCAL DIFF MATCHES ONLY =====/ { p=1; print; next }
+    /^===== RELEASE\/WATCH\/LSP\/MCP COMMIT MSG MATCHES SINCE MAY 1 =====/ { p=1; print; next }
+    /^===== STASHES =====/ { p=1; print; next }
+    /^===== STASH MATCHES =====/ { p=1; print; next }
+    /^===== CURRENT TREE MATCHES/ { p=0; next }
+    /^===== RECENT COMMITS SINCE MAY 1/ { p=0; next }
+    /^===== / && p { p=0 }
+    p { print }
+  ' "$file" | sed '/^$/N;/^\n$/D'
+}
+
+_repo_full_rescue_emit_patch() {
+  local file="$1"
+  local max_matches="${REPO_RESCUE_MAX_MATCHES:-120}"
+  local pattern='release|publish|homebrew|npm|watch|lsp|mcp|install|aicx|fallback|sign|notary|formula|loctree-mcp|loctree-lsp|artifact|prebuilt|postinstall'
+
+  echo "----- PATCH STAT -----"
+  git apply --stat "$file" 2>/dev/null || awk '
+    /^diff --git / {
+      old=$3; new=$4;
+      sub(/^a\//, "", old);
+      sub(/^b\//, "", new);
+      print old " -> " new;
+    }
+  ' "$file" | awk 'NF && !seen[$0]++'
+
+  echo
+  echo "----- MATCHED SIGNALS (bounded) -----"
+  if command -v rg >/dev/null 2>&1; then
+    rg -n -i "$pattern" "$file" | head -n "$max_matches"
+  else
+    awk -v pat="$pattern" -v max="$max_matches" '
+      BEGIN { IGNORECASE=1 }
+      $0 ~ pat {
+        print FNR ":" $0;
+        count++;
+        if (count >= max) exit;
+      }
+    ' "$file"
+  fi
+}
+
+_repo_full_rescue_emit_plain() {
+  local file="$1"
+  local max_lines="${REPO_RESCUE_MAX_LINES:-120}"
+  local pattern='repo|remote|branch|head|upstream|status|stash|diff|release|publish|homebrew|npm|watch|lsp|mcp|install|aicx|fallback'
+  if command -v rg >/dev/null 2>&1; then
+    rg -n -i "$pattern" "$file" | head -n "$max_lines"
+  else
+    awk -v pat="$pattern" -v max="$max_lines" '
+      BEGIN { IGNORECASE=1 }
+      $0 ~ pat {
+        print FNR ":" $0;
+        count++;
+        if (count >= max) exit;
+      }
+    ' "$file"
+  fi
+}
+
+_repo_full_rescue_emit_file() {
+  local file="$1"
+  local bytes lines
+  bytes="$(wc -c < "$file" | tr -d ' ')"
+  lines="$(wc -l < "$file" | tr -d ' ')"
+
+  echo
+  echo "================================================================================"
+  echo "### $(basename "$file")"
+  echo "Path:  $file"
+  echo "Size:  $bytes bytes"
+  echo "Lines: $lines"
+  echo
+
+  case "$file" in
+    *.patch|*.diff) _repo_full_rescue_emit_patch "$file" ;;
+    *.txt) _repo_full_rescue_emit_txt "$file" ;;
+    *.md|*.markdown) _repo_full_rescue_emit_plain "$file" ;;
+    *) echo "Skipped: unsupported rescue evidence type." ;;
+  esac
+}
+
+_repo_full_rescue() {
+  local rescue_dir="${1:-${REPO_RESCUE_DIR:-$HOME/Desktop/loctree-release-rescue}}"
+  local pattern="${2:-*}"
+  local root branch head files_found=0 file
+
+  if [[ ! -d "$rescue_dir" ]]; then
+    echo "Rescue directory not found: $rescue_dir"
+    echo "Usage: repo-full --rescue [evidence-dir] [glob]"
+    return 1
+  fi
+
+  root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  branch="$(git symbolic-ref --short -q HEAD 2>/dev/null || echo "DETACHED_OR_NO_GIT")"
+  head="$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")"
+
+  echo "==================== REPO RESCUE ===================="
+  echo "Working dir:       $(pwd)"
+  echo "Root:              $root"
+  echo "Branch:            $branch"
+  echo "HEAD short:        $head"
+  echo "Evidence dir:      $rescue_dir"
+  echo "Evidence glob:     $pattern"
+  echo "Generated at:      $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  echo
+
+  while IFS= read -r file; do
+    files_found=1
+    _repo_full_rescue_emit_file "$file"
+  done < <(find "$rescue_dir" -maxdepth 1 -type f -name "$pattern" -print 2>/dev/null | sort)
+
+  [[ "$files_found" != "0" ]] || echo "No rescue evidence files matched."
+  echo
+  echo "==================== RESCUE DONE ===================="
+}
+
 repo-full() {
+  if [[ "${1:-}" == "--rescue" ]]; then
+    shift
+    _repo_full_rescue "$@"
+    return
+  fi
+
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
     echo "Not a git repository."
     return 1
