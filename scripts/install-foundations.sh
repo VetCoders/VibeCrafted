@@ -17,16 +17,18 @@ set -euo pipefail
 #   bash scripts/install-foundations.sh --prefix /usr/local  # custom install prefix
 # ---------------------------------------------------------------------------
 
-LOCTREE_VERSION="${LOCTREE_VERSION:-0.8.17}"
+LOCTREE_VERSION="${LOCTREE_VERSION:-0.9.5}"
 LOCTREE_REPO="Loctree/Loctree"
 
 AICX_CRATE="aicx"
 AICX_REPO="Loctree/aicx"
+AICX_VERSION="${AICX_VERSION:-0.7.3}"
 
 PRVIEW_CRATE="prview"
 PRVIEW_REPO="VetCoders/prview"
 
 ZELLIJ_REPO="zellij-org/zellij"
+ZELLIJ_VERSION="${ZELLIJ_VERSION:-0.44.3}"
 
 # Agent CLIs — npm packages when the vendor publishes an official package.
 AGENT_PACKAGES=(
@@ -63,6 +65,7 @@ VIBECRAFTED_HOME="$(default_vibecrafted_home)"
 PREFIX="${VIBECRAFTED_BIN:-$VIBECRAFTED_HOME/bin}"
 CHECK_ONLY=0
 INSTALL_ALL=0
+AGENTS_REQUIRED=0
 TARGETS=()
 
 # ---------------------------------------------------------------------------
@@ -163,7 +166,12 @@ install_from_bundled() {
 # ---------------------------------------------------------------------------
 
 ensure_rustup() {
-  has_cmd cargo && return 0
+  if has_cmd cargo; then
+    if has_cmd rustup && ! rustup default 2>/dev/null | grep -q '.'; then
+      rustup default stable 2>&1 | tail -3 || true
+    fi
+    has_cmd cargo && return 0
+  fi
   has_cmd curl || return 1
 
   if is_interactive; then
@@ -341,6 +349,41 @@ raise SystemExit(1)
 PY
 }
 
+release_download_url() {
+  local repo="$1" tag="$2" asset="$3"
+  printf 'https://github.com/%s/releases/download/%s/%s\n' "$repo" "$tag" "$asset"
+}
+
+loctree_direct_asset_url() {
+  local os="$1" arch="$2" target=""
+  case "$os/$arch" in
+    linux/x86_64) target="x86_64-unknown-linux-gnu" ;;
+    linux/aarch64) target="aarch64-unknown-linux-gnu" ;;
+    macos/x86_64) target="x86_64-apple-darwin" ;;
+    macos/aarch64) target="aarch64-apple-darwin" ;;
+    *) return 1 ;;
+  esac
+  release_download_url "$LOCTREE_REPO" "v${LOCTREE_VERSION}" "loctree-${LOCTREE_VERSION}-${target}.tar.gz"
+}
+
+aicx_direct_asset_url() {
+  local target="$1"
+  [[ -n "$target" ]] || return 1
+  release_download_url "$AICX_REPO" "v${AICX_VERSION}" "aicx-v${AICX_VERSION}-${target}-slim-unsigned.tar.gz"
+}
+
+zellij_direct_asset_url() {
+  local os="$1" arch="$2" target=""
+  case "$os/$arch" in
+    linux/x86_64) target="x86_64-unknown-linux-musl" ;;
+    linux/aarch64) target="aarch64-unknown-linux-musl" ;;
+    macos/x86_64) target="x86_64-apple-darwin" ;;
+    macos/aarch64) target="aarch64-apple-darwin" ;;
+    *) return 1 ;;
+  esac
+  release_download_url "$ZELLIJ_REPO" "v${ZELLIJ_VERSION}" "zellij-${target}.tar.gz"
+}
+
 # ---------------------------------------------------------------------------
 # Loctree installer — binary release from GitHub
 # ---------------------------------------------------------------------------
@@ -350,15 +393,25 @@ loctree_asset_patterns() {
   case "$os" in
     linux)
       case "$arch" in
-        x86_64)  printf '%s\n' '^loctree-linux-x86_64\.tar\.gz$' ;;
-        aarch64) printf '%s\n' '^loctree-linux-aarch64\.tar\.gz$' ;;
+        x86_64)
+          printf '%s\n' '^loctree-[0-9.]+-x86_64-unknown-linux-gnu\.tar\.gz$'
+          printf '%s\n' '^loctree-linux-x86_64\.tar\.gz$'
+          ;;
+        aarch64)
+          printf '%s\n' '^loctree-[0-9.]+-aarch64-unknown-linux-gnu\.tar\.gz$'
+          printf '%s\n' '^loctree-linux-aarch64\.tar\.gz$'
+          ;;
         *)       die "No loctree binary for linux/$arch" ;;
       esac
       ;;
     macos)
       case "$arch" in
-        x86_64)  printf '%s\n' '^loctree-darwin-x86_64\.tar\.gz$' ;;
+        x86_64)
+          printf '%s\n' '^loctree-[0-9.]+-x86_64-apple-darwin\.tar\.gz$'
+          printf '%s\n' '^loctree-darwin-x86_64\.tar\.gz$'
+          ;;
         aarch64)
+          printf '%s\n' '^loctree-[0-9.]+-aarch64-apple-darwin\.tar\.gz$'
           printf '%s\n' '^loctree-darwin-aarch64\.tar\.gz$'
           printf '%s\n' '^loctree-darwin-aarch64-notarized\.zip$'
           ;;
@@ -404,7 +457,11 @@ install_loctree() {
 
   # --- Attempt 1: prebuilt binary from GH releases ---
   local binary_ok=0
-  url="$(github_release_asset_url "$LOCTREE_REPO" "tags/v${LOCTREE_VERSION}" "${patterns[@]}")" && {
+  url="$(loctree_direct_asset_url "$os" "$arch" || true)"
+  if [[ -z "$url" ]]; then
+    url="$(github_release_asset_url "$LOCTREE_REPO" "tags/v${LOCTREE_VERSION}" "${patterns[@]}")" || true
+  fi
+  if [[ -n "$url" ]]; then
     asset="${url##*/}"
 
     info "Downloading loctree v${LOCTREE_VERSION} for ${os}/${arch}..."
@@ -449,7 +506,7 @@ install_loctree() {
       rm -rf "$tmpdir"
       warn "Failed to download loctree binary."
     fi
-  }
+  fi
 
   # Binary path succeeded — done
   (( binary_ok )) && return 0
@@ -640,7 +697,7 @@ install_aicx() {
 
   if [[ -n "$target" ]] && has_cmd curl; then
     local patterns=(
-      "^${asset_prefix}-v[0-9.]+-${target}\\.tar\\.gz$"
+      "^${asset_prefix}-v[0-9.]+-${target}(-[A-Za-z0-9._-]+)?\\.tar\\.gz$"
     )
 
     if (( CHECK_ONLY )); then
@@ -652,7 +709,12 @@ install_aicx() {
     local tmpdir url
     tmpdir="$(mktemp -d)"
 
-    if url="$(github_release_asset_url "$AICX_REPO" "latest" "${patterns[@]}")" &&
+    url="$(aicx_direct_asset_url "$target" || true)"
+    if [[ -z "$url" ]]; then
+      url="$(github_release_asset_url "$AICX_REPO" "latest" "${patterns[@]}")" || true
+    fi
+
+    if [[ -n "$url" ]] &&
       curl -fsSL -o "$tmpdir/aicx.tar.gz" "$url" 2>/dev/null; then
       ensure_prefix
       mkdir -p "$tmpdir/out"
@@ -687,7 +749,10 @@ install_aicx() {
     return 1
   fi
 
-  install_from_cargo "$AICX_CRATE" "aicx-mcp"
+  if ensure_rustup; then
+    install_from_cargo "$AICX_CRATE" "aicx-mcp" && return 0
+  fi
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -740,14 +805,18 @@ install_zellij() {
   ensure_prefix
 
   local url asset tmpdir
-  url="$(github_release_asset_url "$ZELLIJ_REPO" "latest" "${patterns[@]}")" || {
+  url="$(zellij_direct_asset_url "$os" "$arch" || true)"
+  if [[ -z "$url" ]]; then
+    url="$(github_release_asset_url "$ZELLIJ_REPO" "latest" "${patterns[@]}")" || true
+  fi
+  if [[ -z "$url" ]]; then
     warn "Could not resolve a zellij release asset for ${os}/${arch}."
     warn "Falling back to cargo install..."
     if ensure_rustup; then
       install_from_cargo "zellij" "zellij" && return 0
     fi
     return 1
-  }
+  fi
   asset="${url##*/}"
 
   info "Downloading zellij for ${os}/${arch}..."
@@ -835,8 +904,10 @@ install_agents() {
 
   if (( installed == total )); then
     ok "All agent CLIs installed ($installed/$total)"
+    return 0
   else
     warn "Agent CLIs: $installed/$total installed"
+    return 1
   fi
 }
 
@@ -1004,7 +1075,7 @@ while [[ $# -gt 0 ]]; do
     loctree)     TARGETS+=("loctree") ;;
     aicx)        TARGETS+=("aicx") ;;
     zellij)      TARGETS+=("zellij") ;;
-    agents)      TARGETS+=("agents") ;;
+    agents)      TARGETS+=("agents"); AGENTS_REQUIRED=1 ;;
     prview)      TARGETS+=("prview") ;;
     sandbox)     TARGETS+=("sandbox") ;;
     iterm2-plugin) TARGETS+=("iterm2-plugin") ;;
@@ -1037,7 +1108,15 @@ for target in "${TARGETS[@]}"; do
     loctree) install_loctree || exit_code=1 ;;
     aicx)    install_aicx    || exit_code=1 ;;
     zellij)  install_zellij  || exit_code=1 ;;
-    agents)  install_agents  || exit_code=1 ;;
+    agents)
+      if ! install_agents; then
+        if (( AGENTS_REQUIRED )); then
+          exit_code=1
+        else
+          warn "Agent CLI bootstrap incomplete; continuing because agents are optional during foundation install."
+        fi
+      fi
+      ;;
     prview)  install_prview  || exit_code=1 ;;
     sandbox) install_sandbox || exit_code=1 ;;
     iterm2-plugin) install_iterm2_plugin || exit_code=1 ;;

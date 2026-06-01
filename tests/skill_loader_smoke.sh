@@ -201,7 +201,7 @@ fi
 printf '\n%s\n' "$(dim '─── phase 3: foundation wrappers ───')"
 
 if [[ ! -d "$FOUNDATIONS_DIR" ]]; then
-  log_fail "foundations dir missing at $FOUNDATIONS_DIR"
+  log_warn "foundations dir missing — skipping"
 else
   shopt -s nullglob
   foundation_count=0

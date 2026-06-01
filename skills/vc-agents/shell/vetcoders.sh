@@ -76,33 +76,38 @@ _vetcoders_default_runtime() {
   printf '%s\n' "${VETCODERS_SPAWN_RUNTIME:-terminal}"
 }
 
-_vetcoders_prepend_path_dir() {
-  local dir="${1:-}"
-  [[ -n "$dir" && -d "$dir" ]] || return 0
-  case ":${PATH:-}:" in
-    *":$dir:"*) ;;
-    *) export PATH="$dir${PATH:+:$PATH}" ;;
-  esac
+_vetcoders_bundled_bin_dirs() {
+  local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
+  [[ -d "$crafted_home/bin" ]] && printf '%s\n' "$crafted_home/bin"
+  if [[ "$crafted_home" != "$HOME/.vibecrafted" ]]; then
+    [[ -d "$HOME/.vibecrafted/bin" ]] && printf '%s\n' "$HOME/.vibecrafted/bin"
+  fi
 }
 
-_vetcoders_load_bundled_bin_path() {
-  local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
-  _vetcoders_prepend_path_dir "$crafted_home/bin"
-  if [[ "$crafted_home" != "$HOME/.vibecrafted" ]]; then
-    _vetcoders_prepend_path_dir "$HOME/.vibecrafted/bin"
-  fi
+_vetcoders_path_with_bundled_bin_priority() {
+  local current_path="${1:-}"
+  local bundled_path=""
+  local dir
+  while IFS= read -r dir; do
+    [[ -n "$dir" ]] || continue
+    case ":$current_path:" in
+      *":$dir:"*) ;;
+      *) bundled_path="${bundled_path:+$bundled_path:}$dir" ;;
+    esac
+  done < <(_vetcoders_bundled_bin_dirs)
+  printf '%s\n' "${bundled_path:+$bundled_path${current_path:+:}}$current_path"
 }
 
 _vetcoders_zellij_missing_message() {
   local crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
   echo "zellij is required for the Vibecrafted operator runtime." >&2
-  echo "If this is a fresh install, run:" >&2
-  echo "  export PATH=\"$crafted_home/bin:\$PATH\"" >&2
-  echo "Then retry the command. Expected bundled binary: $crafted_home/bin/zellij" >&2
+  echo "Expected zellij on PATH or bundled at: $crafted_home/bin/zellij" >&2
 }
 
 _vetcoders_require_zellij() {
-  _vetcoders_load_bundled_bin_path
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   command -v zellij >/dev/null 2>&1 || {
     _vetcoders_zellij_missing_message
     return 1
@@ -135,8 +140,6 @@ EOF
   return 1
 }
 
-_vetcoders_load_bundled_bin_path
-
 _vetcoders_in_zellij() {
   # ZELLIJ=0 is a valid pane index inside zellij — do NOT treat as false.
   # Only absent ZELLIJ means we're outside.
@@ -144,6 +147,9 @@ _vetcoders_in_zellij() {
 }
 
 _vetcoders_guess_active_zellij_session() {
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   command -v zellij >/dev/null 2>&1 || return 0
   local active
   active="$(zellij ls 2>/dev/null | _vetcoders_strip_ansi | grep -E '\(attached\)|\(current\)' | head -1 | awk '{print $1}')"
@@ -200,6 +206,9 @@ _vetcoders_preferred_terminal() {
 }
 
 _vetcoders_zellij_session_state() {
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   local session_name="$1"
   local listing
 
@@ -312,6 +321,9 @@ _vetcoders_wait_for_zellij_session() {
 
 
 _vetcoders_ensure_zellij_session() {
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   local session_name="$1"
   local layout_file="$2"
   shift 2
@@ -399,8 +411,11 @@ _vetcoders_ensure_zellij_session() {
 }
 
 _vetcoders_prepare_operator_runtime() {
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   local runtime="${1:-$(_vetcoders_default_runtime)}"
-  local session_name layout_file state command_text
+  local session_name layout_file state command_text zellij_bin zellij_cmd
   _vetcoders_normalize_ambient_context
   _vetcoders_auto_gc_dead_zellij_sessions
 
@@ -430,6 +445,8 @@ _vetcoders_prepare_operator_runtime() {
 
   session_name="${VIBECRAFTED_OPERATOR_SESSION:-$(_vetcoders_operator_session_name)}"
   command -v zellij >/dev/null 2>&1 || return 0
+  zellij_bin="$(command -v zellij)"
+  zellij_cmd="$(_vetcoders_shell_quote "$zellij_bin")"
 
   layout_file="$(_vetcoders_operator_layout_file 2>/dev/null || true)"
   [[ -n "$layout_file" ]] || return 0
@@ -441,11 +458,11 @@ _vetcoders_prepare_operator_runtime() {
       return 0
       ;;
     dead)
-      zellij kill-session "$session_name" 2>/dev/null || true
-      command_text="zellij attach \"$session_name\" 2>/dev/null || zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
+      "$zellij_bin" kill-session "$session_name" 2>/dev/null || true
+      command_text="$zellij_cmd attach \"$session_name\" 2>/dev/null || $zellij_cmd --session \"$session_name\" --new-session-with-layout \"$layout_file\""
       ;;
     *)
-      command_text="zellij attach \"$session_name\" 2>/dev/null || zellij --session \"$session_name\" --new-session-with-layout \"$layout_file\""
+      command_text="$zellij_cmd attach \"$session_name\" 2>/dev/null || $zellij_cmd --session \"$session_name\" --new-session-with-layout \"$layout_file\""
       ;;
   esac
   if _vetcoders_open_iterm_command "$command_text"; then
@@ -462,6 +479,9 @@ _vetcoders_prepare_operator_runtime() {
 }
 
 _vetcoders_spawn_into_operator_session() {
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   local tab_name="$1"
   local command_text="$2"
   local session_name="${VIBECRAFTED_OPERATOR_SESSION:-$(_vetcoders_operator_session_name)}"
@@ -744,6 +764,9 @@ _vetcoders_dashboard_session_name() {
 }
 
 _vetcoders_launch_dashboard() {
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   local first_arg="${1:-}"
 
   # Thin shim subcommands — delegate directly to native Zellij.
@@ -1643,7 +1666,7 @@ _vetcoders_print_launch_receipt() {
   local run_id="$3"
   local root="$4"
   local dispatch_rc="${5:-0}"
-  local crafted_home control_json status report transcript launcher
+  local crafted_home control_json receipt_status report transcript launcher
 
   [[ "${VIBECRAFTED_SUPPRESS_LAUNCH_RECEIPT:-0}" != "1" ]] || return 0
   [[ -n "$run_id" ]] || return 0
@@ -1651,8 +1674,8 @@ _vetcoders_print_launch_receipt() {
   crafted_home="${VIBECRAFTED_HOME:-$HOME/.vibecrafted}"
   control_json="$crafted_home/control_plane/runs/${run_id}.json"
 
-  status="$(_vetcoders_launch_receipt_field "$control_json" "state")"
-  [[ -n "$status" ]] || status="$(_vetcoders_launch_receipt_field "$control_json" "status")"
+  receipt_status="$(_vetcoders_launch_receipt_field "$control_json" "state")"
+  [[ -n "$receipt_status" ]] || receipt_status="$(_vetcoders_launch_receipt_field "$control_json" "status")"
   report="$(_vetcoders_launch_receipt_field "$control_json" "latest_report")"
   [[ -n "$report" ]] || report="$(_vetcoders_launch_receipt_field "$control_json" "report")"
   transcript="$(_vetcoders_launch_receipt_field "$control_json" "latest_transcript")"
@@ -1666,7 +1689,7 @@ _vetcoders_print_launch_receipt() {
   printf 'skill:      %s\n' "$skill"
   printf 'root:       %s\n' "$root"
   printf 'dispatch:   %s\n' "$dispatch_rc"
-  [[ -z "$status" ]] || printf 'status:     %s\n' "$status"
+  [[ -z "$receipt_status" ]] || printf 'status:     %s\n' "$receipt_status"
   printf 'control:    %s\n' "$control_json"
   [[ -z "$report" ]] || printf 'report:     %s\n' "$report"
   [[ -z "$transcript" ]] || printf 'transcript: %s\n' "$transcript"
@@ -1989,6 +2012,9 @@ _vetcoders_skill() {
 # prompt_id-based, not run_id-based, so content grep is the only reliable
 # resolver.
 _vetcoders_maybe_spawn_await_pane() {
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   local tool="$1" skill="$2" run_id="$3" root="$4"
   command -v zellij >/dev/null 2>&1 || return 0
   _vetcoders_in_zellij || return 0
@@ -2396,6 +2422,9 @@ junie-hydrate() { _vetcoders_skill junie hydrate "$@"; }
 grok-hydrate() { _vetcoders_skill grok hydrate "$@"; }
 
 _vetcoders_marbles() {
+  local PATH="${PATH:-}"
+  PATH="$(_vetcoders_path_with_bundled_bin_priority "$PATH")"
+  export PATH
   local tool="$1"
   shift
   local script marbles_cmd quoted_args quoted_env operator_session root_dir marbles_run_id runtime launch_ts launch_report
