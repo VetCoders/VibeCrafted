@@ -226,6 +226,28 @@ _vetcoders_zellij_session_state() {
   printf 'missing\n'
 }
 
+_vetcoders_recover_terminal_after_zellij_failure() {
+  local rc="${1:-1}"
+
+  # Zellij can leave the host terminal in alternate-screen / mouse-tracking
+  # state when client/server negotiation fails during startup. Best-effort
+  # cleanup keeps the user's prompt usable after a failed dashboard launch.
+  if [[ -t 1 ]]; then
+    printf '\033[?1049l\033[?25h\033[?1000l\033[?1002l\033[?1003l\033[?1005l\033[?1006l\033[?1015l\033[?2004l\033[0m' > /dev/tty 2>/dev/null || true
+  fi
+  command -v stty >/dev/null 2>&1 && stty sane 2>/dev/null || true
+  return "$rc"
+}
+
+_vetcoders_run_zellij_interactive() {
+  zellij "$@"
+  local rc=$?
+  if (( rc != 0 )); then
+    _vetcoders_recover_terminal_after_zellij_failure "$rc"
+  fi
+  return "$rc"
+}
+
 _vetcoders_open_iterm_command() {
   local command_text="$1"
   local osascript_bin
@@ -335,7 +357,7 @@ _vetcoders_ensure_zellij_session() {
       if (( inside_zellij )); then
         zellij action switch-session "$session_name"
       else
-        zellij "$@" attach "$session_name"
+        _vetcoders_run_zellij_interactive "$@" attach "$session_name"
       fi
       ;;
     dead)
@@ -356,7 +378,7 @@ _vetcoders_ensure_zellij_session() {
           wait "$bg_pid_dead" 2>/dev/null || true
           zellij action switch-session "$session_name"
         else
-          zellij "$@" --session "$session_name" --new-session-with-layout "$layout_file"
+          _vetcoders_run_zellij_interactive "$@" --session "$session_name" --new-session-with-layout "$layout_file"
         fi
       else
         # No layout — try force-run which may resurrect the session.
@@ -364,7 +386,7 @@ _vetcoders_ensure_zellij_session() {
           echo "Session '$session_name' is dead and no layout is available to recreate it." >&2
           return 1
         else
-          zellij "$@" attach --force-run-commands "$session_name"
+          _vetcoders_run_zellij_interactive "$@" attach --force-run-commands "$session_name"
         fi
       fi
       ;;
@@ -388,7 +410,7 @@ _vetcoders_ensure_zellij_session() {
           wait "$bg_pid" 2>/dev/null || true
           zellij action switch-session "$session_name"
         else
-          zellij "$@" --session "$session_name" --new-session-with-layout "$layout_file"
+          _vetcoders_run_zellij_interactive "$@" --session "$session_name" --new-session-with-layout "$layout_file"
         fi
       else
         echo "Layout file missing and session not found." >&2
@@ -710,7 +732,7 @@ _vetcoders_wrap_atuin() {
 
 _vetcoders_wrap_atuin
 
-_vetcoders_known_dashboard_layouts=(dashboard marbles workflow research operator)
+_vetcoders_known_dashboard_layouts=(dashboard marbles polarize workflow research operator)
 
 _vetcoders_dashboard_layout_name() {
   local requested="${1:-dashboard}"
@@ -735,12 +757,30 @@ _vetcoders_dashboard_layout_file() {
   _vetcoders_frontier_file "zellij/layouts/${layout_name}.kdl"
 }
 
+_vetcoders_dashboard_config_dir_for_layout() {
+  local layout_file="$1"
+  local layout_dir config_dir
+  layout_dir="$(dirname "$layout_file")"
+  config_dir="$(dirname "$layout_dir")"
+  [[ -f "$config_dir/config.kdl" ]] || return 1
+  printf '%s\n' "$config_dir"
+}
+
 _vetcoders_dashboard_session_name() {
   local layout_name base_session
   _vetcoders_normalize_ambient_context
   layout_name="$(_vetcoders_dashboard_layout_name "${1:-}")" || return 1
   base_session="${VIBECRAFTED_OPERATOR_SESSION:-$(_vetcoders_operator_session_name)}"
   printf '%s\n' "$base_session"
+}
+
+_vetcoders_require_dashboard_tty() {
+  if [[ -t 0 && -t 1 ]]; then
+    return 0
+  fi
+  echo "vc-dashboard requires a real interactive TTY for Zellij." >&2
+  echo "Use an actual terminal window, or run 'vc-dashboard ls' for non-interactive status." >&2
+  return 1
 }
 
 _vetcoders_launch_dashboard() {
@@ -800,7 +840,7 @@ _vetcoders_launch_dashboard() {
       ;;
   esac
 
-  local layout_name layout_file session_name repo_source repo_zellij_dir state inside_zellij current_session
+  local layout_name layout_file session_name repo_source repo_zellij_dir state inside_zellij current_session dashboard_zellij_dir
   _vetcoders_normalize_ambient_context
   _vetcoders_auto_gc_dead_zellij_sessions
   layout_name="$(_vetcoders_dashboard_layout_name "${first_arg}")" || return 1
@@ -820,6 +860,13 @@ _vetcoders_launch_dashboard() {
     return 1
   }
 
+  dashboard_zellij_dir="$(_vetcoders_dashboard_config_dir_for_layout "$layout_file" 2>/dev/null || true)"
+  [[ -n "$dashboard_zellij_dir" ]] || {
+    echo "Dashboard zellij config not found for layout: $layout_file" >&2
+    return 1
+  }
+  export ZELLIJ_CONFIG_DIR="$dashboard_zellij_dir"
+
   if [[ "${VIBECRAFTED_PREFER_REPO_ZELLIJ:-0}" == "1" ]]; then
     repo_source="$(_vetcoders_repo_root)"
     repo_zellij_dir="$repo_source/config/zellij"
@@ -837,6 +884,10 @@ _vetcoders_launch_dashboard() {
   [[ -n "${ZELLIJ_PANE_ID:-}" || -n "${ZELLIJ+set}" ]] && inside_zellij=1 || inside_zellij=0
   current_session="${ZELLIJ_SESSION_NAME:-}"
 
+  if (( ! inside_zellij )); then
+    _vetcoders_require_dashboard_tty || return 1
+  fi
+
   if [[ "$layout_name" != "operator" && "$layout_name" != "dashboard" && "$state" == "live" ]]; then
     if (( inside_zellij )) && [[ "$current_session" == "$session_name" ]]; then
       zellij action new-tab --layout "$layout_file"
@@ -845,7 +896,7 @@ _vetcoders_launch_dashboard() {
       if (( inside_zellij )); then
         zellij action switch-session "$session_name"
       else
-        zellij attach "$session_name"
+        _vetcoders_run_zellij_interactive attach "$session_name"
       fi
     fi
     return 0

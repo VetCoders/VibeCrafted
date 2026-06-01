@@ -50,8 +50,11 @@ copy_command "pbcopy"
 mouse_mode true
 pane_frames true
 scroll_buffer_size 50000
-styled_underlines true
+styled_underlines false
 auto_layout true
+show_startup_tips false
+show_release_notes false
+support_kitty_keyboard_protocol false
 
 // ─── Session Resilience ─────────────────────────────────────────────────────────
 // The session survives terminal closure by detaching instead of killing.
